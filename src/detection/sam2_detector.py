@@ -197,20 +197,44 @@ class SAM3Detector:
     # Model loaders
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _import_sam2():
+        """
+        transformers 버전에 따라 SAM2 관련 클래스를 반환.
+        Sam2Model / Sam2Processor (transformers >= 4.47) 우선 시도,
+        실패 시 구버전 SamModel / SamProcessor 사용.
+        """
+        try:
+            from transformers import Sam2Model, Sam2Processor
+            return Sam2Model, Sam2Processor
+        except ImportError:
+            pass
+        try:
+            from transformers import SamModel, SamProcessor
+            return SamModel, SamProcessor
+        except ImportError:
+            raise ImportError(
+                "transformers에서 SAM 모델을 찾을 수 없습니다. "
+                "pip install 'transformers>=4.47.0' 를 실행하세요."
+            )
+
     def _load_model(self) -> None:
         try:
-            from transformers import Sam3Model, Sam3Processor
-            logger.info(f"[SAM3Detector] Loading Sam3Model ({SAM3_MODEL_NAME}) on {self._device} …")
-            self._processor = Sam3Processor.from_pretrained(SAM3_MODEL_NAME)
-            self._model = Sam3Model.from_pretrained(
+            ModelCls, ProcessorCls = self._import_sam2()
+            logger.info(
+                f"[SAM3Detector] Loading {ModelCls.__name__} "
+                f"({SAM3_MODEL_NAME}) on {self._device} …"
+            )
+            self._processor = ProcessorCls.from_pretrained(SAM3_MODEL_NAME)
+            self._model = ModelCls.from_pretrained(
                 SAM3_MODEL_NAME,
                 torch_dtype=torch.float16 if self._device == "cuda" else torch.float32,
             ).to(self._device)
             self._model.eval()
-            logger.info("[SAM3Detector] Sam3Model loaded.")
+            logger.info(f"[SAM3Detector] {ModelCls.__name__} loaded.")
         except (ImportError, OSError) as exc:
             logger.warning(
-                f"[SAM3Detector] Could not load Sam3Model ({exc}). "
+                f"[SAM3Detector] Could not load SAM model ({exc}). "
                 "Using fallback grid-detector."
             )
             self._model = None
@@ -218,21 +242,24 @@ class SAM3Detector:
     def _load_tracker(self) -> None:
         self._tracker_load_attempted = True
         try:
-            from transformers import Sam3Tracker
-            logger.info(f"[SAM3Detector] Loading Sam3Tracker ({SAM3_MODEL_NAME}) on {self._device} …")
-            # Sam3Tracker shares the same processor already loaded for Sam3Model
+            # SAM2VideoPredictor: 프레임 간 객체 추적 전용 클래스
+            from transformers import Sam2VideoPredictor
+            logger.info(
+                f"[SAM3Detector] Loading Sam2VideoPredictor "
+                f"({SAM3_MODEL_NAME}) on {self._device} …"
+            )
             if self._processor is None:
-                from transformers import Sam3Processor
-                self._processor = Sam3Processor.from_pretrained(SAM3_MODEL_NAME)
-            self._tracker = Sam3Tracker.from_pretrained(
+                _, ProcessorCls = self._import_sam2()
+                self._processor = ProcessorCls.from_pretrained(SAM3_MODEL_NAME)
+            self._tracker = Sam2VideoPredictor.from_pretrained(
                 SAM3_MODEL_NAME,
                 torch_dtype=torch.float16 if self._device == "cuda" else torch.float32,
             ).to(self._device)
             self._tracker.eval()
-            logger.info("[SAM3Detector] Sam3Tracker loaded.")
+            logger.info("[SAM3Detector] Sam2VideoPredictor loaded.")
         except (ImportError, OSError) as exc:
             logger.warning(
-                f"[SAM3Detector] Could not load Sam3Tracker ({exc}). "
+                f"[SAM3Detector] Could not load SAM2VideoPredictor ({exc}). "
                 "Tracking will fall back to returning all past detections as-is."
             )
             self._tracker = None
@@ -296,7 +323,7 @@ class SAM3Detector:
         ]
 
     # ------------------------------------------------------------------
-    # Sam3Model: concept segmentation (one class per forward pass)
+    # SAM2 기반 탐지 (그리드 포인트 프롬프트 방식)
     # ------------------------------------------------------------------
 
     def _detect_class(
@@ -310,22 +337,59 @@ class SAM3Detector:
         image_id: str,
         meta: ImageMeta,
     ) -> List[DetectionResult]:
+        # SAM2는 텍스트 프롬프트를 지원하지 않습니다.
+        # 이미지를 격자로 나눠 각 셀 중심점을 positive point 프롬프트로 전달 →
+        # SAM2가 해당 위치에 있는 객체를 세그멘테이션합니다.
+        # (텍스트 기반 분류는 confidence 값으로 대체 - 마스크 IOU score 사용)
+        grid_n = 4  # 4×4 = 16 포인트 프롬프트
+        step_x = orig_w / grid_n
+        step_y = orig_h / grid_n
+        input_points = [
+            [[int(step_x * (gx + 0.5)), int(step_y * (gy + 0.5))]]
+            for gy in range(grid_n)
+            for gx in range(grid_n)
+        ]  # shape: (16, 1, 2)
+        input_labels = [[1]] * len(input_points)  # 모두 positive point
+
         inputs = self._processor(
             images=pil_image,
-            text=class_name,
+            input_points=[input_points],
+            input_labels=[input_labels],
             return_tensors="pt",
         ).to(self._device)
 
         with torch.no_grad():
             outputs = self._model(**inputs)
 
-        # SAM3 마스크 점수는 DETECTION_CONFIDENCE_THRESHOLD 보다 높은
-        # SAM3_MASK_SCORE_THRESHOLD 를 사용 → 낮은 신뢰도의 큰 마스크 사전 차단
-        seg_results = self._processor.post_process_instance_segmentation(
-            outputs,
-            threshold=SAM3_MASK_SCORE_THRESHOLD,
-            target_sizes=[(orig_h, orig_w)],
-        )
+        # pred_masks:  (1, num_points, num_masks_per_point, H, W)
+        # iou_scores:  (1, num_points, num_masks_per_point)
+        # multimask_output=True 이면 num_masks_per_point=3, False 이면 1
+        # best mask per point: iou_scores 가 가장 높은 것 선택
+        pred_masks  = outputs.pred_masks[0]   # (num_points, K, H, W)
+        iou_scores  = outputs.iou_scores[0]   # (num_points, K)
+
+        # 각 포인트에서 best mask 선택
+        best_k      = iou_scores.argmax(dim=-1)   # (num_points,)
+        best_scores = iou_scores.gather(1, best_k.unsqueeze(1)).squeeze(1)  # (num_points,)
+        best_masks  = pred_masks[
+            torch.arange(pred_masks.shape[0]), best_k
+        ]  # (num_points, H, W)
+
+        # 원본 해상도로 복원
+        orig_sizes = inputs.get("original_sizes", torch.tensor([[orig_h, orig_w]]))
+        reshaped   = inputs.get("reshaped_input_sizes", orig_sizes)
+        masks_upsampled = self._processor.post_process_masks(
+            best_masks.unsqueeze(0).cpu(),
+            orig_sizes.cpu(),
+            reshaped.cpu(),
+        )[0]  # (num_points, H, W)  bool tensor
+
+        # pseudo seg_results 구조로 통일
+        seg_results = [{
+            "scores": best_scores.cpu(),
+            "masks":  masks_upsampled.cpu(),
+            "boxes":  torch.zeros(len(input_points), 4),  # 마스크에서 재계산
+        }]
 
         detections: List[DetectionResult] = []
         result = seg_results[0]
@@ -380,8 +444,8 @@ class SAM3Detector:
 
     def detect(self, loaded_image: LoadedImage, image_id: str) -> List[DetectionResult]:
         """
-        Run Sam3Model text-prompted detection for all military classes.
-        Returns NMS-filtered DetectionResult list.
+        SAM2 그리드 포인트 프롬프트로 객체를 탐지한다.
+        각 군사 클래스별로 _detect_class()를 호출하고 NMS로 중복 제거 후 반환.
         """
         if self._model is None and self._processor is None:
             self._load_model()
@@ -464,30 +528,34 @@ class SAM3Detector:
             for d in past_detections
         ]
 
-        # Sam3Tracker: one output mask per input box
+        # Sam2VideoPredictor: 과거 bbox를 input_boxes 프롬프트로 전달
+        # 각 박스에 대해 현재 프레임에서 같은 객체를 세그멘테이션
         inputs = self._processor(
             images=pil_image,
-            input_boxes=[past_boxes],   # shape: (1, n_objects, 4)
+            input_boxes=[past_boxes],   # (1, n_objects, 4)
             return_tensors="pt",
         ).to(self._device)
 
         with torch.no_grad():
             outputs = self._tracker(**inputs)
 
-        # pred_masks : (batch=1, n_objects, H, W)
-        # iou_scores : (batch=1, n_objects)  – tracker's confidence the object is present
-        masks_tensor = outputs.pred_masks[0]   # (n_objects, H, W)
+        # pred_masks : (1, n_objects, K, H, W)  K = 후보 마스크 수
+        # iou_scores : (1, n_objects, K)
+        raw_masks  = outputs.pred_masks[0]   # (n_objects, K, H, W)
+        raw_scores = outputs.iou_scores[0]   # (n_objects, K)
 
-        if hasattr(outputs, "iou_scores") and outputs.iou_scores is not None:
-            scores = outputs.iou_scores[0].cpu().float().numpy()
-        else:
-            scores = (
-                torch.sigmoid(masks_tensor).float().mean(dim=(-1, -2)).cpu().numpy()
-            )
+        # 각 객체의 best mask 선택
+        best_k       = raw_scores.argmax(dim=-1)          # (n_objects,)
+        scores_np    = raw_scores.gather(
+            1, best_k.unsqueeze(1)
+        ).squeeze(1).cpu().float().numpy()                # (n_objects,)
+        masks_tensor = raw_masks[
+            torch.arange(raw_masks.shape[0]), best_k
+        ]  # (n_objects, H, W)
 
         tracked: List[TrackedObject] = []
 
-        for i, (past_det, score) in enumerate(zip(past_detections, scores)):
+        for i, (past_det, score) in enumerate(zip(past_detections, scores_np)):
             if float(score) < DETECTION_CONFIDENCE_THRESHOLD:
                 logger.debug(
                     f"[Sam3Tracker] Object {past_det.id[:8]} "
