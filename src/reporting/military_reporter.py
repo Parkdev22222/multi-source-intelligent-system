@@ -113,22 +113,29 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
             if p.current_lon is not None and p.past_lon is not None else 0
         )
         moved = "  [POSITION CHANGED]" if (lat_delta + lon_delta) > 0.0005 else ""
+        cur_lat_str = f"{p.current_lat:.4f}" if p.current_lat is not None else "N/A"
+        cur_lon_str = f"{p.current_lon:.4f}" if p.current_lon is not None else "N/A"
+        past_lat_str = f"{p.past_lat:.4f}" if p.past_lat is not None else "N/A"
+        past_lon_str = f"{p.past_lon:.4f}" if p.past_lon is not None else "N/A"
         lines.append(
             f"  - CUR_ID={p.current_detection_id[:8] if p.current_detection_id else 'N/A'}"
             f"  PAST_ID={p.past_detection_id[:8] if p.past_detection_id else 'N/A'}"
             f"  CLASS={p.current_object_class}"
-            f"  CUR_LAT={p.current_lat:.4f}  CUR_LON={p.current_lon:.4f}"
-            f"  PAST_LAT={p.past_lat:.4f}  PAST_LON={p.past_lon:.4f}"
+            f"  CUR_LAT={cur_lat_str}  CUR_LON={cur_lon_str}"
+            f"  PAST_LAT={past_lat_str}  PAST_LON={past_lon_str}"
             f"{class_change}{moved}"
         )
 
     lines += ["", "=== DISAPPEARED OBJECTS (in past frame, absent in current) ==="]
     for p in disappeared_objs:
+        conf_str = f"{p.past_confidence:.2f}" if p.past_confidence is not None else "N/A"
+        lat_str = f"{p.past_lat:.4f}" if p.past_lat is not None else "N/A"
+        lon_str = f"{p.past_lon:.4f}" if p.past_lon is not None else "N/A"
         lines.append(
             f"  - ID={p.past_detection_id[:8] if p.past_detection_id else 'N/A'}"
             f"  CLASS={p.past_object_class}"
-            f"  CONF={p.past_confidence:.2f}"
-            f"  LAT={p.past_lat:.4f}  LON={p.past_lon:.4f}"
+            f"  CONF={conf_str}"
+            f"  LAT={lat_str}  LON={lon_str}"
             f"  LAST_SEEN={fmt_dt(p.past_capture_time)}"
         )
 
