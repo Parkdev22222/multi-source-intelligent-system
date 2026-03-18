@@ -15,8 +15,8 @@ Implements the Project Maven-inspired processing pipeline:
                               │
   ┌───────────────────────────▼─────────────────────────────────────┐
   │  DETECTION LAYER (AI/ML)                                        │
-  │  SAM2AutomaticMaskGenerator → segment proposals                 │
-  │  CLIP zero-shot classifier  → object class + confidence         │
+  │  SAM3 (facebook/sam3) text-prompted concept segmentation        │
+  │  → masks + bounding boxes + confidence scores in one pass       │
   └───────────────────────────┬─────────────────────────────────────┘
                               │
   ┌───────────────────────────▼─────────────────────────────────────┐
@@ -62,7 +62,7 @@ from src.database.pairing_db import (
     get_pairings_by_session,
 )
 from src.detection.image_loader import load_metadata_index, iter_images
-from src.detection.sam2_detector import SAM2Detector, DetectionResult
+from src.detection.sam2_detector import SAM3Detector, DetectionResult
 from src.pairing.temporal_pairing import pair_detections
 from src.reporting.military_reporter import MilitaryReporter
 
@@ -88,7 +88,7 @@ class MavenPipeline:
     """
 
     def __init__(self):
-        self.detector = SAM2Detector()
+        self.detector = SAM3Detector()
         self.reporter = MilitaryReporter()
 
     # ------------------------------------------------------------------

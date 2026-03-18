@@ -1,8 +1,7 @@
 # Multi-Source Intelligent System (MSIS)
 
 Project Maven-inspired aerial imagery intelligence pipeline that performs:
-- **SAM2** automatic segmentation of satellite/drone images
-- **CLIP** zero-shot military object classification
+- **SAM3** (`facebook/sam3`) text-prompted concept segmentation of satellite/drone images
 - **Temporal change detection** via object pairing between time points
 - **Military intelligence report** generation using **EXAONE4-32b**
 
@@ -17,9 +16,9 @@ SENSORS (Satellite / Drone)
 INGESTION LAYER  ──►  ImageLoader (metadata.json index)
          │
          ▼
-DETECTION LAYER  ──►  SAM2AutomaticMaskGenerator
-                       + CLIP zero-shot classifier
-                       → object_class, confidence, bbox, lat/lon
+DETECTION LAYER  ──►  SAM3 (facebook/sam3) via HuggingFace Transformers
+                       Text-prompted concept segmentation (single forward pass)
+                       → object_class, confidence, bbox, mask, lat/lon
          │
          ▼
 SENSOR DB (SQLite)
@@ -41,37 +40,36 @@ REPORTING LAYER  ──►  EXAONE4-32b LLM
 
 ---
 
+## SAM3 vs SAM2 – Key Difference
+
+| | SAM2 (old) | SAM3 (current) |
+|---|---|---|
+| Segmentation | Automatic mask generator (class-agnostic) | Text-prompted concept segmentation |
+| Classification | Separate CLIP model (2-stage) | Built-in (1-stage, text-conditioned) |
+| Output | Segments → CLIP classify each | All instances of named concept |
+| Accuracy | SAM2 + CLIP zero-shot | ~75–80% human performance on SA-Co benchmark |
+| HF Model | `facebook/sam2-hiera-large` | `facebook/sam3` |
+
+---
+
 ## Quick Start
 
 ### 1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
-
-# SAM2 (from Meta AI)
-pip install git+https://github.com/facebookresearch/sam2.git
-
-# CLIP (from OpenAI)
-pip install git+https://github.com/openai/CLIP.git
 ```
 
-### 2. Download SAM2 checkpoint
+SAM3 is available via HuggingFace Transformers (≥ 4.48.0) — no separate installation needed.
 
-```bash
-mkdir -p checkpoints
-wget -P checkpoints https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt
-# Rename to match config:
-mv checkpoints/sam2.1_hiera_large.pt checkpoints/sam2_hiera_large.pt
-```
-
-### 3. Configure environment
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
-# Edit .env: set LLM_BACKEND, model paths, etc.
+# Edit .env: set LLM_BACKEND, SAM3_DEVICE, etc.
 ```
 
-### 4. Generate sample data and run pipeline
+### 3. Generate sample data and run pipeline
 
 ```bash
 # Generate synthetic satellite/drone test images
@@ -82,7 +80,7 @@ python main.py --metadata data/images/metadata.json \
                --report-output data/reports/report.txt
 ```
 
-### 5. Use Ollama backend (lighter weight)
+### 4. Use Ollama backend for LLM (lighter weight)
 
 ```bash
 # Pull EXAONE model via Ollama
@@ -96,7 +94,7 @@ LLM_BACKEND=ollama python main.py --generate-samples
 
 ## Image Metadata Format
 
-Place your satellite/drone image files and a `metadata.json` in `data/images/`:
+Place satellite/drone image files and a `metadata.json` in `data/images/`:
 
 ```json
 [
@@ -137,7 +135,7 @@ Place your satellite/drone image files and a `metadata.json` in `data/images/`:
 
 ## Military Object Classes
 
-The system detects these classes using CLIP zero-shot classification:
+SAM3 detects these classes via text-prompted concept segmentation:
 
 ```
 military tank · armored personnel carrier · military truck · military jeep
@@ -151,9 +149,9 @@ civilian vehicle · civilian building · road · runway · unknown object
 
 ## Notes
 
-- **SAM3**: As of 2025, Meta AI's latest release is SAM2. This system uses SAM2.
-  The architecture is forward-compatible with SAM3 when released.
+- **SAM3 resolution**: SAM3 requires a fixed inference resolution of 1008×1008.
+  Images are automatically resized by `Sam3Processor` before inference.
 - **EXAONE4-32b**: Uses LG AI Research's EXAONE 4.0 32B Instruct model.
   Falls back to Ollama if HuggingFace backend is unavailable.
-- **Fallback mode**: If SAM2/CLIP are not installed, the system uses a
-  grid-based pseudo-detector for development/testing purposes.
+- **Fallback mode**: If SAM3 weights are unavailable (no GPU / offline),
+  the system uses a grid-based pseudo-detector for development/testing.

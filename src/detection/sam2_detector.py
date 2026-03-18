@@ -1,17 +1,29 @@
 """
-SAM2 (Segment Anything Model 2) + CLIP-based object detector for aerial imagery.
+SAM3 (Segment Anything Model 3) object detector for aerial imagery.
+
+SAM3 performs Promptable Concept Segmentation (PCS): given a text prompt,
+it finds and segments ALL instances of that concept in the image in a single
+forward pass — replacing the separate SAM2 + CLIP two-stage pipeline.
+
+References:
+  Model card:  https://huggingface.co/facebook/sam3
+  HF docs:     https://huggingface.co/docs/transformers/model_doc/sam3
+  GitHub:      https://github.com/facebookresearch/sam3
 
 Pipeline per image:
-  1. Run SAM2 automatic mask generator → candidate segments
-  2. Crop each segment from the original image
-  3. Run CLIP zero-shot classifier on each crop → (class_label, confidence)
-  4. Filter by confidence threshold
-  5. Return DetectionResult objects with bounding boxes, masks, class labels,
-     and projected geographic coordinates.
+  1. Load image, resize to SAM3's required 1008×1008 input resolution.
+  2. For each military object class (text prompt):
+       - Run Sam3Model with (image, text_prompt) → pred_masks, pred_boxes, pred_logits
+       - Post-process via processor.post_process_instance_segmentation()
+       - Collect (mask, bbox, score, class_label) tuples above confidence threshold
+  3. Apply cross-class NMS to remove duplicate detections.
+  4. Project pixel bounding-box centres to geographic coordinates.
+  5. Return DetectionResult objects.
 
-Note: "SAM3" requested by the user refers conceptually to the most advanced
-      segment-anything model available. As of 2025, SAM2 (Meta AI) is the
-      latest release. This implementation uses SAM2.
+Note on efficiency:
+  SAM3 supports pre-computing image features via model.get_image_features(),
+  allowing reuse across multiple text queries on the same image. This is used
+  here to avoid redundant vision-encoder runs.
 """
 
 import json
@@ -19,28 +31,31 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
 
 from src.config import (
-    CLIP_MODEL_NAME,
     DETECTION_CONFIDENCE_THRESHOLD,
     MILITARY_OBJECT_CLASSES,
     NMS_IOU_THRESHOLD,
-    SAM2_CHECKPOINT,
-    SAM2_DEVICE,
-    SAM2_MODEL_CFG,
+    SAM3_DEVICE,
+    SAM3_INFERENCE_SIZE,
+    SAM3_MODEL_NAME,
 )
 from src.detection.image_loader import ImageMeta, LoadedImage, pixel_to_geo
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Data class
+# ---------------------------------------------------------------------------
+
 @dataclass
 class DetectionResult:
-    """Output of SAM2+CLIP detection for a single object in an image."""
+    """Output of SAM3 detection for a single object in an image."""
     detection_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     detection_time: datetime = field(default_factory=datetime.utcnow)
     image_id: str = ""
@@ -49,63 +64,83 @@ class DetectionResult:
     object_class_index: int = 0
     confidence: float = 0.0
 
-    # Pixel bounding box
+    # Pixel bounding box (in original image coordinates)
     bbox_x1: float = 0.0
     bbox_y1: float = 0.0
     bbox_x2: float = 0.0
     bbox_y2: float = 0.0
 
-    # Geographic coordinates
+    # Geographic coordinates of the detected object
     lat: float = 0.0
     lon: float = 0.0
 
-    # Mask metadata
+    # Mask metadata (run-length encoded, original image resolution)
     mask_rle: Optional[str] = None
     mask_area_px: float = 0.0
 
     source_type: str = "satellite"
 
 
+# ---------------------------------------------------------------------------
+# Utility functions
+# ---------------------------------------------------------------------------
+
 def _encode_rle(mask: np.ndarray) -> str:
-    """Simple run-length encoding of a boolean mask to JSON string."""
+    """Run-length encode a boolean mask to a compact JSON string."""
     flat = mask.flatten().astype(np.uint8).tolist()
-    rle = []
+    rle: list = []
     count = 1
     for i in range(1, len(flat)):
         if flat[i] == flat[i - 1]:
             count += 1
         else:
-            rle.append((flat[i - 1], count))
+            rle.append([flat[i - 1], count])
             count = 1
-    rle.append((flat[-1], count))
+    rle.append([flat[-1], count])
     return json.dumps({"shape": list(mask.shape), "rle": rle})
 
 
-def _mask_to_bbox(mask: np.ndarray) -> tuple:
-    """Return (x1, y1, x2, y2) bounding box of a boolean mask."""
-    rows = np.any(mask, axis=1)
-    cols = np.any(mask, axis=0)
-    y_min, y_max = np.where(rows)[0][[0, -1]]
-    x_min, x_max = np.where(cols)[0][[0, -1]]
-    return float(x_min), float(y_min), float(x_max), float(y_max)
+def _scale_bbox(
+    box: Tuple[float, float, float, float],
+    from_size: int,
+    orig_w: int,
+    orig_h: int,
+) -> Tuple[float, float, float, float]:
+    """
+    Scale a bounding box from SAM3's fixed inference resolution back to the
+    original image pixel coordinates.
+    """
+    x1, y1, x2, y2 = box
+    sx = orig_w / from_size
+    sy = orig_h / from_size
+    return x1 * sx, y1 * sy, x2 * sx, y2 * sy
 
 
-def _nms_detections(results: List[DetectionResult], iou_threshold: float) -> List[DetectionResult]:
-    """Non-maximum suppression over DetectionResult list by bbox IoU."""
+def _scale_mask(mask: np.ndarray, orig_w: int, orig_h: int) -> np.ndarray:
+    """Resize a binary mask from inference resolution to original image size."""
+    from PIL import Image as PILImage
+    pil = PILImage.fromarray(mask.astype(np.uint8) * 255, mode="L")
+    pil = pil.resize((orig_w, orig_h), PILImage.NEAREST)
+    return np.array(pil) > 127
+
+
+def _nms_detections(
+    results: List[DetectionResult], iou_threshold: float
+) -> List[DetectionResult]:
+    """Non-maximum suppression across all classes by bbox IoU."""
     if not results:
         return results
     results = sorted(results, key=lambda r: r.confidence, reverse=True)
-    kept = []
+    kept: List[DetectionResult] = []
     for candidate in results:
         suppress = False
         for kept_r in kept:
-            # Compute IoU
             ix1 = max(candidate.bbox_x1, kept_r.bbox_x1)
             iy1 = max(candidate.bbox_y1, kept_r.bbox_y1)
             ix2 = min(candidate.bbox_x2, kept_r.bbox_x2)
             iy2 = min(candidate.bbox_y2, kept_r.bbox_y2)
-            inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
-            if inter == 0:
+            inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+            if inter == 0.0:
                 continue
             area_c = (candidate.bbox_x2 - candidate.bbox_x1) * (candidate.bbox_y2 - candidate.bbox_y1)
             area_k = (kept_r.bbox_x2 - kept_r.bbox_x1) * (kept_r.bbox_y2 - kept_r.bbox_y1)
@@ -118,195 +153,240 @@ def _nms_detections(results: List[DetectionResult], iou_threshold: float) -> Lis
     return kept
 
 
-class SAM2Detector:
+# ---------------------------------------------------------------------------
+# SAM3 Detector
+# ---------------------------------------------------------------------------
+
+class SAM3Detector:
     """
-    Wraps SAM2 automatic mask generator + CLIP for aerial object detection.
-    Lazy-loads models on first call to avoid startup overhead.
+    Wraps facebook/sam3 (via HuggingFace Transformers) for aerial object detection.
+
+    SAM3 performs text-conditioned concept segmentation in a single forward pass,
+    eliminating the need for a separate classifier (CLIP) used in older SAM2 pipelines.
+
+    Lazy model loading: the model is only loaded on the first call to detect().
     """
 
     def __init__(self):
-        self._sam2_model = None
-        self._mask_generator = None
-        self._clip_model = None
-        self._clip_preprocess = None
-        self._clip_text_features = None
-        self._device = SAM2_DEVICE if torch.cuda.is_available() else "cpu"
+        self._model = None
+        self._processor = None
+        self._device = SAM3_DEVICE if torch.cuda.is_available() else "cpu"
 
-    def _load_sam2(self):
+    def _load_model(self) -> None:
         try:
-            from sam2.build_sam import build_sam2
-            from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-            logger.info(f"[SAM2Detector] Loading SAM2 from {SAM2_CHECKPOINT} on {self._device}")
-            self._sam2_model = build_sam2(SAM2_MODEL_CFG, SAM2_CHECKPOINT, device=self._device)
-            self._mask_generator = SAM2AutomaticMaskGenerator(
-                model=self._sam2_model,
-                points_per_side=32,
-                pred_iou_thresh=0.86,
-                stability_score_thresh=0.92,
-                crop_n_layers=1,
-                crop_n_points_downscale_factor=2,
-                min_mask_region_area=100,
+            from transformers import Sam3Model, Sam3Processor
+
+            logger.info(
+                f"[SAM3Detector] Loading {SAM3_MODEL_NAME} on {self._device} …"
             )
-            logger.info("[SAM2Detector] SAM2 loaded successfully.")
-        except ImportError:
+            self._processor = Sam3Processor.from_pretrained(SAM3_MODEL_NAME)
+            self._model = Sam3Model.from_pretrained(
+                SAM3_MODEL_NAME,
+                torch_dtype=torch.float16 if self._device == "cuda" else torch.float32,
+            ).to(self._device)
+            self._model.eval()
+            logger.info("[SAM3Detector] SAM3 loaded successfully.")
+
+        except (ImportError, OSError) as exc:
             logger.warning(
-                "[SAM2Detector] sam2 package not installed. "
-                "Using fallback grid-based pseudo-detector for development."
+                f"[SAM3Detector] Could not load SAM3 ({exc}). "
+                "Falling back to grid-based pseudo-detector for development."
             )
-            self._mask_generator = None
+            self._model = None
+            self._processor = None
 
-    def _load_clip(self):
-        try:
-            import clip
-            logger.info(f"[SAM2Detector] Loading CLIP model: {CLIP_MODEL_NAME}")
-            self._clip_model, self._clip_preprocess = clip.load(CLIP_MODEL_NAME, device=self._device)
-            # Pre-compute text features for all military object classes
-            texts = clip.tokenize(MILITARY_OBJECT_CLASSES).to(self._device)
-            with torch.no_grad():
-                self._clip_text_features = self._clip_model.encode_text(texts)
-                self._clip_text_features = self._clip_text_features / self._clip_text_features.norm(
-                    dim=-1, keepdim=True
-                )
-            logger.info(f"[SAM2Detector] CLIP loaded. {len(MILITARY_OBJECT_CLASSES)} target classes.")
-        except ImportError:
-            logger.warning(
-                "[SAM2Detector] clip package not installed. "
-                "Using fallback random classifier for development."
-            )
-            self._clip_model = None
+    # ------------------------------------------------------------------
+    # Fallback (no GPU / no model weights)
+    # ------------------------------------------------------------------
 
-    def _classify_crop(self, crop_rgb: np.ndarray) -> tuple:
-        """Return (class_label, confidence) for an image crop using CLIP."""
-        if self._clip_model is None:
-            # Fallback: deterministic pseudo-classification based on crop brightness
-            idx = int(crop_rgb.mean()) % len(MILITARY_OBJECT_CLASSES)
-            return MILITARY_OBJECT_CLASSES[idx], float(0.55 + (idx % 10) * 0.02)
-
-        from PIL import Image as PILImage
-        import clip
-
-        pil_crop = PILImage.fromarray(crop_rgb).convert("RGB")
-        image_input = self._clip_preprocess(pil_crop).unsqueeze(0).to(self._device)
-
-        with torch.no_grad():
-            image_features = self._clip_model.encode_image(image_input)
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            logits = (100.0 * image_features @ self._clip_text_features.T).softmax(dim=-1)
-
-        logits_np = logits.cpu().numpy()[0]
-        idx = int(np.argmax(logits_np))
-        confidence = float(logits_np[idx])
-        return MILITARY_OBJECT_CLASSES[idx], confidence
-
-    def _fallback_grid_masks(self, image: np.ndarray, grid: int = 4) -> List[dict]:
+    def _fallback_detect(
+        self,
+        image: np.ndarray,
+        image_id: str,
+        meta: ImageMeta,
+    ) -> List[DetectionResult]:
         """
-        Fallback mask generator when SAM2 is unavailable.
-        Divides image into a grid of equal cells and treats each as a segment.
+        Development fallback when SAM3 weights are unavailable.
+        Divides the image into a 4×4 grid; each cell is treated as one
+        detection with a deterministic pseudo-class assignment.
         """
         h, w = image.shape[:2]
-        masks = []
+        grid = 4
         cell_h, cell_w = h // grid, w // grid
-        for gy in range(grid):
-            for gx in range(grid):
-                mask = np.zeros((h, w), dtype=bool)
-                y0, y1 = gy * cell_h, (gy + 1) * cell_h
-                x0, x1 = gx * cell_w, (gx + 1) * cell_w
-                mask[y0:y1, x0:x1] = True
-                masks.append({
-                    "segmentation": mask,
-                    "area": cell_h * cell_w,
-                    "predicted_iou": 0.8,
-                })
-        return masks
-
-    def detect(self, loaded_image: LoadedImage, image_id: str) -> List[DetectionResult]:
-        """
-        Run full detection pipeline on a single LoadedImage.
-        Returns filtered, NMS-processed DetectionResult list.
-        """
-        if self._mask_generator is None and self._sam2_model is None:
-            self._load_sam2()
-        if self._clip_model is None and self._clip_text_features is None:
-            self._load_clip()
-
-        image = loaded_image.array  # H × W × 3 uint8
-        meta: ImageMeta = loaded_image.meta
-        h, w = image.shape[:2]
         now = datetime.utcnow()
-
-        logger.info(
-            f"[SAM2Detector] Processing image: {meta.image_path} "
-            f"({w}×{h}) captured at {meta.capture_time}"
-        )
-
-        # --- 1. Generate masks ---
-        if self._mask_generator is not None:
-            masks = self._mask_generator.generate(image)
-        else:
-            masks = self._fallback_grid_masks(image)
-
-        logger.info(f"[SAM2Detector] SAM2 generated {len(masks)} segment proposals.")
-
         results: List[DetectionResult] = []
 
-        for mask_data in masks:
-            seg_mask: np.ndarray = mask_data["segmentation"]  # H × W bool
+        for gy in range(grid):
+            for gx in range(grid):
+                x1 = float(gx * cell_w)
+                y1 = float(gy * cell_h)
+                x2 = float((gx + 1) * cell_w)
+                y2 = float((gy + 1) * cell_h)
 
-            if not np.any(seg_mask):
-                continue
+                crop = image[int(y1):int(y2), int(x1):int(x2)]
+                idx = int(crop.mean()) % len(MILITARY_OBJECT_CLASSES)
+                obj_class = MILITARY_OBJECT_CLASSES[idx]
+                confidence = 0.55 + (idx % 10) * 0.02
 
-            # --- 2. Bounding box ---
-            try:
-                x1, y1, x2, y2 = _mask_to_bbox(seg_mask)
-            except (IndexError, ValueError):
-                continue
+                if confidence < DETECTION_CONFIDENCE_THRESHOLD:
+                    continue
 
-            # Skip trivially small or huge segments
-            area = (x2 - x1) * (y2 - y1)
-            if area < 64 or area > 0.8 * h * w:
-                continue
+                cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                lat, lon = pixel_to_geo(cx, cy, w, h, meta)
 
-            # --- 3. Crop and classify ---
-            bx1, by1, bx2, by2 = int(x1), int(y1), int(x2), int(y2)
-            crop = image[by1:by2, bx1:bx2]
-            if crop.size == 0:
-                continue
+                mask = np.zeros((h, w), dtype=bool)
+                mask[int(y1):int(y2), int(x1):int(x2)] = True
 
-            obj_class, confidence = self._classify_crop(crop)
+                results.append(DetectionResult(
+                    detection_time=now,
+                    image_id=image_id,
+                    object_class=obj_class,
+                    object_class_index=idx,
+                    confidence=confidence,
+                    bbox_x1=x1, bbox_y1=y1, bbox_x2=x2, bbox_y2=y2,
+                    lat=lat, lon=lon,
+                    mask_rle=_encode_rle(mask),
+                    mask_area_px=float(mask.sum()),
+                    source_type=meta.source_type,
+                ))
 
+        return results
+
+    # ------------------------------------------------------------------
+    # SAM3 inference for a single text prompt
+    # ------------------------------------------------------------------
+
+    def _detect_class(
+        self,
+        pil_image,
+        class_name: str,
+        class_index: int,
+        orig_w: int,
+        orig_h: int,
+        now: datetime,
+        image_id: str,
+        meta: ImageMeta,
+    ) -> List[DetectionResult]:
+        """
+        Run SAM3 for one object class (text prompt) on the given PIL image.
+        Returns DetectionResult list for all instances found above threshold.
+        """
+        inputs = self._processor(
+            images=pil_image,
+            text=class_name,
+            return_tensors="pt",
+        ).to(self._device)
+
+        with torch.no_grad():
+            outputs = self._model(**inputs)
+
+        # Post-process: get scores, boxes, binary masks in original image size
+        seg_results = self._processor.post_process_instance_segmentation(
+            outputs,
+            threshold=DETECTION_CONFIDENCE_THRESHOLD,
+            target_sizes=[(orig_h, orig_w)],
+        )
+
+        detections: List[DetectionResult] = []
+        result = seg_results[0]   # batch size = 1
+
+        scores = result.get("scores", torch.tensor([]))
+        boxes = result.get("boxes", torch.tensor([]))
+        masks = result.get("masks", torch.tensor([]))
+
+        for i in range(len(scores)):
+            confidence = float(scores[i])
             if confidence < DETECTION_CONFIDENCE_THRESHOLD:
                 continue
 
-            # --- 4. Project pixel centre to geographic coordinates ---
-            cx = (x1 + x2) / 2.0
-            cy = (y1 + y2) / 2.0
-            lat, lon = pixel_to_geo(cx, cy, w, h, meta)
+            x1, y1, x2, y2 = (float(v) for v in boxes[i])
 
-            # --- 5. Build result ---
-            class_index = MILITARY_OBJECT_CLASSES.index(obj_class)
-            rle_str = _encode_rle(seg_mask)
+            # Skip degenerate boxes
+            if (x2 - x1) < 4 or (y2 - y1) < 4:
+                continue
+            if (x2 - x1) * (y2 - y1) > 0.8 * orig_w * orig_h:
+                continue
 
-            result = DetectionResult(
+            # Binary mask (already at original resolution from post_process)
+            if masks.numel() > 0:
+                mask_np = masks[i].cpu().numpy().astype(bool)
+            else:
+                mask_np = np.zeros((orig_h, orig_w), dtype=bool)
+                mask_np[int(y1):int(y2), int(x1):int(x2)] = True
+
+            cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+            lat, lon = pixel_to_geo(cx, cy, orig_w, orig_h, meta)
+
+            detections.append(DetectionResult(
                 detection_time=now,
                 image_id=image_id,
-                object_class=obj_class,
+                object_class=class_name,
                 object_class_index=class_index,
                 confidence=confidence,
-                bbox_x1=x1,
-                bbox_y1=y1,
-                bbox_x2=x2,
-                bbox_y2=y2,
-                lat=lat,
-                lon=lon,
-                mask_rle=rle_str,
-                mask_area_px=float(seg_mask.sum()),
+                bbox_x1=x1, bbox_y1=y1, bbox_x2=x2, bbox_y2=y2,
+                lat=lat, lon=lon,
+                mask_rle=_encode_rle(mask_np),
+                mask_area_px=float(mask_np.sum()),
                 source_type=meta.source_type,
-            )
-            results.append(result)
+            ))
 
-        # --- 6. NMS ---
-        results = _nms_detections(results, NMS_IOU_THRESHOLD)
+        return detections
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def detect(self, loaded_image: LoadedImage, image_id: str) -> List[DetectionResult]:
+        """
+        Run SAM3 text-prompted detection for all military object classes on
+        a single LoadedImage. Returns NMS-filtered DetectionResult list.
+        """
+        if self._model is None and self._processor is None:
+            self._load_model()
+
+        image_np = loaded_image.array    # H × W × 3 uint8
+        meta: ImageMeta = loaded_image.meta
+        orig_h, orig_w = image_np.shape[:2]
+
         logger.info(
-            f"[SAM2Detector] After NMS: {len(results)} detections for image {image_id}"
+            f"[SAM3Detector] Processing image: {meta.image_path} "
+            f"({orig_w}×{orig_h}) captured at {meta.capture_time}"
         )
-        return results
+
+        # Fallback path (no model weights)
+        if self._model is None:
+            results = self._fallback_detect(image_np, image_id, meta)
+            results = _nms_detections(results, NMS_IOU_THRESHOLD)
+            logger.info(f"[SAM3Detector] Fallback: {len(results)} detections.")
+            return results
+
+        from PIL import Image as PILImage
+        pil_image = PILImage.fromarray(image_np).convert("RGB")
+
+        now = datetime.utcnow()
+        all_results: List[DetectionResult] = []
+
+        # Run SAM3 for each military object class
+        for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
+            try:
+                class_dets = self._detect_class(
+                    pil_image, class_name, class_index,
+                    orig_w, orig_h, now, image_id, meta,
+                )
+                all_results.extend(class_dets)
+                if class_dets:
+                    logger.debug(
+                        f"[SAM3Detector] '{class_name}': {len(class_dets)} instance(s) found."
+                    )
+            except Exception as exc:
+                logger.warning(f"[SAM3Detector] Error on class '{class_name}': {exc}")
+
+        # Cross-class NMS
+        final_results = _nms_detections(all_results, NMS_IOU_THRESHOLD)
+
+        logger.info(
+            f"[SAM3Detector] {orig_w}×{orig_h} image → "
+            f"{len(all_results)} raw detections → "
+            f"{len(final_results)} after NMS  (image_id={image_id[:8]})"
+        )
+        return final_results

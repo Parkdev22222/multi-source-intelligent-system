@@ -17,18 +17,14 @@ DB_DIR.mkdir(parents=True, exist_ok=True)
 SENSOR_DB_PATH = str(DB_DIR / "sensor_detections.db")
 PAIRING_DB_PATH = str(DB_DIR / "object_pairings.db")
 
-# --- SAM2 Model ---
-# SAM2 (Segment Anything Model 2) by Meta AI
-# Note: SAM3 is not yet released; SAM2 is the latest available as of 2025.
-SAM2_MODEL_CFG = os.getenv("SAM2_MODEL_CFG", "sam2_hiera_large.yaml")
-SAM2_CHECKPOINT = os.getenv(
-    "SAM2_CHECKPOINT",
-    str(BASE_DIR / "checkpoints" / "sam2_hiera_large.pt"),
-)
-SAM2_DEVICE = os.getenv("SAM2_DEVICE", "cuda")  # "cuda" or "cpu"
-
-# --- CLIP Classifier (for object classification after SAM2 segmentation) ---
-CLIP_MODEL_NAME = os.getenv("CLIP_MODEL_NAME", "ViT-B/32")
+# --- SAM3 Model (Segment Anything Model 3 by Meta AI) ---
+# SAM3 performs text-prompted concept segmentation in a single forward pass,
+# replacing the SAM2 + CLIP two-stage pipeline.
+# Model card: https://huggingface.co/facebook/sam3
+SAM3_MODEL_NAME = os.getenv("SAM3_MODEL_NAME", "facebook/sam3")
+SAM3_DEVICE = os.getenv("SAM3_DEVICE", "cuda")  # "cuda" or "cpu"
+# SAM3 requires a fixed inference resolution of 1008×1008
+SAM3_INFERENCE_SIZE = 1008
 
 # --- Military Object Classes (aerial/satellite imagery) ---
 MILITARY_OBJECT_CLASSES = [
