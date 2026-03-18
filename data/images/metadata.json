@@ -1,1 +1,58 @@
-[]
+[
+  {
+    "image_file": "sample/alpha_past_20260317T235424.png",
+    "capture_time": "2026-03-17T23:54:24+00:00",
+    "source_type": "satellite",
+    "lat_center": 37.576499999999996,
+    "lon_center": 126.96799999999999,
+    "lat_min": 37.5665,
+    "lat_max": 37.586499999999994,
+    "lon_min": 126.95799999999998,
+    "lon_max": 126.978,
+    "resolution_m": 0.5,
+    "sensor_platform": "WorldView-3",
+    "region_name": "alpha"
+  },
+  {
+    "image_file": "sample/alpha_current_20260318T055424.png",
+    "capture_time": "2026-03-18T05:54:24+00:00",
+    "source_type": "drone",
+    "lat_center": 37.576499999999996,
+    "lon_center": 126.96799999999999,
+    "lat_min": 37.5665,
+    "lat_max": 37.586499999999994,
+    "lon_min": 126.95799999999998,
+    "lon_max": 126.978,
+    "resolution_m": 0.5,
+    "sensor_platform": "MQ-9 Reaper",
+    "region_name": "alpha"
+  },
+  {
+    "image_file": "sample/bravo_past_20260317T235424.png",
+    "capture_time": "2026-03-17T23:54:24+00:00",
+    "source_type": "satellite",
+    "lat_center": 37.5565,
+    "lon_center": 126.988,
+    "lat_min": 37.5465,
+    "lat_max": 37.5665,
+    "lon_min": 126.978,
+    "lon_max": 126.998,
+    "resolution_m": 0.5,
+    "sensor_platform": "WorldView-3",
+    "region_name": "bravo"
+  },
+  {
+    "image_file": "sample/bravo_current_20260318T055424.png",
+    "capture_time": "2026-03-18T05:54:24+00:00",
+    "source_type": "satellite",
+    "lat_center": 37.5565,
+    "lon_center": 126.988,
+    "lat_min": 37.5465,
+    "lat_max": 37.5665,
+    "lon_min": 126.978,
+    "lon_max": 126.998,
+    "resolution_m": 0.5,
+    "sensor_platform": "MQ-9 Reaper",
+    "region_name": "bravo"
+  }
+]
