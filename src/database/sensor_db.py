@@ -1,0 +1,162 @@
+"""
+Sensor DB operations – insert and query detected objects.
+"""
+
+import logging
+from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy.orm import Session
+
+from .models import DetectionRecord, ImageRecord, create_sensor_engine
+from src.config import SENSOR_DB_PATH
+
+logger = logging.getLogger(__name__)
+
+_engine = None
+
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = create_sensor_engine(SENSOR_DB_PATH)
+    return _engine
+
+
+# ---------------------------------------------------------------------------
+# Image record CRUD
+# ---------------------------------------------------------------------------
+
+def insert_image_record(
+    capture_time: datetime,
+    source_type: str,
+    image_path: str,
+    lat_center: float,
+    lon_center: float,
+    lat_min: Optional[float] = None,
+    lat_max: Optional[float] = None,
+    lon_min: Optional[float] = None,
+    lon_max: Optional[float] = None,
+    resolution_m: Optional[float] = None,
+    sensor_platform: Optional[str] = None,
+) -> ImageRecord:
+    engine = get_engine()
+    with Session(engine) as session:
+        record = ImageRecord(
+            capture_time=capture_time,
+            source_type=source_type,
+            image_path=image_path,
+            lat_center=lat_center,
+            lon_center=lon_center,
+            lat_min=lat_min,
+            lat_max=lat_max,
+            lon_min=lon_min,
+            lon_max=lon_max,
+            resolution_m=resolution_m,
+            sensor_platform=sensor_platform,
+        )
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+        logger.info(f"[SensorDB] Inserted ImageRecord id={record.id}")
+        return record
+
+
+# ---------------------------------------------------------------------------
+# Detection record CRUD
+# ---------------------------------------------------------------------------
+
+def insert_detection(detection: DetectionRecord) -> str:
+    engine = get_engine()
+    with Session(engine) as session:
+        session.add(detection)
+        session.commit()
+        session.refresh(detection)
+        logger.debug(
+            f"[SensorDB] Inserted detection id={detection.id} "
+            f"class={detection.object_class} lat={detection.lat:.4f} lon={detection.lon:.4f}"
+        )
+        return detection.id
+
+
+def insert_detections_bulk(detections: List[DetectionRecord]) -> List[str]:
+    engine = get_engine()
+    ids = []
+    with Session(engine) as session:
+        for d in detections:
+            session.add(d)
+        session.commit()
+        for d in detections:
+            session.refresh(d)
+            ids.append(d.id)
+    logger.info(f"[SensorDB] Bulk inserted {len(ids)} detections.")
+    return ids
+
+
+def get_most_recent_past_detections(
+    lat_center: float,
+    lon_center: float,
+    radius_deg: float,
+    before_time: datetime,
+    limit: int = 100,
+) -> List[DetectionRecord]:
+    """
+    Return detections within `radius_deg` of (lat_center, lon_center)
+    captured strictly BEFORE `before_time`, ordered by capture time descending,
+    limited to the single most recent capture_time batch.
+    """
+    engine = get_engine()
+    with Session(engine) as session:
+        # First find the most recent capture_time in that region before current time
+        from sqlalchemy import func, and_
+        from .models import ImageRecord
+
+        latest_time_row = (
+            session.query(func.max(ImageRecord.capture_time))
+            .join(DetectionRecord, DetectionRecord.image_id == ImageRecord.id)
+            .filter(
+                ImageRecord.capture_time < before_time,
+                DetectionRecord.lat.between(lat_center - radius_deg, lat_center + radius_deg),
+                DetectionRecord.lon.between(lon_center - radius_deg, lon_center + radius_deg),
+            )
+            .scalar()
+        )
+
+        if latest_time_row is None:
+            return []
+
+        # Get all detections from that most-recent past batch
+        past_records = (
+            session.query(DetectionRecord)
+            .join(ImageRecord, DetectionRecord.image_id == ImageRecord.id)
+            .filter(
+                ImageRecord.capture_time == latest_time_row,
+                DetectionRecord.lat.between(lat_center - radius_deg, lat_center + radius_deg),
+                DetectionRecord.lon.between(lon_center - radius_deg, lon_center + radius_deg),
+            )
+            .limit(limit)
+            .all()
+        )
+
+        # Expunge from session to use outside
+        for r in past_records:
+            session.expunge(r)
+
+        logger.info(
+            f"[SensorDB] Found {len(past_records)} past detections near "
+            f"({lat_center:.4f}, {lon_center:.4f}) at {latest_time_row}"
+        )
+        return past_records
+
+
+def get_detections_by_image(image_id: str) -> List[DetectionRecord]:
+    engine = get_engine()
+    with Session(engine) as session:
+        records = (
+            session.query(DetectionRecord)
+            .filter(DetectionRecord.image_id == image_id)
+            .all()
+        )
+        for r in records:
+            session.expunge(r)
+        return records

@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.so
+.env
+*.db
+data/db/
+data/images/sample/
+data/reports/
+checkpoints/
+*.pt
+*.pth
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.DS_Store

@@ -1,0 +1,34 @@
+# ============================================================
+# Multi-Source Intelligent System (MSIS) – Dependencies
+# ============================================================
+
+# --- Core ---
+numpy>=1.24.0
+Pillow>=10.0.0
+sqlalchemy>=2.0.0
+
+# --- SAM2 (Segment Anything Model 2 by Meta AI) ---
+# Install from GitHub: pip install git+https://github.com/facebookresearch/sam2.git
+# Or if available on PyPI: pip install sam2
+# Requires: torch, torchvision
+# sam2
+
+# --- PyTorch (GPU recommended) ---
+torch>=2.1.0
+torchvision>=0.16.0
+
+# --- CLIP (OpenAI) for zero-shot object classification ---
+# Install via: pip install git+https://github.com/openai/CLIP.git
+# clip-by-openai
+
+# --- HuggingFace Transformers (for EXAONE4-32b via HuggingFace backend) ---
+transformers>=4.40.0
+accelerate>=0.27.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# --- Ollama Python client (optional, for ollama LLM backend) ---
+# ollama>=0.2.0
+
+# --- Utilities ---
+tqdm>=4.65.0
