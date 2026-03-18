@@ -357,7 +357,7 @@ class SAM3Detector:
 
             # 마스크 처리
             if masks_out.ndim >= 3 and i < len(masks_out):
-                raw_mask = masks_out[i].astype(bool)
+                raw_mask = np.squeeze(masks_out[i]).astype(bool)
                 if raw_mask.shape != (orig_h, orig_w):
                     # 출력 해상도가 다를 경우 원본 크기로 리사이즈
                     from PIL import Image as PILImage
@@ -560,7 +560,7 @@ class SAM3Detector:
                         # 마스크가 있으면 tight bbox 재계산
                         if (hasattr(new_masks, "__len__") and len(new_masks) > best_idx
                                 and new_masks[best_idx] is not None):
-                            raw_mask = np.asarray(new_masks[best_idx]).astype(bool)
+                            raw_mask = np.squeeze(np.asarray(new_masks[best_idx])).astype(bool)
                             if raw_mask.shape != (orig_h, orig_w):
                                 from PIL import Image as PILImage
                                 pm = PILImage.fromarray(raw_mask.astype(np.uint8) * 255, "L")
