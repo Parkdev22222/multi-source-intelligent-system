@@ -1,29 +1,17 @@
 """
-SAM3 (Segment Anything Model 3) object detector for aerial imagery.
+SAM3 object detector and tracker for aerial imagery.
 
-SAM3 performs Promptable Concept Segmentation (PCS): given a text prompt,
-it finds and segments ALL instances of that concept in the image in a single
-forward pass — replacing the separate SAM2 + CLIP two-stage pipeline.
+Two modes:
+  SAM3Detector.detect()           - Sam3Model: text-prompted concept segmentation
+                                    Used for initial detection on each frame.
+  SAM3Detector.track_objects()    - Sam3Tracker: visual-prompt object tracking
+                                    Takes past-frame bboxes as prompts, returns
+                                    which past objects are still present and where.
 
-References:
-  Model card:  https://huggingface.co/facebook/sam3
-  HF docs:     https://huggingface.co/docs/transformers/model_doc/sam3
-  GitHub:      https://github.com/facebookresearch/sam3
-
-Pipeline per image:
-  1. Load image, resize to SAM3's required 1008×1008 input resolution.
-  2. For each military object class (text prompt):
-       - Run Sam3Model with (image, text_prompt) → pred_masks, pred_boxes, pred_logits
-       - Post-process via processor.post_process_instance_segmentation()
-       - Collect (mask, bbox, score, class_label) tuples above confidence threshold
-  3. Apply cross-class NMS to remove duplicate detections.
-  4. Project pixel bounding-box centres to geographic coordinates.
-  5. Return DetectionResult objects.
-
-Note on efficiency:
-  SAM3 supports pre-computing image features via model.get_image_features(),
-  allowing reuse across multiple text queries on the same image. This is used
-  here to avoid redundant vision-encoder runs.
+Pairing flow (in temporal_pairing.py):
+  1. track_objects() → TrackedObject list (past_detection_id + new bbox + score)
+  2. pair_by_tracking() matches TrackedObjects to current Sam3Model detections by IoU
+     → status = matched / new / disappeared  (ID-based, not coordinate-based)
 """
 
 import json
@@ -50,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Data class
+# Data classes
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -64,21 +52,37 @@ class DetectionResult:
     object_class_index: int = 0
     confidence: float = 0.0
 
-    # Pixel bounding box (in original image coordinates)
     bbox_x1: float = 0.0
     bbox_y1: float = 0.0
     bbox_x2: float = 0.0
     bbox_y2: float = 0.0
 
-    # Geographic coordinates of the detected object
     lat: float = 0.0
     lon: float = 0.0
 
-    # Mask metadata (run-length encoded, original image resolution)
     mask_rle: Optional[str] = None
     mask_area_px: float = 0.0
 
     source_type: str = "satellite"
+
+
+@dataclass
+class TrackedObject:
+    """
+    Result of Sam3Tracker for one past detection.
+
+    Sam3Tracker takes the past-frame bounding box as a visual prompt and finds
+    the same object in the current frame.  score reflects how confidently the
+    tracker found the object; objects below DETECTION_CONFIDENCE_THRESHOLD are
+    considered disappeared.
+    """
+    past_detection_id: str      # ID of the DetectionRecord in the sensor DB
+    past_object_class: str
+    bbox_x1: float              # updated bbox in current-frame pixel coords
+    bbox_y1: float
+    bbox_x2: float
+    bbox_y2: float
+    score: float                # Sam3Tracker IOU / presence score
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +90,6 @@ class DetectionResult:
 # ---------------------------------------------------------------------------
 
 def _encode_rle(mask: np.ndarray) -> str:
-    """Run-length encode a boolean mask to a compact JSON string."""
     flat = mask.flatten().astype(np.uint8).tolist()
     rle: list = []
     count = 1
@@ -100,24 +103,15 @@ def _encode_rle(mask: np.ndarray) -> str:
     return json.dumps({"shape": list(mask.shape), "rle": rle})
 
 
-def _scale_bbox(
-    box: Tuple[float, float, float, float],
-    from_size: int,
-    orig_w: int,
-    orig_h: int,
-) -> Tuple[float, float, float, float]:
-    """
-    Scale a bounding box from SAM3's fixed inference resolution back to the
-    original image pixel coordinates.
-    """
-    x1, y1, x2, y2 = box
-    sx = orig_w / from_size
-    sy = orig_h / from_size
-    return x1 * sx, y1 * sy, x2 * sx, y2 * sy
+def _mask_to_bbox(mask: np.ndarray) -> Tuple[float, float, float, float]:
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+    y_min, y_max = np.where(rows)[0][[0, -1]]
+    x_min, x_max = np.where(cols)[0][[0, -1]]
+    return float(x_min), float(y_min), float(x_max), float(y_max)
 
 
 def _scale_mask(mask: np.ndarray, orig_w: int, orig_h: int) -> np.ndarray:
-    """Resize a binary mask from inference resolution to original image size."""
     from PIL import Image as PILImage
     pil = PILImage.fromarray(mask.astype(np.uint8) * 255, mode="L")
     pil = pil.resize((orig_w, orig_h), PILImage.NEAREST)
@@ -127,7 +121,6 @@ def _scale_mask(mask: np.ndarray, orig_w: int, orig_h: int) -> np.ndarray:
 def _nms_detections(
     results: List[DetectionResult], iou_threshold: float
 ) -> List[DetectionResult]:
-    """Non-maximum suppression across all classes by bbox IoU."""
     if not results:
         return results
     results = sorted(results, key=lambda r: r.confidence, reverse=True)
@@ -154,106 +147,131 @@ def _nms_detections(
 
 
 # ---------------------------------------------------------------------------
-# SAM3 Detector
+# SAM3 Detector + Tracker
 # ---------------------------------------------------------------------------
 
 class SAM3Detector:
     """
-    Wraps facebook/sam3 (via HuggingFace Transformers) for aerial object detection.
+    Wraps facebook/sam3 via HuggingFace Transformers.
 
-    SAM3 performs text-conditioned concept segmentation in a single forward pass,
-    eliminating the need for a separate classifier (CLIP) used in older SAM2 pipelines.
+    - Sam3Model   (self._model)   : text-prompted concept segmentation per image.
+    - Sam3Tracker (self._tracker) : visual-prompt object tracking across frames.
+    - Sam3Processor (self._processor): shared by both models.
 
-    Lazy model loading: the model is only loaded on the first call to detect().
+    Both models are lazy-loaded on first use.
     """
 
     def __init__(self):
-        self._model = None
-        self._processor = None
+        self._model = None        # Sam3Model
+        self._tracker = None      # Sam3Tracker
+        self._processor = None    # Sam3Processor (shared)
+        self._tracker_load_attempted = False
         self._device = SAM3_DEVICE if torch.cuda.is_available() else "cpu"
+
+    # ------------------------------------------------------------------
+    # Model loaders
+    # ------------------------------------------------------------------
 
     def _load_model(self) -> None:
         try:
             from transformers import Sam3Model, Sam3Processor
-
-            logger.info(
-                f"[SAM3Detector] Loading {SAM3_MODEL_NAME} on {self._device} …"
-            )
+            logger.info(f"[SAM3Detector] Loading Sam3Model ({SAM3_MODEL_NAME}) on {self._device} …")
             self._processor = Sam3Processor.from_pretrained(SAM3_MODEL_NAME)
             self._model = Sam3Model.from_pretrained(
                 SAM3_MODEL_NAME,
                 torch_dtype=torch.float16 if self._device == "cuda" else torch.float32,
             ).to(self._device)
             self._model.eval()
-            logger.info("[SAM3Detector] SAM3 loaded successfully.")
-
+            logger.info("[SAM3Detector] Sam3Model loaded.")
         except (ImportError, OSError) as exc:
             logger.warning(
-                f"[SAM3Detector] Could not load SAM3 ({exc}). "
-                "Falling back to grid-based pseudo-detector for development."
+                f"[SAM3Detector] Could not load Sam3Model ({exc}). "
+                "Using fallback grid-detector."
             )
             self._model = None
-            self._processor = None
+
+    def _load_tracker(self) -> None:
+        self._tracker_load_attempted = True
+        try:
+            from transformers import Sam3Tracker
+            logger.info(f"[SAM3Detector] Loading Sam3Tracker ({SAM3_MODEL_NAME}) on {self._device} …")
+            # Sam3Tracker shares the same processor already loaded for Sam3Model
+            if self._processor is None:
+                from transformers import Sam3Processor
+                self._processor = Sam3Processor.from_pretrained(SAM3_MODEL_NAME)
+            self._tracker = Sam3Tracker.from_pretrained(
+                SAM3_MODEL_NAME,
+                torch_dtype=torch.float16 if self._device == "cuda" else torch.float32,
+            ).to(self._device)
+            self._tracker.eval()
+            logger.info("[SAM3Detector] Sam3Tracker loaded.")
+        except (ImportError, OSError) as exc:
+            logger.warning(
+                f"[SAM3Detector] Could not load Sam3Tracker ({exc}). "
+                "Tracking will fall back to returning all past detections as-is."
+            )
+            self._tracker = None
 
     # ------------------------------------------------------------------
-    # Fallback (no GPU / no model weights)
+    # Fallbacks (no model weights / no GPU)
     # ------------------------------------------------------------------
 
     def _fallback_detect(
-        self,
-        image: np.ndarray,
-        image_id: str,
-        meta: ImageMeta,
+        self, image: np.ndarray, image_id: str, meta: ImageMeta
     ) -> List[DetectionResult]:
-        """
-        Development fallback when SAM3 weights are unavailable.
-        Divides the image into a 4×4 grid; each cell is treated as one
-        detection with a deterministic pseudo-class assignment.
-        """
         h, w = image.shape[:2]
-        grid = 4
+        grid, now = 4, datetime.utcnow()
         cell_h, cell_w = h // grid, w // grid
-        now = datetime.utcnow()
         results: List[DetectionResult] = []
-
         for gy in range(grid):
             for gx in range(grid):
-                x1 = float(gx * cell_w)
-                y1 = float(gy * cell_h)
-                x2 = float((gx + 1) * cell_w)
-                y2 = float((gy + 1) * cell_h)
-
+                x1, y1 = float(gx * cell_w), float(gy * cell_h)
+                x2, y2 = float((gx + 1) * cell_w), float((gy + 1) * cell_h)
                 crop = image[int(y1):int(y2), int(x1):int(x2)]
                 idx = int(crop.mean()) % len(MILITARY_OBJECT_CLASSES)
                 obj_class = MILITARY_OBJECT_CLASSES[idx]
                 confidence = 0.55 + (idx % 10) * 0.02
-
                 if confidence < DETECTION_CONFIDENCE_THRESHOLD:
                     continue
-
                 cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
                 lat, lon = pixel_to_geo(cx, cy, w, h, meta)
-
                 mask = np.zeros((h, w), dtype=bool)
                 mask[int(y1):int(y2), int(x1):int(x2)] = True
-
                 results.append(DetectionResult(
-                    detection_time=now,
-                    image_id=image_id,
-                    object_class=obj_class,
-                    object_class_index=idx,
+                    detection_time=now, image_id=image_id,
+                    object_class=obj_class, object_class_index=idx,
                     confidence=confidence,
                     bbox_x1=x1, bbox_y1=y1, bbox_x2=x2, bbox_y2=y2,
                     lat=lat, lon=lon,
-                    mask_rle=_encode_rle(mask),
-                    mask_area_px=float(mask.sum()),
+                    mask_rle=_encode_rle(mask), mask_area_px=float(mask.sum()),
                     source_type=meta.source_type,
                 ))
-
         return results
 
+    def _fallback_track(
+        self, past_detections: list
+    ) -> List[TrackedObject]:
+        """
+        Fallback when Sam3Tracker is unavailable.
+        Returns all past detections as tracked at their original positions.
+        """
+        logger.warning(
+            "[SAM3Detector] Sam3Tracker unavailable – "
+            "treating all past detections as tracked (positions unchanged)."
+        )
+        return [
+            TrackedObject(
+                past_detection_id=d.id,
+                past_object_class=d.object_class,
+                bbox_x1=d.bbox_x1, bbox_y1=d.bbox_y1,
+                bbox_x2=d.bbox_x2, bbox_y2=d.bbox_y2,
+                score=d.confidence,
+            )
+            for d in past_detections
+        ]
+
     # ------------------------------------------------------------------
-    # SAM3 inference for a single text prompt
+    # Sam3Model: concept segmentation (one class per forward pass)
     # ------------------------------------------------------------------
 
     def _detect_class(
@@ -267,10 +285,6 @@ class SAM3Detector:
         image_id: str,
         meta: ImageMeta,
     ) -> List[DetectionResult]:
-        """
-        Run SAM3 for one object class (text prompt) on the given PIL image.
-        Returns DetectionResult list for all instances found above threshold.
-        """
         inputs = self._processor(
             images=pil_image,
             text=class_name,
@@ -280,7 +294,6 @@ class SAM3Detector:
         with torch.no_grad():
             outputs = self._model(**inputs)
 
-        # Post-process: get scores, boxes, binary masks in original image size
         seg_results = self._processor.post_process_instance_segmentation(
             outputs,
             threshold=DETECTION_CONFIDENCE_THRESHOLD,
@@ -288,8 +301,7 @@ class SAM3Detector:
         )
 
         detections: List[DetectionResult] = []
-        result = seg_results[0]   # batch size = 1
-
+        result = seg_results[0]
         scores = result.get("scores", torch.tensor([]))
         boxes = result.get("boxes", torch.tensor([]))
         masks = result.get("masks", torch.tensor([]))
@@ -298,30 +310,21 @@ class SAM3Detector:
             confidence = float(scores[i])
             if confidence < DETECTION_CONFIDENCE_THRESHOLD:
                 continue
-
             x1, y1, x2, y2 = (float(v) for v in boxes[i])
-
-            # Skip degenerate boxes
             if (x2 - x1) < 4 or (y2 - y1) < 4:
                 continue
             if (x2 - x1) * (y2 - y1) > 0.8 * orig_w * orig_h:
                 continue
-
-            # Binary mask (already at original resolution from post_process)
             if masks.numel() > 0:
                 mask_np = masks[i].cpu().numpy().astype(bool)
             else:
                 mask_np = np.zeros((orig_h, orig_w), dtype=bool)
                 mask_np[int(y1):int(y2), int(x1):int(x2)] = True
-
             cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
             lat, lon = pixel_to_geo(cx, cy, orig_w, orig_h, meta)
-
             detections.append(DetectionResult(
-                detection_time=now,
-                image_id=image_id,
-                object_class=class_name,
-                object_class_index=class_index,
+                detection_time=now, image_id=image_id,
+                object_class=class_name, object_class_index=class_index,
                 confidence=confidence,
                 bbox_x1=x1, bbox_y1=y1, bbox_x2=x2, bbox_y2=y2,
                 lat=lat, lon=lon,
@@ -329,64 +332,150 @@ class SAM3Detector:
                 mask_area_px=float(mask_np.sum()),
                 source_type=meta.source_type,
             ))
-
         return detections
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def detect(self, loaded_image: LoadedImage, image_id: str) -> List[DetectionResult]:
         """
-        Run SAM3 text-prompted detection for all military object classes on
-        a single LoadedImage. Returns NMS-filtered DetectionResult list.
+        Run Sam3Model text-prompted detection for all military classes.
+        Returns NMS-filtered DetectionResult list.
         """
         if self._model is None and self._processor is None:
             self._load_model()
 
-        image_np = loaded_image.array    # H × W × 3 uint8
-        meta: ImageMeta = loaded_image.meta
+        image_np = loaded_image.array
+        meta = loaded_image.meta
         orig_h, orig_w = image_np.shape[:2]
 
         logger.info(
-            f"[SAM3Detector] Processing image: {meta.image_path} "
-            f"({orig_w}×{orig_h}) captured at {meta.capture_time}"
+            f"[SAM3Detector] Detecting: {meta.image_path} "
+            f"({orig_w}×{orig_h}) at {meta.capture_time}"
         )
 
-        # Fallback path (no model weights)
         if self._model is None:
             results = self._fallback_detect(image_np, image_id, meta)
-            results = _nms_detections(results, NMS_IOU_THRESHOLD)
-            logger.info(f"[SAM3Detector] Fallback: {len(results)} detections.")
-            return results
+            return _nms_detections(results, NMS_IOU_THRESHOLD)
 
         from PIL import Image as PILImage
         pil_image = PILImage.fromarray(image_np).convert("RGB")
-
         now = datetime.utcnow()
         all_results: List[DetectionResult] = []
 
-        # Run SAM3 for each military object class
         for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
             try:
-                class_dets = self._detect_class(
-                    pil_image, class_name, class_index,
-                    orig_w, orig_h, now, image_id, meta,
-                )
-                all_results.extend(class_dets)
-                if class_dets:
-                    logger.debug(
-                        f"[SAM3Detector] '{class_name}': {len(class_dets)} instance(s) found."
+                all_results.extend(
+                    self._detect_class(
+                        pil_image, class_name, class_index,
+                        orig_w, orig_h, now, image_id, meta,
                     )
+                )
             except Exception as exc:
                 logger.warning(f"[SAM3Detector] Error on class '{class_name}': {exc}")
 
-        # Cross-class NMS
-        final_results = _nms_detections(all_results, NMS_IOU_THRESHOLD)
+        final = _nms_detections(all_results, NMS_IOU_THRESHOLD)
+        logger.info(
+            f"[SAM3Detector] {len(all_results)} raw → {len(final)} after NMS "
+            f"(image_id={image_id[:8]})"
+        )
+        return final
+
+    # ------------------------------------------------------------------
+    # Sam3Tracker: visual-prompt object tracking across frames
+    # ------------------------------------------------------------------
+
+    def track_objects(
+        self,
+        pil_image,
+        past_detections: list,   # List[DetectionRecord] from sensor DB
+        orig_w: int,
+        orig_h: int,
+    ) -> List[TrackedObject]:
+        """
+        Use Sam3Tracker to find past objects in the current frame.
+
+        Each past detection's bounding box is passed as a visual prompt.
+        Sam3Tracker outputs a mask + score per prompt.
+        Objects with score >= DETECTION_CONFIDENCE_THRESHOLD are returned
+        as TrackedObject with their updated current-frame bbox.
+
+        Args:
+            pil_image:        Current-frame PIL image (RGB).
+            past_detections:  DetectionRecord list from the most-recent past frame.
+            orig_w / orig_h:  Original image dimensions for mask rescaling.
+
+        Returns:
+            List of TrackedObject – one entry per successfully tracked past object.
+            Past detections absent from this list are considered "disappeared".
+        """
+        if not past_detections:
+            return []
+
+        if not self._tracker_load_attempted:
+            self._load_tracker()
+
+        if self._tracker is None:
+            return self._fallback_track(past_detections)
+
+        past_boxes = [
+            [d.bbox_x1, d.bbox_y1, d.bbox_x2, d.bbox_y2]
+            for d in past_detections
+        ]
+
+        # Sam3Tracker: one output mask per input box
+        inputs = self._processor(
+            images=pil_image,
+            input_boxes=[past_boxes],   # shape: (1, n_objects, 4)
+            return_tensors="pt",
+        ).to(self._device)
+
+        with torch.no_grad():
+            outputs = self._tracker(**inputs)
+
+        # pred_masks : (batch=1, n_objects, H, W)
+        # iou_scores : (batch=1, n_objects)  – tracker's confidence the object is present
+        masks_tensor = outputs.pred_masks[0]   # (n_objects, H, W)
+
+        if hasattr(outputs, "iou_scores") and outputs.iou_scores is not None:
+            scores = outputs.iou_scores[0].cpu().float().numpy()
+        else:
+            scores = (
+                torch.sigmoid(masks_tensor).float().mean(dim=(-1, -2)).cpu().numpy()
+            )
+
+        tracked: List[TrackedObject] = []
+
+        for i, (past_det, score) in enumerate(zip(past_detections, scores)):
+            if float(score) < DETECTION_CONFIDENCE_THRESHOLD:
+                logger.debug(
+                    f"[Sam3Tracker] Object {past_det.id[:8]} "
+                    f"({past_det.object_class}) score={score:.3f} → disappeared"
+                )
+                continue
+
+            mask_np = (torch.sigmoid(masks_tensor[i]) > 0.5).cpu().numpy()
+            mask_np = _scale_mask(mask_np, orig_w, orig_h)
+
+            if not mask_np.any():
+                continue
+
+            try:
+                x1, y1, x2, y2 = _mask_to_bbox(mask_np)
+            except (IndexError, ValueError):
+                continue
+
+            tracked.append(TrackedObject(
+                past_detection_id=past_det.id,
+                past_object_class=past_det.object_class,
+                bbox_x1=x1, bbox_y1=y1,
+                bbox_x2=x2, bbox_y2=y2,
+                score=float(score),
+            ))
+            logger.debug(
+                f"[Sam3Tracker] Object {past_det.id[:8]} "
+                f"({past_det.object_class}) tracked  score={score:.3f}"
+            )
 
         logger.info(
-            f"[SAM3Detector] {orig_w}×{orig_h} image → "
-            f"{len(all_results)} raw detections → "
-            f"{len(final_results)} after NMS  (image_id={image_id[:8]})"
+            f"[Sam3Tracker] {len(tracked)}/{len(past_detections)} "
+            "past objects successfully tracked."
         )
-        return final_results
+        return tracked

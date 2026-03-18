@@ -50,7 +50,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from src.config import IMAGES_DIR
+from src.config import IMAGES_DIR, COORDINATE_MATCH_RADIUS_DEG
 from src.database.models import DetectionRecord
 from src.database.sensor_db import (
     insert_image_record,
@@ -63,7 +63,7 @@ from src.database.pairing_db import (
 )
 from src.detection.image_loader import load_metadata_index, iter_images
 from src.detection.sam2_detector import SAM3Detector, DetectionResult
-from src.pairing.temporal_pairing import pair_detections
+from src.pairing.temporal_pairing import pair_by_tracking
 from src.reporting.military_reporter import MilitaryReporter
 
 logging.basicConfig(
@@ -173,25 +173,32 @@ class MavenPipeline:
         session_id: str,
     ) -> int:
         """
-        For each processed image in the current session, compute temporal
-        pairings against the most recent past frame of the same region,
-        and store results in the Pairing DB.
+        For each current-session image:
+          1. Load image from disk (needed for Sam3Tracker).
+          2. Fetch current detections from Sensor DB (stored by _detect_and_store).
+          3. Fetch most-recent past detections from Sensor DB.
+          4. Run Sam3Tracker on current image with past bboxes → TrackedObject list.
+          5. pair_by_tracking() assigns status by object ID (matched/new/disappeared).
+          6. Bulk-insert PairingRecord list into Pairing DB.
 
         Returns total number of pairing records inserted.
         """
+        from PIL import Image as PILImage
+        from src.database.sensor_db import (
+            get_engine,
+            get_most_recent_past_detections,
+        )
+        from src.database.models import ImageRecord, DetectionRecord as DR
+        from sqlalchemy.orm import Session
+
         metas = load_metadata_index(metadata_json)
         total_pairings = 0
 
-        for meta in metas:
-            # Use meta.capture_time as the boundary for "past" detections
-            from src.database.sensor_db import get_most_recent_past_detections
-            # We need current detections from Sensor DB for this image
-            # To avoid re-running detection, query the DB for recently inserted records
-            from src.database.sensor_db import get_engine
-            from src.database.models import ImageRecord, DetectionRecord as DR
-            from sqlalchemy.orm import Session
-
+        for loaded in iter_images(metas):
+            meta = loaded.meta
             engine = get_engine()
+
+            # --- Fetch current detections from Sensor DB ---
             with Session(engine) as sess:
                 img_rec = (
                     sess.query(ImageRecord)
@@ -206,11 +213,8 @@ class MavenPipeline:
                     continue
                 image_id = img_rec.id
                 current_orm = (
-                    sess.query(DR)
-                    .filter(DR.image_id == image_id)
-                    .all()
+                    sess.query(DR).filter(DR.image_id == image_id).all()
                 )
-                # Convert back to DetectionResult for pairing
                 current_dets = [
                     DetectionResult(
                         detection_id=d.id,
@@ -219,22 +223,36 @@ class MavenPipeline:
                         object_class=d.object_class,
                         object_class_index=d.object_class_index or 0,
                         confidence=d.confidence,
-                        bbox_x1=d.bbox_x1,
-                        bbox_y1=d.bbox_y1,
-                        bbox_x2=d.bbox_x2,
-                        bbox_y2=d.bbox_y2,
-                        lat=d.lat,
-                        lon=d.lon,
+                        bbox_x1=d.bbox_x1, bbox_y1=d.bbox_y1,
+                        bbox_x2=d.bbox_x2, bbox_y2=d.bbox_y2,
+                        lat=d.lat, lon=d.lon,
                         source_type=d.source_type or meta.source_type,
                     )
                     for d in current_orm
                 ]
 
-            if not current_dets:
-                continue
+            # --- Fetch past detections ---
+            past_records = get_most_recent_past_detections(
+                lat_center=meta.lat_center,
+                lon_center=meta.lon_center,
+                radius_deg=COORDINATE_MATCH_RADIUS_DEG,
+                before_time=meta.capture_time,
+            )
 
-            pairing_records = pair_detections(
+            # --- Run Sam3Tracker ---
+            orig_h, orig_w = loaded.array.shape[:2]
+            pil_image = PILImage.fromarray(loaded.array).convert("RGB")
+
+            tracked_objects = (
+                self.detector.track_objects(pil_image, past_records, orig_w, orig_h)
+                if past_records else []
+            )
+
+            # --- Build pairing records by object ID ---
+            pairing_records = pair_by_tracking(
+                tracked_objects=tracked_objects,
                 current_detections=current_dets,
+                past_detections=past_records,
                 current_capture_time=meta.capture_time,
                 region_lat=meta.lat_center,
                 region_lon=meta.lon_center,

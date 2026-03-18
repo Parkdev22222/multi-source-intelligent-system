@@ -1,81 +1,70 @@
 """
-Temporal object pairing.
+Temporal object pairing – ID-based via Sam3Tracker.
 
-For each detection in the *current* frame, find the closest matching detection
-in the most recent *past* frame covering the same geographic region, then assign
-one of three statuses:
+Flow (called from pipeline.py):
+  1. Sam3Tracker runs on the current frame with past-frame bboxes as prompts
+     → returns TrackedObject list (past_detection_id + updated bbox + score)
 
-  "new"          – present in current frame, no past match found
-  "matched"      – present in both frames (optionally same class)
-  "disappeared"  – present in past frame, no current match (generated from
-                   the unmatched past detections)
+  2. pair_by_tracking() assigns status for every object:
 
-Matching algorithm:
-  1. Retrieve past detections via sensor_db.get_most_recent_past_detections().
-  2. For each current detection, find the geographically nearest past detection
-     of the same class within MAX_MATCH_DIST_DEG.
-  3. Use greedy 1-to-1 assignment (best confidence wins).
-  4. Unmatched past detections → "disappeared" pairing records.
+     ┌──────────────────────┬───────────────────────────────────────────────────┐
+     │ status               │ condition                                         │
+     ├──────────────────────┼───────────────────────────────────────────────────┤
+     │ "matched"            │ Sam3Tracker found the past object in current frame │
+     │ "new"                │ current detection has no matching tracked past obj │
+     │ "disappeared"        │ past object was NOT returned by Sam3Tracker        │
+     └──────────────────────┴───────────────────────────────────────────────────┘
+
+  Matching tracked object → current detection:
+    After Sam3Tracker locates a past object, we find the current Sam3Model
+    detection with the highest bbox IoU (>= IOu_MATCH_THRESHOLD) to get the
+    authoritative current-frame detection record.
+    If no current detection overlaps sufficiently, the pair is still recorded
+    as "matched" with current_detection_id=None (tracker confirms presence
+    but Sam3Model did not produce a coincident detection).
 """
 
 import logging
-import uuid
 from datetime import datetime
-from math import sqrt
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
 from src.config import COORDINATE_MATCH_RADIUS_DEG
 from src.database.models import DetectionRecord, PairingRecord
 from src.database.sensor_db import get_most_recent_past_detections
-from src.detection.sam2_detector import DetectionResult
+from src.detection.sam2_detector import DetectionResult, TrackedObject
 
 logger = logging.getLogger(__name__)
 
-# Maximum geographic distance (degrees) to consider two detections "the same object"
-MAX_MATCH_DIST_DEG = COORDINATE_MATCH_RADIUS_DEG * 0.5
+# Minimum bbox IoU to accept a TrackedObject ↔ DetectionResult match
+IOU_MATCH_THRESHOLD = 0.25
 
 
-def _geo_dist(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Euclidean distance in degrees (good approximation for small areas)."""
-    return sqrt((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _bbox_iou(
+    ax1: float, ay1: float, ax2: float, ay2: float,
+    bx1: float, by1: float, bx2: float, by2: float,
+) -> float:
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter == 0.0:
+        return 0.0
+    area_a = (ax2 - ax1) * (ay2 - ay1)
+    area_b = (bx2 - bx1) * (by2 - by1)
+    return inter / (area_a + area_b - inter + 1e-6)
 
 
-def _detection_result_to_pairing_fields(det: DetectionResult, capture_time: datetime) -> dict:
-    return {
-        "detection_id": det.detection_id,
-        "object_class": det.object_class,
-        "confidence": det.confidence,
-        "lat": det.lat,
-        "lon": det.lon,
-        "capture_time": capture_time,
-        "bbox": {
-            "x1": det.bbox_x1,
-            "y1": det.bbox_y1,
-            "x2": det.bbox_x2,
-            "y2": det.bbox_y2,
-        },
-    }
+# ---------------------------------------------------------------------------
+# Main pairing function
+# ---------------------------------------------------------------------------
 
-
-def _db_record_to_pairing_fields(rec: DetectionRecord) -> dict:
-    return {
-        "detection_id": rec.id,
-        "object_class": rec.object_class,
-        "confidence": rec.confidence,
-        "lat": rec.lat,
-        "lon": rec.lon,
-        "capture_time": rec.detection_time,
-        "bbox": {
-            "x1": rec.bbox_x1,
-            "y1": rec.bbox_y1,
-            "x2": rec.bbox_x2,
-            "y2": rec.bbox_y2,
-        },
-    }
-
-
-def pair_detections(
+def pair_by_tracking(
+    tracked_objects: List[TrackedObject],
     current_detections: List[DetectionResult],
+    past_detections: List[DetectionRecord],
     current_capture_time: datetime,
     region_lat: float,
     region_lon: float,
@@ -83,118 +72,124 @@ def pair_detections(
     source_type: str = "satellite",
 ) -> List[PairingRecord]:
     """
-    Main pairing entry point for one region/image.
+    Build PairingRecord list using Sam3Tracker object IDs.
 
     Args:
-        current_detections:  SAM2 detection results from the current frame.
+        tracked_objects:      Output of SAM3Detector.track_objects() –
+                              past objects confirmed present in current frame.
+        current_detections:   Sam3Model detections for the current frame
+                              (from sensor DB, already stored).
+        past_detections:      DetectionRecord list for the most-recent past frame.
         current_capture_time: Capture timestamp of the current image.
-        region_lat/lon:      Geographic centre of the image region.
-        session_id:          Pipeline run identifier.
-        source_type:         "satellite" | "drone"
+        region_lat/lon:       Geographic centre of the region.
+        session_id:           Pipeline run UUID.
+        source_type:          "satellite" | "drone"
 
     Returns:
         List of PairingRecord ORM objects ready for bulk insertion.
     """
     now = datetime.utcnow()
 
-    # 1. Retrieve past detections for this region
-    past_records: List[DetectionRecord] = get_most_recent_past_detections(
-        lat_center=region_lat,
-        lon_center=region_lon,
-        radius_deg=COORDINATE_MATCH_RADIUS_DEG,
-        before_time=current_capture_time,
-    )
+    past_by_id = {d.id: d for d in past_detections}
 
-    logger.info(
-        f"[Pairing] {len(current_detections)} current detections, "
-        f"{len(past_records)} past detections for region "
-        f"({region_lat:.4f}, {region_lon:.4f})"
-    )
+    # IDs that Sam3Tracker confirmed are present in the current frame
+    tracked_past_ids = {t.past_detection_id for t in tracked_objects}
 
-    # 2. Build cost matrix (current × past) using geo distance, same-class bonus
-    paired_past_ids: set = set()   # past_detection ids already matched
+    matched_current_ids: set = set()
     pairing_records: List[PairingRecord] = []
 
-    # Sort current detections by confidence (descending) to prioritise high-confidence
-    current_sorted = sorted(current_detections, key=lambda d: d.confidence, reverse=True)
+    # ------------------------------------------------------------------
+    # 1. "matched" – tracked by Sam3Tracker
+    # ------------------------------------------------------------------
+    for tracked in tracked_objects:
+        past = past_by_id.get(tracked.past_detection_id)
 
-    for cur in current_sorted:
-        best_past: Optional[DetectionRecord] = None
-        best_dist = float("inf")
+        # Find the current Sam3Model detection with highest IoU overlap
+        best_current: Optional[DetectionResult] = None
+        best_iou = IOU_MATCH_THRESHOLD
 
-        for past in past_records:
-            if past.id in paired_past_ids:
+        for cur in current_detections:
+            if cur.detection_id in matched_current_ids:
                 continue
-            dist = _geo_dist(cur.lat, cur.lon, past.lat, past.lon)
-            if dist > MAX_MATCH_DIST_DEG:
-                continue
-            # Prefer same class; penalise class mismatch
-            class_penalty = 0.0 if cur.object_class == past.object_class else MAX_MATCH_DIST_DEG * 0.3
-            effective_dist = dist + class_penalty
-            if effective_dist < best_dist:
-                best_dist = effective_dist
-                best_past = past
-
-        if best_past is not None:
-            # Matched pair
-            paired_past_ids.add(best_past.id)
-            status = "matched"
-            pr = PairingRecord(
-                pairing_time=now,
-                lat_center=region_lat,
-                lon_center=region_lon,
-                # Current
-                current_detection_id=cur.detection_id,
-                current_object_class=cur.object_class,
-                current_confidence=cur.confidence,
-                current_lat=cur.lat,
-                current_lon=cur.lon,
-                current_capture_time=current_capture_time,
-                current_bbox={
-                    "x1": cur.bbox_x1, "y1": cur.bbox_y1,
-                    "x2": cur.bbox_x2, "y2": cur.bbox_y2,
-                },
-                # Past
-                past_detection_id=best_past.id,
-                past_object_class=best_past.object_class,
-                past_confidence=best_past.confidence,
-                past_lat=best_past.lat,
-                past_lon=best_past.lon,
-                past_capture_time=best_past.detection_time,
-                past_bbox={
-                    "x1": best_past.bbox_x1, "y1": best_past.bbox_y1,
-                    "x2": best_past.bbox_x2, "y2": best_past.bbox_y2,
-                },
-                status=status,
-                source_type=source_type,
-                session_id=session_id,
+            iou = _bbox_iou(
+                tracked.bbox_x1, tracked.bbox_y1,
+                tracked.bbox_x2, tracked.bbox_y2,
+                cur.bbox_x1, cur.bbox_y1,
+                cur.bbox_x2, cur.bbox_y2,
             )
-        else:
-            # New object – no past match
-            pr = PairingRecord(
-                pairing_time=now,
-                lat_center=region_lat,
-                lon_center=region_lon,
-                current_detection_id=cur.detection_id,
-                current_object_class=cur.object_class,
-                current_confidence=cur.confidence,
-                current_lat=cur.lat,
-                current_lon=cur.lon,
-                current_capture_time=current_capture_time,
-                current_bbox={
-                    "x1": cur.bbox_x1, "y1": cur.bbox_y1,
-                    "x2": cur.bbox_x2, "y2": cur.bbox_y2,
-                },
-                status="new",
-                source_type=source_type,
-                session_id=session_id,
-            )
+            if iou > best_iou:
+                best_iou = iou
+                best_current = cur
 
+        if best_current is not None:
+            matched_current_ids.add(best_current.detection_id)
+
+        pr = PairingRecord(
+            pairing_time=now,
+            lat_center=region_lat,
+            lon_center=region_lon,
+            # current side – may be None if Sam3Model missed this object
+            current_detection_id=best_current.detection_id if best_current else None,
+            current_object_class=best_current.object_class if best_current else tracked.past_object_class,
+            current_confidence=best_current.confidence if best_current else tracked.score,
+            current_lat=best_current.lat if best_current else None,
+            current_lon=best_current.lon if best_current else None,
+            current_capture_time=current_capture_time,
+            current_bbox={
+                "x1": best_current.bbox_x1, "y1": best_current.bbox_y1,
+                "x2": best_current.bbox_x2, "y2": best_current.bbox_y2,
+            } if best_current else {
+                "x1": tracked.bbox_x1, "y1": tracked.bbox_y1,
+                "x2": tracked.bbox_x2, "y2": tracked.bbox_y2,
+            },
+            # past side
+            past_detection_id=tracked.past_detection_id,
+            past_object_class=past.object_class if past else tracked.past_object_class,
+            past_confidence=past.confidence if past else None,
+            past_lat=past.lat if past else None,
+            past_lon=past.lon if past else None,
+            past_capture_time=past.detection_time if past else None,
+            past_bbox={
+                "x1": past.bbox_x1, "y1": past.bbox_y1,
+                "x2": past.bbox_x2, "y2": past.bbox_y2,
+            } if past else None,
+            status="matched",
+            source_type=source_type,
+            session_id=session_id,
+        )
         pairing_records.append(pr)
 
-    # 3. Unmatched past detections → "disappeared"
-    for past in past_records:
-        if past.id in paired_past_ids:
+    # ------------------------------------------------------------------
+    # 2. "new" – current detections not matched to any tracked past object
+    # ------------------------------------------------------------------
+    for cur in current_detections:
+        if cur.detection_id in matched_current_ids:
+            continue
+        pr = PairingRecord(
+            pairing_time=now,
+            lat_center=region_lat,
+            lon_center=region_lon,
+            current_detection_id=cur.detection_id,
+            current_object_class=cur.object_class,
+            current_confidence=cur.confidence,
+            current_lat=cur.lat,
+            current_lon=cur.lon,
+            current_capture_time=current_capture_time,
+            current_bbox={
+                "x1": cur.bbox_x1, "y1": cur.bbox_y1,
+                "x2": cur.bbox_x2, "y2": cur.bbox_y2,
+            },
+            status="new",
+            source_type=source_type,
+            session_id=session_id,
+        )
+        pairing_records.append(pr)
+
+    # ------------------------------------------------------------------
+    # 3. "disappeared" – past objects NOT returned by Sam3Tracker
+    # ------------------------------------------------------------------
+    for past in past_detections:
+        if past.id in tracked_past_ids:
             continue
         pr = PairingRecord(
             pairing_time=now,
@@ -217,9 +212,9 @@ def pair_detections(
         pairing_records.append(pr)
 
     logger.info(
-        f"[Pairing] Generated {len(pairing_records)} pairing records "
-        f"({sum(1 for p in pairing_records if p.status == 'matched')} matched, "
-        f"{sum(1 for p in pairing_records if p.status == 'new')} new, "
-        f"{sum(1 for p in pairing_records if p.status == 'disappeared')} disappeared)"
+        f"[Pairing] ID-based results for ({region_lat:.4f}, {region_lon:.4f}): "
+        f"{sum(1 for p in pairing_records if p.status == 'matched')} matched  "
+        f"{sum(1 for p in pairing_records if p.status == 'new')} new  "
+        f"{sum(1 for p in pairing_records if p.status == 'disappeared')} disappeared"
     )
     return pairing_records
