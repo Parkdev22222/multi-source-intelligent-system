@@ -39,41 +39,42 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _build_system_prompt() -> str:
-    return textwrap.dedent("""
-        You are an elite military intelligence analyst specializing in
-        multi-source imagery intelligence (IMINT) and change detection analysis.
-        You produce formal military intelligence reports based on automated
-        AI-driven object detection results from satellite and drone imagery.
+    return (
+        "You are a military IMINT analyst. Produce a concise formal intelligence report "
+        "from AI-based satellite/drone object detection data. "
+        "Use standard section headers. Be factual. Highlight force movements and threat indicators."
+    )
 
-        Your reports are written in a concise, factual, and classified military
-        format following standard intelligence product conventions (e.g., DIA/NGA
-        product standards). Use clear section headers. Assess military significance.
-        Highlight anomalies, force movements, and potential threat indicators.
-        If the data indicates no significant change, state so explicitly.
-    """).strip()
+
+_MAX_DETAIL = 20   # max individual records shown per change category
+
+
+def _class_counts(objs) -> str:
+    """Return 'TANK:3 APC:2 ...' summary string from a list of pairing records."""
+    from collections import Counter
+    counts = Counter(
+        p.current_object_class if p.current_object_class else p.past_object_class
+        for p in objs
+    )
+    return "  ".join(f"{cls}:{n}" for cls, n in counts.most_common())
 
 
 def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> str:
-    """Serialise pairing records into a structured prompt for the LLM."""
+    """Serialise pairing records into a compact prompt for the LLM."""
 
     def fmt_dt(dt: Optional[datetime]) -> str:
-        if dt is None:
-            return "N/A"
-        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else "N/A"
 
-    # Summarise pairings by status
     new_objs = [p for p in pairings if p.status == "new"]
     matched_objs = [p for p in pairings if p.status == "matched"]
     moved_objs = [p for p in pairings if p.status == "moved"]
     disappeared_objs = [p for p in pairings if p.status == "disappeared"]
 
-    # Region info
     lats = [p.lat_center for p in pairings]
     lons = [p.lon_center for p in pairings]
     lat_c = sum(lats) / len(lats) if lats else 0.0
     lon_c = sum(lons) / len(lons) if lons else 0.0
 
-    # Capture time range
     all_times = [
         p.current_capture_time for p in pairings if p.current_capture_time
     ] + [
@@ -83,107 +84,65 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
     time_current = max(all_times).strftime("%Y-%m-%dT%H:%M:%SZ") if all_times else "UNKNOWN"
 
     lines = [
-        f"REPORT GENERATION TIME: {fmt_dt(report_time)}",
-        f"REGION OF INTEREST: LAT {lat_c:.4f}, LON {lon_c:.4f}",
-        f"TEMPORAL WINDOW: {time_past} → {time_current}",
-        f"TOTAL PAIRING RECORDS: {len(pairings)}",
-        f"  - NEW: {len(new_objs)}  MOVED: {len(moved_objs)}  "
-        f"STATIONARY: {len(matched_objs)}  DISAPPEARED: {len(disappeared_objs)}",
-        "",
-        "=== NEWLY APPEARED OBJECTS (not in past frame) ===",
+        f"TIME: {fmt_dt(report_time)}  ROI: {lat_c:.3f},{lon_c:.3f}"
+        f"  WINDOW: {time_past}→{time_current}",
+        f"TOTAL: {len(pairings)}  NEW:{len(new_objs)}  MOVED:{len(moved_objs)}"
+        f"  STATIONARY:{len(matched_objs)}  DISAPPEARED:{len(disappeared_objs)}",
     ]
 
-    for p in new_objs:
+    # --- NEW objects (high-value: list top _MAX_DETAIL by confidence) ---
+    lines.append("\n=== NEW OBJECTS ===")
+    top_new = sorted(new_objs, key=lambda p: p.current_confidence or 0, reverse=True)
+    for p in top_new[:_MAX_DETAIL]:
         lines.append(
-            f"  - ID={p.current_detection_id[:8]}  CLASS={p.current_object_class}"
-            f"  CONF={p.current_confidence:.2f}"
-            f"  LAT={p.current_lat:.4f}  LON={p.current_lon:.4f}"
-            f"  TIME={fmt_dt(p.current_capture_time)}"
+            f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
+            f" ({p.current_lat:.3f},{p.current_lon:.3f})"
         )
+    if len(new_objs) > _MAX_DETAIL:
+        lines.append(f"  ... +{len(new_objs) - _MAX_DETAIL} more: {_class_counts(new_objs[_MAX_DETAIL:])}")
 
-    lines += ["", "=== MOVED OBJECTS (position changed between frames) ==="]
-    for p in moved_objs:
-        cur_lat_str = f"{p.current_lat:.4f}" if p.current_lat is not None else "N/A"
-        cur_lon_str = f"{p.current_lon:.4f}" if p.current_lon is not None else "N/A"
-        past_lat_str = f"{p.past_lat:.4f}" if p.past_lat is not None else "N/A"
-        past_lon_str = f"{p.past_lon:.4f}" if p.past_lon is not None else "N/A"
-        lat_delta = (
-            abs(p.current_lat - p.past_lat)
-            if p.current_lat is not None and p.past_lat is not None else 0
-        )
-        lon_delta = (
-            abs(p.current_lon - p.past_lon)
-            if p.current_lon is not None and p.past_lon is not None else 0
-        )
-        dist_m = ((lat_delta ** 2 + lon_delta ** 2) ** 0.5) * 111000
-        class_change = (
-            f"  [CLASS CHANGED: {p.past_object_class} → {p.current_object_class}]"
+    # --- MOVED objects ---
+    lines.append("\n=== MOVED OBJECTS ===")
+    top_moved = sorted(moved_objs, key=lambda p: p.current_confidence or 0, reverse=True)
+    for p in top_moved[:_MAX_DETAIL]:
+        lat_d = abs(p.current_lat - p.past_lat) if p.current_lat and p.past_lat else 0
+        lon_d = abs(p.current_lon - p.past_lon) if p.current_lon and p.past_lon else 0
+        dist_m = ((lat_d ** 2 + lon_d ** 2) ** 0.5) * 111000
+        cls_chg = (
+            f" [{p.past_object_class}→{p.current_object_class}]"
             if p.past_object_class != p.current_object_class else ""
         )
         lines.append(
-            f"  - CUR_ID={p.current_detection_id[:8] if p.current_detection_id else 'N/A'}"
-            f"  PAST_ID={p.past_detection_id[:8] if p.past_detection_id else 'N/A'}"
-            f"  CLASS={p.current_object_class}"
-            f"  PAST_POS=({past_lat_str},{past_lon_str})"
-            f"  CUR_POS=({cur_lat_str},{cur_lon_str})"
-            f"  DISPLACEMENT≈{dist_m:.0f}m"
-            f"{class_change}"
+            f"  {p.current_object_class} ({p.past_lat:.3f},{p.past_lon:.3f})"
+            f"→({p.current_lat:.3f},{p.current_lon:.3f}) ≈{dist_m:.0f}m{cls_chg}"
         )
+    if len(moved_objs) > _MAX_DETAIL:
+        lines.append(f"  ... +{len(moved_objs) - _MAX_DETAIL} more: {_class_counts(moved_objs[_MAX_DETAIL:])}")
 
-    lines += ["", "=== MATCHED OBJECTS (stationary, present in both frames) ==="]
-    for p in matched_objs:
-        class_change = (
-            f"  [CLASS CHANGED: {p.past_object_class} → {p.current_object_class}]"
-            if p.past_object_class != p.current_object_class else ""
-        )
-        lat_delta = (
-            abs(p.current_lat - p.past_lat)
-            if p.current_lat is not None and p.past_lat is not None else 0
-        )
-        lon_delta = (
-            abs(p.current_lon - p.past_lon)
-            if p.current_lon is not None and p.past_lon is not None else 0
-        )
-        moved = "  [POSITION CHANGED]" if (lat_delta + lon_delta) > 0.0005 else ""
-        cur_lat_str = f"{p.current_lat:.4f}" if p.current_lat is not None else "N/A"
-        cur_lon_str = f"{p.current_lon:.4f}" if p.current_lon is not None else "N/A"
-        past_lat_str = f"{p.past_lat:.4f}" if p.past_lat is not None else "N/A"
-        past_lon_str = f"{p.past_lon:.4f}" if p.past_lon is not None else "N/A"
-        lines.append(
-            f"  - CUR_ID={p.current_detection_id[:8] if p.current_detection_id else 'N/A'}"
-            f"  PAST_ID={p.past_detection_id[:8] if p.past_detection_id else 'N/A'}"
-            f"  CLASS={p.current_object_class}"
-            f"  CUR_LAT={cur_lat_str}  CUR_LON={cur_lon_str}"
-            f"  PAST_LAT={past_lat_str}  PAST_LON={past_lon_str}"
-            f"{class_change}{moved}"
-        )
+    # --- STATIONARY objects (aggregate only – never list individually) ---
+    lines.append("\n=== STATIONARY OBJECTS (class summary) ===")
+    if matched_objs:
+        lines.append(f"  {_class_counts(matched_objs)}")
+    else:
+        lines.append("  (none)")
 
-    lines += ["", "=== DISAPPEARED OBJECTS (in past frame, absent in current) ==="]
-    for p in disappeared_objs:
-        conf_str = f"{p.past_confidence:.2f}" if p.past_confidence is not None else "N/A"
-        lat_str = f"{p.past_lat:.4f}" if p.past_lat is not None else "N/A"
-        lon_str = f"{p.past_lon:.4f}" if p.past_lon is not None else "N/A"
+    # --- DISAPPEARED objects ---
+    lines.append("\n=== DISAPPEARED OBJECTS ===")
+    top_gone = sorted(disappeared_objs, key=lambda p: p.past_confidence or 0, reverse=True)
+    for p in top_gone[:_MAX_DETAIL]:
         lines.append(
-            f"  - ID={p.past_detection_id[:8] if p.past_detection_id else 'N/A'}"
-            f"  CLASS={p.past_object_class}"
-            f"  CONF={conf_str}"
-            f"  LAT={lat_str}  LON={lon_str}"
-            f"  LAST_SEEN={fmt_dt(p.past_capture_time)}"
+            f"  {p.past_object_class} CONF={p.past_confidence:.2f}"
+            f" ({p.past_lat:.3f},{p.past_lon:.3f})"
+            f" LAST={fmt_dt(p.past_capture_time)}"
         )
+    if len(disappeared_objs) > _MAX_DETAIL:
+        lines.append(f"  ... +{len(disappeared_objs) - _MAX_DETAIL} more: {_class_counts(disappeared_objs[_MAX_DETAIL:])}")
 
     lines += [
-        "",
-        "=== INSTRUCTIONS ===",
-        "Based on the above AI-generated object detection pairing data from satellite/drone imagery,",
-        "produce a formal military intelligence report with the following sections:",
-        "1. CLASSIFICATION / HANDLING INSTRUCTIONS",
-        "2. EXECUTIVE SUMMARY",
-        "3. SITUATION (current observed state)",
-        "4. CHANGE ANALYSIS (new objects, disappeared objects, moved/repositioned objects, stationary objects)",
-        "5. THREAT ASSESSMENT",
-        "6. INTELLIGENCE GAPS",
-        "7. RECOMMENDED ACTIONS",
-        "8. APPENDIX: Full Object Inventory (table format)",
+        "\n=== TASK ===",
+        "Write a military intelligence report with sections:",
+        "1.CLASSIFICATION 2.EXECUTIVE SUMMARY 3.SITUATION 4.CHANGE ANALYSIS"
+        " 5.THREAT ASSESSMENT 6.INTELLIGENCE GAPS 7.RECOMMENDED ACTIONS 8.APPENDIX",
     ]
 
     return "\n".join(lines)
