@@ -56,6 +56,11 @@ MILITARY_OBJECT_CLASSES = [
 # ~1 degree ≈ 111 km; 0.001 degree ≈ 111 m
 COORDINATE_MATCH_RADIUS_DEG = float(os.getenv("COORD_MATCH_RADIUS", "0.01"))
 
+# Minimum lat/lon displacement (degrees) between past and current detection
+# to classify a matched object as "moved" rather than "stationary".
+# 0.001 deg ≈ 111 m at equator – smaller than this is considered noise.
+MOVE_DISTANCE_THRESHOLD_DEG = float(os.getenv("MOVE_DISTANCE_THRESHOLD", "0.001"))
+
 # --- LLM (EXAONE4-32b) ---
 LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-32B-Instruct")
 LLM_DEVICE = os.getenv("LLM_DEVICE", "cuda")

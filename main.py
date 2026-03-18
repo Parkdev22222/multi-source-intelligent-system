@@ -70,14 +70,15 @@ def main():
         logger.info("Generating synthetic sample data...")
         generate_sample_data(args.metadata)
 
-    # Verify metadata file exists
+    # Ensure metadata file exists (create empty if absent so pipeline can auto-generate)
     meta_path = Path(args.metadata)
     if not meta_path.exists():
-        logger.error(
-            f"Metadata file not found: {meta_path}\n"
-            "Run with --generate-samples to create synthetic test data."
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text("[]", encoding="utf-8")
+        logger.info(
+            f"[Main] Created empty metadata file at {meta_path}. "
+            "Pipeline will auto-generate synthetic sample data."
         )
-        sys.exit(1)
 
     # Run pipeline
     pipeline = MavenPipeline()

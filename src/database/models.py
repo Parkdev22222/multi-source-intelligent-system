@@ -103,7 +103,8 @@ class PairingRecord(PairingBase):
 
     Status values:
         "new"        – object appears for the first time (no past match)
-        "matched"    – object present in both current and past frame
+        "matched"    – object present in both frames at the same location (stationary)
+        "moved"      – object present in both frames but position changed significantly
         "disappeared"– object was in the past frame but absent in current
     """
 

@@ -310,6 +310,16 @@ class MavenPipeline:
         logger.info(f"MSIS Pipeline started  session={session_id}")
         logger.info(f"{'='*60}")
 
+        # Auto-generate sample data if metadata.json is empty
+        metas_check = load_metadata_index(metadata_json)
+        if not metas_check:
+            logger.info(
+                "[Pipeline] metadata.json has no entries – "
+                "auto-generating synthetic sample data for testing."
+            )
+            from scripts.generate_sample_data import generate_sample_data
+            generate_sample_data(metadata_json)
+
         # --- Step 1: Detection ---
         logger.info("[Pipeline] Step 1/3 – Image ingestion & SAM3 detection")
         image_ids = self._detect_and_store(metadata_json, session_id)
