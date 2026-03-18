@@ -10,8 +10,8 @@ Output: Structured military intelligence report (Korean/English) covering:
          - Recommended actions
 
 LLM backend can be switched via config:
-  LLM_BACKEND=huggingface  → loads EXAONE4-32b via HuggingFace Transformers
-  LLM_BACKEND=ollama       → calls local Ollama server (model: exaone4:32b)
+  LLM_BACKEND=vllm    → loads EXAONE4-32b via vLLM (default)
+  LLM_BACKEND=ollama  → calls local Ollama server (model: exaone4:32b)
 """
 
 import json
@@ -193,57 +193,33 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
 # LLM Backends
 # ---------------------------------------------------------------------------
 
-class _HuggingFaceBackend:
+class _VllmBackend:
     def __init__(self):
-        self._model = None
-        self._tokenizer = None
+        self._llm = None
 
     def _load(self):
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from vllm import LLM
 
-        logger.info(f"[Reporter] Loading {LLM_MODEL_NAME} via HuggingFace Transformers...")
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            LLM_MODEL_NAME, trust_remote_code=True
-        )
-        self._model = AutoModelForCausalLM.from_pretrained(
-            LLM_MODEL_NAME,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            trust_remote_code=True,
-        )
-        self._model.eval()
+        logger.info(f"[Reporter] Loading {LLM_MODEL_NAME} via vLLM...")
+        self._llm = LLM(model=LLM_MODEL_NAME, trust_remote_code=True)
         logger.info(f"[Reporter] {LLM_MODEL_NAME} loaded.")
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
-        if self._model is None:
-            self._load()
+        from vllm import SamplingParams
 
-        import torch
+        if self._llm is None:
+            self._load()
 
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-
-        # EXAONE uses standard chat template
-        input_ids = self._tokenizer.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            return_tensors="pt",
-        ).to(self._model.device)
-
-        with torch.no_grad():
-            output_ids = self._model.generate(
-                input_ids,
-                max_new_tokens=LLM_MAX_NEW_TOKENS,
-                temperature=LLM_TEMPERATURE,
-                do_sample=LLM_TEMPERATURE > 0,
-                pad_token_id=self._tokenizer.eos_token_id,
-            )
-
-        generated = output_ids[0][input_ids.shape[-1]:]
-        return self._tokenizer.decode(generated, skip_special_tokens=True)
+        sampling_params = SamplingParams(
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_NEW_TOKENS,
+        )
+        outputs = self._llm.chat(messages, sampling_params=sampling_params)
+        return outputs[0].outputs[0].text
 
 
 class _FallbackBackend:
@@ -321,7 +297,7 @@ class _OllamaBackend:
 def _get_backend():
     if LLM_BACKEND == "ollama":
         return _OllamaBackend()
-    return _HuggingFaceBackend()
+    return _VllmBackend()
 
 
 class _SafeBackend:
