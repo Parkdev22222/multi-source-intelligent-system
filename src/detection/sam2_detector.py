@@ -26,10 +26,12 @@ import torch
 
 from src.config import (
     DETECTION_CONFIDENCE_THRESHOLD,
+    MAX_BBOX_AREA_RATIO,
     MILITARY_OBJECT_CLASSES,
     NMS_IOU_THRESHOLD,
     SAM3_DEVICE,
     SAM3_INFERENCE_SIZE,
+    SAM3_MASK_SCORE_THRESHOLD,
     SAM3_MODEL_NAME,
 )
 from src.detection.image_loader import ImageMeta, LoadedImage, pixel_to_geo
@@ -116,6 +118,29 @@ def _scale_mask(mask: np.ndarray, orig_w: int, orig_h: int) -> np.ndarray:
     pil = PILImage.fromarray(mask.astype(np.uint8) * 255, mode="L")
     pil = pil.resize((orig_w, orig_h), PILImage.NEAREST)
     return np.array(pil) > 127
+
+
+def _tighten_mask(mask: np.ndarray) -> np.ndarray:
+    """
+    마스크에서 가장 큰 연결 성분(connected component)만 남긴다.
+
+    SAM3 텍스트 프롬프트 세그멘테이션은 객체 주변 문맥 픽셀까지 포함하는
+    경향이 있어, 이 함수로 노이즈 픽셀을 제거하면 bbox가 실제 객체에
+    훨씬 가깝게 수렴한다.  scipy가 없을 경우 원본 마스크를 그대로 반환.
+    """
+    if not mask.any():
+        return mask
+    try:
+        from scipy.ndimage import label as ndimage_label
+        labeled, n = ndimage_label(mask)
+        if n == 0:
+            return mask
+        # 각 레이블 크기 계산 후 가장 큰 것 선택
+        sizes = np.bincount(labeled.ravel())
+        sizes[0] = 0  # 배경(0) 제외
+        return labeled == sizes.argmax()
+    except ImportError:
+        return mask
 
 
 def _nms_detections(
@@ -294,9 +319,11 @@ class SAM3Detector:
         with torch.no_grad():
             outputs = self._model(**inputs)
 
+        # SAM3 마스크 점수는 DETECTION_CONFIDENCE_THRESHOLD 보다 높은
+        # SAM3_MASK_SCORE_THRESHOLD 를 사용 → 낮은 신뢰도의 큰 마스크 사전 차단
         seg_results = self._processor.post_process_instance_segmentation(
             outputs,
-            threshold=DETECTION_CONFIDENCE_THRESHOLD,
+            threshold=SAM3_MASK_SCORE_THRESHOLD,
             target_sizes=[(orig_h, orig_w)],
         )
 
@@ -305,21 +332,38 @@ class SAM3Detector:
         scores = result.get("scores", torch.tensor([]))
         boxes = result.get("boxes", torch.tensor([]))
         masks = result.get("masks", torch.tensor([]))
+        max_area = MAX_BBOX_AREA_RATIO * orig_w * orig_h
 
         for i in range(len(scores)):
             confidence = float(scores[i])
-            if confidence < DETECTION_CONFIDENCE_THRESHOLD:
+            if confidence < SAM3_MASK_SCORE_THRESHOLD:
                 continue
-            x1, y1, x2, y2 = (float(v) for v in boxes[i])
-            if (x2 - x1) < 4 or (y2 - y1) < 4:
-                continue
-            if (x2 - x1) * (y2 - y1) > 0.8 * orig_w * orig_h:
-                continue
+
             if masks.numel() > 0:
-                mask_np = masks[i].cpu().numpy().astype(bool)
+                raw_mask = masks[i].cpu().numpy().astype(bool)
+                # 가장 큰 연결 성분만 남겨 노이즈 픽셀 제거 → bbox 축소
+                mask_np = _tighten_mask(raw_mask)
             else:
+                mask_np = None
+
+            # 마스크 기반 bbox 재계산 (모델 출력 boxes 보다 tight)
+            if mask_np is not None and mask_np.any():
+                try:
+                    x1, y1, x2, y2 = _mask_to_bbox(mask_np)
+                except (IndexError, ValueError):
+                    x1, y1, x2, y2 = (float(v) for v in boxes[i])
+            else:
+                x1, y1, x2, y2 = (float(v) for v in boxes[i])
                 mask_np = np.zeros((orig_h, orig_w), dtype=bool)
                 mask_np[int(y1):int(y2), int(x1):int(x2)] = True
+
+            # 최소 크기 필터 (4px 이하 노이즈)
+            if (x2 - x1) < 4 or (y2 - y1) < 4:
+                continue
+            # 최대 크기 필터 (이미지 면적의 MAX_BBOX_AREA_RATIO 초과 차단)
+            if (x2 - x1) * (y2 - y1) > max_area:
+                continue
+
             cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
             lat, lon = pixel_to_geo(cx, cy, orig_w, orig_h, meta)
             detections.append(DetectionResult(

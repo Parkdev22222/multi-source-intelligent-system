@@ -69,7 +69,14 @@ LLM_BACKEND = os.getenv("LLM_BACKEND", "huggingface")
 
 # --- Detection Confidence ---
 DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE", "0.3"))
-NMS_IOU_THRESHOLD = float(os.getenv("NMS_IOU", "0.5"))
+NMS_IOU_THRESHOLD = float(os.getenv("NMS_IOU", "0.3"))
+
+# --- BBox Size Constraints ---
+# 텍스트 프롬프트 마스크가 과도하게 넓어지는 것을 방지.
+# 위성/항공 이미지에서 군사 객체는 이미지 전체 면적의 15% 이하가 정상.
+MAX_BBOX_AREA_RATIO = float(os.getenv("MAX_BBOX_AREA_RATIO", "0.15"))
+# SAM3 마스크 세그멘테이션 전용 신뢰도 임계값 (post_process_instance_segmentation)
+SAM3_MASK_SCORE_THRESHOLD = float(os.getenv("SAM3_MASK_SCORE", "0.5"))
 
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
