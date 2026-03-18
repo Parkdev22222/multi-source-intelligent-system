@@ -29,6 +29,7 @@ from src.config import (
     OLLAMA_MODEL,
 )
 from src.database.models import PairingRecord
+from src.database.reports_db import insert_report
 
 logger = logging.getLogger(__name__)
 
@@ -258,13 +259,16 @@ class MilitaryReporter:
         self,
         pairings: List[PairingRecord],
         output_path: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> str:
         """
-        Generate a military intelligence report from the given pairing records.
+        Generate a military intelligence report from the given pairing records,
+        then persist it to the Reports DB (saved_time, file_path, full content).
 
         Args:
             pairings:    List of PairingRecord objects (latest session).
             output_path: If provided, write the report text to this file path.
+            session_id:  Pipeline session UUID (stored in the Reports DB row).
 
         Returns:
             Report text as a string.
@@ -292,9 +296,29 @@ class MilitaryReporter:
         )
         full_report = header + report_text
 
+        # Write to file if requested
+        saved_file_path: Optional[str] = None
         if output_path:
+            from pathlib import Path
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(full_report)
-            logger.info(f"[Reporter] Report written to {output_path}")
+            saved_file_path = str(Path(output_path).resolve())
+            logger.info(f"[Reporter] Report written to {saved_file_path}")
+
+        # Persist to Reports DB
+        db_record = insert_report(
+            report_time=report_time.replace(tzinfo=None),  # store as naive UTC
+            report_content=full_report,
+            llm_model=LLM_MODEL_NAME,
+            llm_backend=LLM_BACKEND,
+            pairing_count=len(pairings),
+            session_id=session_id,
+            file_path=saved_file_path,
+        )
+        logger.info(
+            f"[Reporter] Report saved to DB  "
+            f"id={db_record.id}  saved_time={db_record.saved_time}"
+        )
 
         return full_report

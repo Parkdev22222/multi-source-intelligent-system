@@ -169,6 +169,12 @@ Place satellite/drone image files and a `metadata.json` in `data/images/`:
 |---|---|
 | `pairing_records` | `id`, `pairing_time`, `status` (new/matched/disappeared), `current_detection_id`, `past_detection_id`, `lat_center`, `lon_center`, `session_id` |
 
+### Reports DB (`data/db/reports.db`)
+
+| Table | Key Columns |
+|---|---|
+| `report_records` | `id`, `saved_time`, `report_time`, `session_id`, `llm_model`, `llm_backend`, `pairing_count`, `file_path`, `report_content` |
+
 ---
 
 ## Military Object Classes

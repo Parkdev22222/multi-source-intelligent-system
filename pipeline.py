@@ -263,7 +263,9 @@ class MavenPipeline:
             # Fall back to global latest
             pairings = get_latest_pairings()
 
-        report = self.reporter.generate_report(pairings, output_path=output_path)
+        report = self.reporter.generate_report(
+            pairings, output_path=output_path, session_id=session_id
+        )
         return report
 
     # ------------------------------------------------------------------
@@ -291,7 +293,7 @@ class MavenPipeline:
         logger.info(f"{'='*60}")
 
         # --- Step 1: Detection ---
-        logger.info("[Pipeline] Step 1/3 – Image ingestion & SAM2 detection")
+        logger.info("[Pipeline] Step 1/3 – Image ingestion & SAM3 detection")
         image_ids = self._detect_and_store(metadata_json, session_id)
         logger.info(f"[Pipeline] Processed {len(image_ids)} images.")
 

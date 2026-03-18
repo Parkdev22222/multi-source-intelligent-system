@@ -1,8 +1,9 @@
 """
-SQLAlchemy ORM models for Sensor Detections DB and Object Pairings DB.
+SQLAlchemy ORM models for Sensor Detections DB, Object Pairings DB, and Reports DB.
 
-Sensor DB: stores every detected object from current-time satellite/drone imagery.
+Sensor DB:  stores every detected object from current-time satellite/drone imagery.
 Pairing DB: stores temporal pairs (current detection ↔ past detection at same coordinates).
+Reports DB: stores every generated military intelligence report with saved time and file path.
 """
 
 import uuid
@@ -23,6 +24,7 @@ from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 PairingBase = declarative_base()
+ReportBase = declarative_base()
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +142,42 @@ class PairingRecord(PairingBase):
 
 
 # ---------------------------------------------------------------------------
+# Reports DB Model
+# ---------------------------------------------------------------------------
+
+class ReportRecord(ReportBase):
+    """
+    A single generated military intelligence report.
+
+    Saved to the Reports DB every time MilitaryReporter.generate_report() is called.
+    """
+
+    __tablename__ = "report_records"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # When this row was inserted into the DB
+    saved_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Timestamp embedded in the report header (moment of LLM generation)
+    report_time = Column(DateTime, nullable=False)
+
+    # Pipeline session that produced this report
+    session_id = Column(String(36), nullable=True)
+
+    # Which LLM and backend were used
+    llm_model = Column(String(128), nullable=False)
+    llm_backend = Column(String(32), nullable=False)   # "huggingface" | "ollama"
+
+    # How many pairing records were analysed
+    pairing_count = Column(Integer, nullable=False, default=0)
+
+    # Path to the .txt file on disk (None if --report-output was not specified)
+    file_path = Column(Text, nullable=True)
+
+    # Full report text content
+    report_content = Column(Text, nullable=False)
+
+
+# ---------------------------------------------------------------------------
 # DB factory helpers
 # ---------------------------------------------------------------------------
 
@@ -152,4 +190,10 @@ def create_sensor_engine(db_path: str):
 def create_pairing_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
     PairingBase.metadata.create_all(engine)
+    return engine
+
+
+def create_report_engine(db_path: str):
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+    ReportBase.metadata.create_all(engine)
     return engine

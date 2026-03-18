@@ -16,6 +16,7 @@ DB_DIR.mkdir(parents=True, exist_ok=True)
 # --- Database ---
 SENSOR_DB_PATH = str(DB_DIR / "sensor_detections.db")
 PAIRING_DB_PATH = str(DB_DIR / "object_pairings.db")
+REPORTS_DB_PATH = str(DB_DIR / "reports.db")
 
 # --- SAM3 Model (Segment Anything Model 3 by Meta AI) ---
 # SAM3 performs text-prompted concept segmentation in a single forward pass,
