@@ -54,40 +54,78 @@ REPORTING LAYER  ──►  EXAONE4-32b LLM
 
 ## Quick Start
 
-### 1. Install dependencies
+### 1. 의존성 설치
 
 ```bash
 pip install -r requirements.txt
 ```
 
-SAM3 is available via HuggingFace Transformers (≥ 4.48.0) — no separate installation needed.
+SAM3는 HuggingFace Transformers(≥ 4.48.0)에 포함되어 있어 별도 설치 불필요.
 
-### 2. Configure environment
+### 2. HuggingFace 로그인 (모델 다운로드용)
+
+```bash
+pip install huggingface_hub
+huggingface-cli login
+# HuggingFace 토큰 입력 (https://huggingface.co/settings/tokens)
+```
+
+### 3. 환경 변수 설정
 
 ```bash
 cp .env.example .env
-# Edit .env: set LLM_BACKEND, SAM3_DEVICE, etc.
+# .env 파일에서 LLM_BACKEND, SAM3_DEVICE 등 설정
 ```
 
-### 3. Generate sample data and run pipeline
+주요 환경 변수:
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `SAM3_MODEL_NAME` | `facebook/sam3` | SAM3 HuggingFace 모델 ID |
+| `SAM3_DEVICE` | `cuda` | 추론 장치 (`cuda` / `cpu`) |
+| `LLM_BACKEND` | `huggingface` | LLM 백엔드 (`huggingface` / `ollama`) |
+| `LLM_MODEL_NAME` | `LGAI-EXAONE/EXAONE-4.0-32B-Instruct` | EXAONE 모델 ID |
+| `OLLAMA_MODEL` | `exaone4:32b` | Ollama 사용 시 모델명 |
+| `DETECTION_CONFIDENCE` | `0.3` | 탐지 신뢰도 임계값 |
+
+### 4. 실행
+
+#### 옵션 A — HuggingFace 백엔드 (EXAONE4-32b 직접 로드)
 
 ```bash
-# Generate synthetic satellite/drone test images
-python main.py --generate-samples
+# 보고서 출력 디렉터리 생성
+mkdir -p data/reports
 
-# Run full pipeline (detection → pairing → report)
+# 합성 테스트 이미지 생성 + 전체 파이프라인 실행 + 보고서 저장
+python main.py --generate-samples \
+               --report-output data/reports/report.txt
+
+# 실제 이미지 사용 시 (data/images/metadata.json 작성 후)
 python main.py --metadata data/images/metadata.json \
                --report-output data/reports/report.txt
 ```
 
-### 4. Use Ollama backend for LLM (lighter weight)
+#### 옵션 B — Ollama 백엔드 (경량, GPU 메모리 절약)
 
 ```bash
-# Pull EXAONE model via Ollama
+# Ollama 설치 후 EXAONE 모델 다운로드
 ollama pull exaone4:32b
 
-# Run with Ollama backend
-LLM_BACKEND=ollama python main.py --generate-samples
+# Ollama 백엔드로 실행
+python main.py --generate-samples \
+               --llm-backend ollama \
+               --report-output data/reports/report.txt
+```
+
+### 5. CLI 옵션 전체 목록
+
+```
+python main.py [옵션]
+
+  --metadata PATH        이미지 메타데이터 JSON 경로 (기본: data/images/metadata.json)
+  --report-output PATH   보고서 저장 파일 경로 (미지정 시 stdout만 출력)
+  --generate-samples     합성 위성/드론 테스트 이미지 생성 후 파이프라인 실행
+  --llm-backend BACKEND  LLM 백엔드 선택: huggingface | ollama
 ```
 
 ---
