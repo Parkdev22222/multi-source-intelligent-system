@@ -2,20 +2,26 @@
 SAM3 object detector and tracker for aerial imagery.
 
 Two modes:
-  SAM3Detector.detect()           - Sam3Model: text-prompted concept segmentation
+  SAM3Detector.detect()           - sam3 image model: text-prompted segmentation
                                     Used for initial detection on each frame.
-  SAM3Detector.track_objects()    - Sam3Tracker: visual-prompt object tracking
-                                    Takes past-frame bboxes as prompts, returns
-                                    which past objects are still present and where.
+  SAM3Detector.track_objects()    - sam3 video predictor: session-based tracking
+                                    Takes past-frame bboxes + class as prompts,
+                                    returns which past objects are still present.
 
 Pairing flow (in temporal_pairing.py):
   1. track_objects() → TrackedObject list (past_detection_id + new bbox + score)
-  2. pair_by_tracking() matches TrackedObjects to current Sam3Model detections by IoU
+  2. pair_by_tracking() matches TrackedObjects to current detections by IoU
      → status = matched / new / disappeared  (ID-based, not coordinate-based)
+
+SAM3 Installation:
+  git clone https://github.com/facebookresearch/sam3.git
+  cd sam3 && pip install -e .
+  hf auth login  # HuggingFace 접근 토큰 필요
 """
 
 import json
 import logging
+import tempfile
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -30,7 +36,6 @@ from src.config import (
     MILITARY_OBJECT_CLASSES,
     NMS_IOU_THRESHOLD,
     SAM3_DEVICE,
-    SAM3_INFERENCE_SIZE,
     SAM3_MASK_SCORE_THRESHOLD,
     SAM3_MODEL_NAME,
 )
@@ -71,11 +76,10 @@ class DetectionResult:
 @dataclass
 class TrackedObject:
     """
-    Result of Sam3Tracker for one past detection.
+    Result of SAM3 video predictor tracking for one past detection.
 
-    Sam3Tracker takes the past-frame bounding box as a visual prompt and finds
-    the same object in the current frame.  score reflects how confidently the
-    tracker found the object; objects below DETECTION_CONFIDENCE_THRESHOLD are
+    score reflects how confidently the tracker found the object in the
+    current frame; objects below DETECTION_CONFIDENCE_THRESHOLD are
     considered disappeared.
     """
     past_detection_id: str      # ID of the DetectionRecord in the sensor DB
@@ -84,7 +88,7 @@ class TrackedObject:
     bbox_y1: float
     bbox_x2: float
     bbox_y2: float
-    score: float                # Sam3Tracker IOU / presence score
+    score: float                # SAM3 mask IOU / presence score
 
 
 # ---------------------------------------------------------------------------
@@ -113,20 +117,10 @@ def _mask_to_bbox(mask: np.ndarray) -> Tuple[float, float, float, float]:
     return float(x_min), float(y_min), float(x_max), float(y_max)
 
 
-def _scale_mask(mask: np.ndarray, orig_w: int, orig_h: int) -> np.ndarray:
-    from PIL import Image as PILImage
-    pil = PILImage.fromarray(mask.astype(np.uint8) * 255, mode="L")
-    pil = pil.resize((orig_w, orig_h), PILImage.NEAREST)
-    return np.array(pil) > 127
-
-
 def _tighten_mask(mask: np.ndarray) -> np.ndarray:
     """
     마스크에서 가장 큰 연결 성분(connected component)만 남긴다.
-
-    SAM3 텍스트 프롬프트 세그멘테이션은 객체 주변 문맥 픽셀까지 포함하는
-    경향이 있어, 이 함수로 노이즈 픽셀을 제거하면 bbox가 실제 객체에
-    훨씬 가깝게 수렴한다.  scipy가 없을 경우 원본 마스크를 그대로 반환.
+    scipy가 없을 경우 원본 마스크를 그대로 반환.
     """
     if not mask.any():
         return mask
@@ -135,9 +129,8 @@ def _tighten_mask(mask: np.ndarray) -> np.ndarray:
         labeled, n = ndimage_label(mask)
         if n == 0:
             return mask
-        # 각 레이블 크기 계산 후 가장 큰 것 선택
         sizes = np.bincount(labeled.ravel())
-        sizes[0] = 0  # 배경(0) 제외
+        sizes[0] = 0
         return labeled == sizes.argmax()
     except ImportError:
         return mask
@@ -171,25 +164,43 @@ def _nms_detections(
     return kept
 
 
+def _iou(box_a: Tuple, box_b: Tuple) -> float:
+    """두 bbox (x1,y1,x2,y2) 의 IoU."""
+    ix1 = max(box_a[0], box_b[0])
+    iy1 = max(box_a[1], box_b[1])
+    ix2 = min(box_a[2], box_b[2])
+    iy2 = min(box_a[3], box_b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter == 0.0:
+        return 0.0
+    area_a = (box_a[2] - box_a[0]) * (box_a[3] - box_a[1])
+    area_b = (box_b[2] - box_b[0]) * (box_b[3] - box_b[1])
+    return inter / (area_a + area_b - inter + 1e-6)
+
+
 # ---------------------------------------------------------------------------
 # SAM3 Detector + Tracker
 # ---------------------------------------------------------------------------
 
 class SAM3Detector:
     """
-    Wraps facebook/sam3 via HuggingFace Transformers.
+    facebook/sam3 패키지를 직접 사용하는 탐지기.
 
-    - Sam3Model   (self._model)   : text-prompted concept segmentation per image.
-    - Sam3Tracker (self._tracker) : visual-prompt object tracking across frames.
-    - Sam3Processor (self._processor): shared by both models.
+    - _model / _processor  : sam3 image model (텍스트 프롬프트 세그멘테이션)
+    - _video_predictor     : sam3 video predictor (세션 기반 객체 추적)
 
-    Both models are lazy-loaded on first use.
+    두 모델 모두 첫 호출 시 lazy-load.
+
+    SAM3 설치:
+        git clone https://github.com/facebookresearch/sam3.git
+        cd sam3 && pip install -e .
+        hf auth login
     """
 
     def __init__(self):
-        self._model = None        # Sam3Model
-        self._tracker = None      # Sam3Tracker
-        self._processor = None    # Sam3Processor (shared)
+        self._model = None            # build_sam3_image_model() 반환값
+        self._processor = None        # Sam3Processor(model)
+        self._video_predictor = None  # build_sam3_video_predictor() 반환값
         self._tracker_load_attempted = False
         self._device = SAM3_DEVICE if torch.cuda.is_available() else "cpu"
 
@@ -197,75 +208,47 @@ class SAM3Detector:
     # Model loaders
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _import_sam2():
-        """
-        transformers 버전에 따라 SAM2 관련 클래스를 반환.
-        Sam2Model / Sam2Processor (transformers >= 4.47) 우선 시도,
-        실패 시 구버전 SamModel / SamProcessor 사용.
-        """
-        try:
-            from transformers import Sam2Model, Sam2Processor
-            return Sam2Model, Sam2Processor
-        except ImportError:
-            pass
-        try:
-            from transformers import SamModel, SamProcessor
-            return SamModel, SamProcessor
-        except ImportError:
-            raise ImportError(
-                "transformers에서 SAM 모델을 찾을 수 없습니다. "
-                "pip install 'transformers>=4.47.0' 를 실행하세요."
-            )
-
     def _load_model(self) -> None:
         try:
-            ModelCls, ProcessorCls = self._import_sam2()
+            from sam3.model_builder import build_sam3_image_model
+            from sam3.model.sam3_image_processor import Sam3Processor
+
             logger.info(
-                f"[SAM3Detector] Loading {ModelCls.__name__} "
+                f"[SAM3Detector] Loading sam3 image model "
                 f"({SAM3_MODEL_NAME}) on {self._device} …"
             )
-            self._processor = ProcessorCls.from_pretrained(SAM3_MODEL_NAME)
-            self._model = ModelCls.from_pretrained(
-                SAM3_MODEL_NAME,
-                torch_dtype=torch.float16 if self._device == "cuda" else torch.float32,
-            ).to(self._device)
-            self._model.eval()
-            logger.info(f"[SAM3Detector] {ModelCls.__name__} loaded.")
-        except (ImportError, OSError) as exc:
+            self._model = build_sam3_image_model(SAM3_MODEL_NAME)
+            self._model = self._model.to(self._device).eval()
+            self._processor = Sam3Processor(self._model)
+            logger.info("[SAM3Detector] sam3 image model loaded.")
+        except (ImportError, OSError, Exception) as exc:
             logger.warning(
-                f"[SAM3Detector] Could not load SAM model ({exc}). "
-                "Using fallback grid-detector."
+                f"[SAM3Detector] Could not load sam3 image model ({exc}). "
+                "Using fallback grid-detector. "
+                "Install: git clone https://github.com/facebookresearch/sam3.git && pip install -e ."
             )
             self._model = None
 
     def _load_tracker(self) -> None:
         self._tracker_load_attempted = True
         try:
-            # SAM2VideoPredictor: 프레임 간 객체 추적 전용 클래스
-            from transformers import Sam2VideoPredictor
+            from sam3.model_builder import build_sam3_video_predictor
+
             logger.info(
-                f"[SAM3Detector] Loading Sam2VideoPredictor "
+                f"[SAM3Detector] Loading sam3 video predictor "
                 f"({SAM3_MODEL_NAME}) on {self._device} …"
             )
-            if self._processor is None:
-                _, ProcessorCls = self._import_sam2()
-                self._processor = ProcessorCls.from_pretrained(SAM3_MODEL_NAME)
-            self._tracker = Sam2VideoPredictor.from_pretrained(
-                SAM3_MODEL_NAME,
-                torch_dtype=torch.float16 if self._device == "cuda" else torch.float32,
-            ).to(self._device)
-            self._tracker.eval()
-            logger.info("[SAM3Detector] Sam2VideoPredictor loaded.")
-        except (ImportError, OSError) as exc:
+            self._video_predictor = build_sam3_video_predictor(SAM3_MODEL_NAME)
+            logger.info("[SAM3Detector] sam3 video predictor loaded.")
+        except (ImportError, OSError, Exception) as exc:
             logger.warning(
-                f"[SAM3Detector] Could not load SAM2VideoPredictor ({exc}). "
-                "Tracking will fall back to returning all past detections as-is."
+                f"[SAM3Detector] Could not load sam3 video predictor ({exc}). "
+                "Tracking will fall back to image-model re-detection."
             )
-            self._tracker = None
+            self._video_predictor = None
 
     # ------------------------------------------------------------------
-    # Fallbacks (no model weights / no GPU)
+    # Fallbacks
     # ------------------------------------------------------------------
 
     def _fallback_detect(
@@ -303,12 +286,9 @@ class SAM3Detector:
     def _fallback_track(
         self, past_detections: list
     ) -> List[TrackedObject]:
-        """
-        Fallback when Sam3Tracker is unavailable.
-        Returns all past detections as tracked at their original positions.
-        """
+        """video predictor 사용 불가 시 과거 위치를 그대로 유지."""
         logger.warning(
-            "[SAM3Detector] Sam3Tracker unavailable – "
+            "[SAM3Detector] video predictor unavailable – "
             "treating all past detections as tracked (positions unchanged)."
         )
         return [
@@ -323,7 +303,7 @@ class SAM3Detector:
         ]
 
     # ------------------------------------------------------------------
-    # SAM2 기반 탐지 (그리드 포인트 프롬프트 방식)
+    # SAM3 image model: text-prompted detection (class별 1회 forward pass)
     # ------------------------------------------------------------------
 
     def _detect_class(
@@ -337,94 +317,72 @@ class SAM3Detector:
         image_id: str,
         meta: ImageMeta,
     ) -> List[DetectionResult]:
-        # SAM2는 텍스트 프롬프트를 지원하지 않습니다.
-        # 이미지를 격자로 나눠 각 셀 중심점을 positive point 프롬프트로 전달 →
-        # SAM2가 해당 위치에 있는 객체를 세그멘테이션합니다.
-        # (텍스트 기반 분류는 confidence 값으로 대체 - 마스크 IOU score 사용)
-        grid_n = 4  # 4×4 = 16 포인트 프롬프트
-        step_x = orig_w / grid_n
-        step_y = orig_h / grid_n
-        input_points = [
-            [[int(step_x * (gx + 0.5)), int(step_y * (gy + 0.5))]]
-            for gy in range(grid_n)
-            for gx in range(grid_n)
-        ]  # shape: (16, 1, 2)
-        input_labels = [[1]] * len(input_points)  # 모두 positive point
+        """
+        SAM3 텍스트 프롬프트로 class_name 에 해당하는 객체를 탐지.
 
-        inputs = self._processor(
-            images=pil_image,
-            input_points=[input_points],
-            input_labels=[input_labels],
-            return_tensors="pt",
-        ).to(self._device)
+        sam3 API:
+            inference_state = processor.set_image(pil_image)
+            output = processor.set_text_prompt(state=inference_state, prompt=class_name)
+            masks, boxes, scores = output["masks"], output["boxes"], output["scores"]
+        """
+        inference_state = self._processor.set_image(pil_image)
+        output = self._processor.set_text_prompt(
+            state=inference_state,
+            prompt=class_name,
+        )
 
-        with torch.no_grad():
-            outputs = self._model(**inputs)
+        masks_out  = output.get("masks",  [])   # list[np.ndarray] | ndarray (N, H, W)
+        boxes_out  = output.get("boxes",  [])   # (N, 4)  xyxy float
+        scores_out = output.get("scores", [])   # (N,)    float
 
-        # pred_masks:  (1, num_points, num_masks_per_point, H, W)
-        # iou_scores:  (1, num_points, num_masks_per_point)
-        # multimask_output=True 이면 num_masks_per_point=3, False 이면 1
-        # best mask per point: iou_scores 가 가장 높은 것 선택
-        pred_masks  = outputs.pred_masks[0]   # (num_points, K, H, W)
-        iou_scores  = outputs.iou_scores[0]   # (num_points, K)
+        # numpy 배열로 통일
+        if hasattr(masks_out, "cpu"):
+            masks_out = masks_out.cpu().numpy()
+        if hasattr(boxes_out, "cpu"):
+            boxes_out = boxes_out.cpu().numpy()
+        if hasattr(scores_out, "cpu"):
+            scores_out = scores_out.cpu().numpy()
 
-        # 각 포인트에서 best mask 선택
-        best_k      = iou_scores.argmax(dim=-1)   # (num_points,)
-        best_scores = iou_scores.gather(1, best_k.unsqueeze(1)).squeeze(1)  # (num_points,)
-        best_masks  = pred_masks[
-            torch.arange(pred_masks.shape[0]), best_k
-        ]  # (num_points, H, W)
+        masks_out  = np.asarray(masks_out)
+        boxes_out  = np.asarray(boxes_out)
+        scores_out = np.asarray(scores_out).flatten()
 
-        # 원본 해상도로 복원
-        orig_sizes = inputs.get("original_sizes", torch.tensor([[orig_h, orig_w]]))
-        reshaped   = inputs.get("reshaped_input_sizes", orig_sizes)
-        masks_upsampled = self._processor.post_process_masks(
-            best_masks.unsqueeze(0).cpu(),
-            orig_sizes.cpu(),
-            reshaped.cpu(),
-        )[0]  # (num_points, H, W)  bool tensor
-
-        # pseudo seg_results 구조로 통일
-        seg_results = [{
-            "scores": best_scores.cpu(),
-            "masks":  masks_upsampled.cpu(),
-            "boxes":  torch.zeros(len(input_points), 4),  # 마스크에서 재계산
-        }]
-
-        detections: List[DetectionResult] = []
-        result = seg_results[0]
-        scores = result.get("scores", torch.tensor([]))
-        boxes = result.get("boxes", torch.tensor([]))
-        masks = result.get("masks", torch.tensor([]))
         max_area = MAX_BBOX_AREA_RATIO * orig_w * orig_h
+        detections: List[DetectionResult] = []
 
-        for i in range(len(scores)):
-            confidence = float(scores[i])
+        for i, confidence in enumerate(scores_out):
+            confidence = float(confidence)
             if confidence < SAM3_MASK_SCORE_THRESHOLD:
                 continue
 
-            if masks.numel() > 0:
-                raw_mask = masks[i].cpu().numpy().astype(bool)
-                # 가장 큰 연결 성분만 남겨 노이즈 픽셀 제거 → bbox 축소
+            # 마스크 처리
+            if masks_out.ndim >= 3 and i < len(masks_out):
+                raw_mask = masks_out[i].astype(bool)
+                if raw_mask.shape != (orig_h, orig_w):
+                    # 출력 해상도가 다를 경우 원본 크기로 리사이즈
+                    from PIL import Image as PILImage
+                    pil_mask = PILImage.fromarray(raw_mask.astype(np.uint8) * 255, "L")
+                    pil_mask = pil_mask.resize((orig_w, orig_h), PILImage.NEAREST)
+                    raw_mask = np.array(pil_mask) > 127
                 mask_np = _tighten_mask(raw_mask)
             else:
                 mask_np = None
 
-            # 마스크 기반 bbox 재계산 (모델 출력 boxes 보다 tight)
+            # bbox 결정: 마스크 기반 → boxes 폴백
             if mask_np is not None and mask_np.any():
                 try:
                     x1, y1, x2, y2 = _mask_to_bbox(mask_np)
                 except (IndexError, ValueError):
-                    x1, y1, x2, y2 = (float(v) for v in boxes[i])
-            else:
-                x1, y1, x2, y2 = (float(v) for v in boxes[i])
+                    x1, y1, x2, y2 = (float(v) for v in boxes_out[i])
+            elif i < len(boxes_out):
+                x1, y1, x2, y2 = (float(v) for v in boxes_out[i])
                 mask_np = np.zeros((orig_h, orig_w), dtype=bool)
                 mask_np[int(y1):int(y2), int(x1):int(x2)] = True
+            else:
+                continue
 
-            # 최소 크기 필터 (4px 이하 노이즈)
             if (x2 - x1) < 4 or (y2 - y1) < 4:
                 continue
-            # 최대 크기 필터 (이미지 면적의 MAX_BBOX_AREA_RATIO 초과 차단)
             if (x2 - x1) * (y2 - y1) > max_area:
                 continue
 
@@ -444,10 +402,10 @@ class SAM3Detector:
 
     def detect(self, loaded_image: LoadedImage, image_id: str) -> List[DetectionResult]:
         """
-        SAM2 그리드 포인트 프롬프트로 객체를 탐지한다.
-        각 군사 클래스별로 _detect_class()를 호출하고 NMS로 중복 제거 후 반환.
+        SAM3 텍스트 프롬프트 세그멘테이션으로 군사 객체를 탐지한다.
+        MILITARY_OBJECT_CLASSES 각 클래스마다 _detect_class() 호출 후 NMS 적용.
         """
-        if self._model is None and self._processor is None:
+        if self._model is None:
             self._load_model()
 
         image_np = loaded_image.array
@@ -487,7 +445,7 @@ class SAM3Detector:
         return final
 
     # ------------------------------------------------------------------
-    # Sam3Tracker: visual-prompt object tracking across frames
+    # SAM3 video predictor: session-based object tracking across frames
     # ------------------------------------------------------------------
 
     def track_objects(
@@ -498,21 +456,29 @@ class SAM3Detector:
         orig_h: int,
     ) -> List[TrackedObject]:
         """
-        Use Sam3Tracker to find past objects in the current frame.
+        SAM3 video predictor로 현재 프레임에서 과거 객체를 추적한다.
 
-        Each past detection's bounding box is passed as a visual prompt.
-        Sam3Tracker outputs a mask + score per prompt.
-        Objects with score >= DETECTION_CONFIDENCE_THRESHOLD are returned
-        as TrackedObject with their updated current-frame bbox.
+        sam3 video predictor API:
+            response = video_predictor.handle_request(
+                request=dict(type="start_session", resource_path="<image_path>")
+            )
+            session_id = response["session_id"]
+            response = video_predictor.handle_request(
+                request=dict(type="add_prompt", session_id=session_id,
+                             frame_index=0, text="<class_name>")
+            )
+            output = response["outputs"]
+
+        현재 프레임을 임시 파일로 저장 → 세션 시작 → 각 과거 객체 클래스로
+        텍스트 프롬프트 추가 → 출력 bbox를 과거 bbox와 IoU로 매칭.
 
         Args:
             pil_image:        Current-frame PIL image (RGB).
             past_detections:  DetectionRecord list from the most-recent past frame.
-            orig_w / orig_h:  Original image dimensions for mask rescaling.
+            orig_w / orig_h:  Original image dimensions.
 
         Returns:
             List of TrackedObject – one entry per successfully tracked past object.
-            Past detections absent from this list are considered "disappeared".
         """
         if not past_detections:
             return []
@@ -520,74 +486,134 @@ class SAM3Detector:
         if not self._tracker_load_attempted:
             self._load_tracker()
 
-        if self._tracker is None:
+        if self._video_predictor is None:
             return self._fallback_track(past_detections)
-
-        past_boxes = [
-            [d.bbox_x1, d.bbox_y1, d.bbox_x2, d.bbox_y2]
-            for d in past_detections
-        ]
-
-        # Sam2VideoPredictor: 과거 bbox를 input_boxes 프롬프트로 전달
-        # 각 박스에 대해 현재 프레임에서 같은 객체를 세그멘테이션
-        inputs = self._processor(
-            images=pil_image,
-            input_boxes=[past_boxes],   # (1, n_objects, 4)
-            return_tensors="pt",
-        ).to(self._device)
-
-        with torch.no_grad():
-            outputs = self._tracker(**inputs)
-
-        # pred_masks : (1, n_objects, K, H, W)  K = 후보 마스크 수
-        # iou_scores : (1, n_objects, K)
-        raw_masks  = outputs.pred_masks[0]   # (n_objects, K, H, W)
-        raw_scores = outputs.iou_scores[0]   # (n_objects, K)
-
-        # 각 객체의 best mask 선택
-        best_k       = raw_scores.argmax(dim=-1)          # (n_objects,)
-        scores_np    = raw_scores.gather(
-            1, best_k.unsqueeze(1)
-        ).squeeze(1).cpu().float().numpy()                # (n_objects,)
-        masks_tensor = raw_masks[
-            torch.arange(raw_masks.shape[0]), best_k
-        ]  # (n_objects, H, W)
 
         tracked: List[TrackedObject] = []
 
-        for i, (past_det, score) in enumerate(zip(past_detections, scores_np)):
-            if float(score) < DETECTION_CONFIDENCE_THRESHOLD:
-                logger.debug(
-                    f"[Sam3Tracker] Object {past_det.id[:8]} "
-                    f"({past_det.object_class}) score={score:.3f} → disappeared"
-                )
-                continue
+        try:
+            # video predictor 는 파일 경로를 받으므로 현재 프레임을 임시 저장
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                tmp_path = tmp.name
+            pil_image.save(tmp_path, format="JPEG", quality=95)
 
-            mask_np = (torch.sigmoid(masks_tensor[i]) > 0.5).cpu().numpy()
-            mask_np = _scale_mask(mask_np, orig_w, orig_h)
-
-            if not mask_np.any():
-                continue
-
-            try:
-                x1, y1, x2, y2 = _mask_to_bbox(mask_np)
-            except (IndexError, ValueError):
-                continue
-
-            tracked.append(TrackedObject(
-                past_detection_id=past_det.id,
-                past_object_class=past_det.object_class,
-                bbox_x1=x1, bbox_y1=y1,
-                bbox_x2=x2, bbox_y2=y2,
-                score=float(score),
-            ))
-            logger.debug(
-                f"[Sam3Tracker] Object {past_det.id[:8]} "
-                f"({past_det.object_class}) tracked  score={score:.3f}"
+            # 세션 시작
+            response = self._video_predictor.handle_request(
+                request=dict(type="start_session", resource_path=tmp_path)
             )
+            session_id = response["session_id"]
+
+            # 과거 객체 클래스별로 텍스트 프롬프트 추가
+            # 같은 클래스가 여러 개 있을 수 있으므로 클래스별로 묶어서 처리
+            class_to_past: dict = {}
+            for d in past_detections:
+                class_to_past.setdefault(d.object_class, []).append(d)
+
+            for class_name, dets in class_to_past.items():
+                try:
+                    response = self._video_predictor.handle_request(
+                        request=dict(
+                            type="add_prompt",
+                            session_id=session_id,
+                            frame_index=0,
+                            text=class_name,
+                        )
+                    )
+                    output = response.get("outputs", {})
+                    new_boxes  = output.get("boxes",  [])
+                    new_scores = output.get("scores", [])
+                    new_masks  = output.get("masks",  [])
+
+                    if hasattr(new_boxes, "cpu"):
+                        new_boxes = new_boxes.cpu().numpy()
+                    if hasattr(new_scores, "cpu"):
+                        new_scores = new_scores.cpu().numpy()
+
+                    new_boxes  = np.asarray(new_boxes)
+                    new_scores = np.asarray(new_scores).flatten()
+
+                    # 각 과거 객체 → IoU가 가장 높은 현재 탐지 결과와 매칭
+                    for past_det in dets:
+                        past_box = (
+                            past_det.bbox_x1, past_det.bbox_y1,
+                            past_det.bbox_x2, past_det.bbox_y2,
+                        )
+                        best_iou, best_idx = 0.0, -1
+                        for j in range(len(new_scores)):
+                            if float(new_scores[j]) < DETECTION_CONFIDENCE_THRESHOLD:
+                                continue
+                            nb = new_boxes[j]
+                            iou = _iou(past_box, (nb[0], nb[1], nb[2], nb[3]))
+                            if iou > best_iou:
+                                best_iou, best_idx = iou, j
+
+                        if best_idx < 0 or best_iou < 0.1:
+                            logger.debug(
+                                f"[SAM3Tracker] {past_det.id[:8]} "
+                                f"({class_name}) → disappeared (best_iou={best_iou:.3f})"
+                            )
+                            continue
+
+                        score = float(new_scores[best_idx])
+                        nb = new_boxes[best_idx]
+
+                        # 마스크가 있으면 tight bbox 재계산
+                        if (hasattr(new_masks, "__len__") and len(new_masks) > best_idx
+                                and new_masks[best_idx] is not None):
+                            raw_mask = np.asarray(new_masks[best_idx]).astype(bool)
+                            if raw_mask.shape != (orig_h, orig_w):
+                                from PIL import Image as PILImage
+                                pm = PILImage.fromarray(raw_mask.astype(np.uint8) * 255, "L")
+                                pm = pm.resize((orig_w, orig_h), PILImage.NEAREST)
+                                raw_mask = np.array(pm) > 127
+                            mask_np = _tighten_mask(raw_mask)
+                            if mask_np.any():
+                                try:
+                                    x1, y1, x2, y2 = _mask_to_bbox(mask_np)
+                                except (IndexError, ValueError):
+                                    x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
+                            else:
+                                x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
+                        else:
+                            x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
+
+                        tracked.append(TrackedObject(
+                            past_detection_id=past_det.id,
+                            past_object_class=class_name,
+                            bbox_x1=float(x1), bbox_y1=float(y1),
+                            bbox_x2=float(x2), bbox_y2=float(y2),
+                            score=score,
+                        ))
+                        logger.debug(
+                            f"[SAM3Tracker] {past_det.id[:8]} ({class_name}) "
+                            f"tracked  score={score:.3f}  iou={best_iou:.3f}"
+                        )
+
+                except Exception as exc:
+                    logger.warning(
+                        f"[SAM3Tracker] Error tracking class '{class_name}': {exc}"
+                    )
+
+            # 세션 정리
+            try:
+                self._video_predictor.handle_request(
+                    request=dict(type="end_session", session_id=session_id)
+                )
+            except Exception:
+                pass
+
+        except Exception as exc:
+            logger.warning(f"[SAM3Tracker] Session error: {exc}. Falling back.")
+            return self._fallback_track(past_detections)
+        finally:
+            import os
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
         logger.info(
-            f"[Sam3Tracker] {len(tracked)}/{len(past_detections)} "
+            f"[SAM3Tracker] {len(tracked)}/{len(past_detections)} "
             "past objects successfully tracked."
         )
         return tracked
