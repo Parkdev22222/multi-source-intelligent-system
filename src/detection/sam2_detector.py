@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 class DetectionResult:
     """Output of SAM3 detection for a single object in an image."""
     detection_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    detection_time: datetime = field(default_factory=datetime.utcnow)
+    detection_time: Optional[datetime] = None
     image_id: str = ""
 
     object_class: str = ""
@@ -255,7 +255,7 @@ class SAM3Detector:
         self, image: np.ndarray, image_id: str, meta: ImageMeta
     ) -> List[DetectionResult]:
         h, w = image.shape[:2]
-        grid, now = 4, datetime.utcnow()
+        grid, now = 4, meta.capture_time
         cell_h, cell_w = h // grid, w // grid
         results: List[DetectionResult] = []
         for gy in range(grid):
@@ -423,7 +423,7 @@ class SAM3Detector:
 
         from PIL import Image as PILImage
         pil_image = PILImage.fromarray(image_np).convert("RGB")
-        now = datetime.utcnow()
+        now = meta.capture_time
         all_results: List[DetectionResult] = []
 
         for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
