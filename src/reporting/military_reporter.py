@@ -4,10 +4,10 @@ Military Change Detection Report Generator using EXAONE4-32b.
 Input:  Latest pairing records from the Pairing DB.
 Output: Structured military intelligence report (Korean/English) covering:
          - Observation summary
-         - Detected object inventory (current vs past)
-         - Change analysis (new assets, disappeared assets, repositioned assets)
+         - Change analysis (new assets and disappeared assets only)
          - Threat assessment
          - Recommended actions
+         NOTE: Stationary and repositioned/moved objects are excluded from the report.
 
 LLM backend can be switched via config:
   LLM_BACKEND=vllm    → loads EXAONE4-32b via vLLM (default)
@@ -42,7 +42,9 @@ def _build_system_prompt() -> str:
     return (
         "You are a military IMINT analyst. Produce a concise formal intelligence report "
         "from AI-based satellite/drone object detection data. "
-        "Use standard section headers. Be factual. Highlight force movements and threat indicators."
+        "Use standard section headers. Be factual. "
+        "Focus exclusively on newly appeared and disappeared objects as indicators of activity. "
+        "Do not analyse or comment on stationary or repositioned objects."
     )
 
 
@@ -66,9 +68,11 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else "N/A"
 
     new_objs = [p for p in pairings if p.status == "new"]
-    matched_objs = [p for p in pairings if p.status == "matched"]
-    moved_objs = [p for p in pairings if p.status == "moved"]
     disappeared_objs = [p for p in pairings if p.status == "disappeared"]
+
+    # matched/moved 객체는 보고서에서 제외 — 집계 참고용으로만 카운트
+    n_matched = sum(1 for p in pairings if p.status == "matched")
+    n_moved   = sum(1 for p in pairings if p.status == "moved")
 
     lats = [p.lat_center for p in pairings]
     lons = [p.lon_center for p in pairings]
@@ -86,8 +90,9 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
     lines = [
         f"TIME: {fmt_dt(report_time)}  ROI: {lat_c:.3f},{lon_c:.3f}"
         f"  WINDOW: {time_past}→{time_current}",
-        f"TOTAL: {len(pairings)}  NEW:{len(new_objs)}  MOVED:{len(moved_objs)}"
-        f"  STATIONARY:{len(matched_objs)}  DISAPPEARED:{len(disappeared_objs)}",
+        f"TOTAL: {len(pairings)}  NEW:{len(new_objs)}  DISAPPEARED:{len(disappeared_objs)}"
+        f"  (EXCLUDED — STATIONARY:{n_matched}  MOVED:{n_moved})",
+        "NOTE: Report covers only NEW and DISAPPEARED objects.",
     ]
 
     # --- NEW objects (high-value: list top _MAX_DETAIL by confidence) ---
@@ -100,30 +105,7 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
         )
     if len(new_objs) > _MAX_DETAIL:
         lines.append(f"  ... +{len(new_objs) - _MAX_DETAIL} more: {_class_counts(new_objs[_MAX_DETAIL:])}")
-
-    # --- MOVED objects ---
-    lines.append("\n=== MOVED OBJECTS ===")
-    top_moved = sorted(moved_objs, key=lambda p: p.current_confidence or 0, reverse=True)
-    for p in top_moved[:_MAX_DETAIL]:
-        lat_d = abs(p.current_lat - p.past_lat) if p.current_lat and p.past_lat else 0
-        lon_d = abs(p.current_lon - p.past_lon) if p.current_lon and p.past_lon else 0
-        dist_m = ((lat_d ** 2 + lon_d ** 2) ** 0.5) * 111000
-        cls_chg = (
-            f" [{p.past_object_class}→{p.current_object_class}]"
-            if p.past_object_class != p.current_object_class else ""
-        )
-        lines.append(
-            f"  {p.current_object_class} ({p.past_lat:.3f},{p.past_lon:.3f})"
-            f"→({p.current_lat:.3f},{p.current_lon:.3f}) ≈{dist_m:.0f}m{cls_chg}"
-        )
-    if len(moved_objs) > _MAX_DETAIL:
-        lines.append(f"  ... +{len(moved_objs) - _MAX_DETAIL} more: {_class_counts(moved_objs[_MAX_DETAIL:])}")
-
-    # --- STATIONARY objects (aggregate only – never list individually) ---
-    lines.append("\n=== STATIONARY OBJECTS (class summary) ===")
-    if matched_objs:
-        lines.append(f"  {_class_counts(matched_objs)}")
-    else:
+    if not new_objs:
         lines.append("  (none)")
 
     # --- DISAPPEARED objects ---
@@ -137,11 +119,14 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
         )
     if len(disappeared_objs) > _MAX_DETAIL:
         lines.append(f"  ... +{len(disappeared_objs) - _MAX_DETAIL} more: {_class_counts(disappeared_objs[_MAX_DETAIL:])}")
+    if not disappeared_objs:
+        lines.append("  (none)")
 
     lines += [
         "\n=== TASK ===",
-        "Write a military intelligence report with sections:",
-        "1.CLASSIFICATION 2.EXECUTIVE SUMMARY 3.SITUATION 4.CHANGE ANALYSIS"
+        "Write a military intelligence report based ONLY on the NEW and DISAPPEARED objects above.",
+        "Do NOT mention stationary or repositioned/moved objects.",
+        "Sections: 1.CLASSIFICATION 2.EXECUTIVE SUMMARY 3.SITUATION 4.CHANGE ANALYSIS"
         " 5.THREAT ASSESSMENT 6.INTELLIGENCE GAPS 7.RECOMMENDED ACTIONS 8.APPENDIX",
     ]
 
@@ -326,7 +311,8 @@ class MilitaryReporter:
             f"  Generated by: Multi-Source Intelligent System (MSIS)\n"
             f"  Model: {LLM_MODEL_NAME}\n"
             f"  Generated: {report_time.strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
-            f"  Records analysed: {len(pairings)}\n"
+            f"  Records analysed: {len(pairings)} total  "
+        f"({sum(1 for p in pairings if p.status in ('new','disappeared'))} new/disappeared used)\n"
             f"{'='*72}\n\n"
         )
         full_report = header + report_text
