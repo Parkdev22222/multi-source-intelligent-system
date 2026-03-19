@@ -89,7 +89,6 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
 
     lines = [
         f"OBSERVATION_WINDOW: {time_past} → {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
-        f"REPORT_GENERATED: {fmt_dt(report_time)}",
         f"TOTAL: {len(pairings)}  NEW:{len(new_objs)}  DISAPPEARED:{len(disappeared_objs)}"
         f"  (EXCLUDED — STATIONARY:{n_matched}  MOVED:{n_moved})",
         "NOTE: Report covers only NEW and DISAPPEARED objects.",
