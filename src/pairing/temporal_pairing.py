@@ -270,10 +270,10 @@ class _CLIPEmbedder:
         self._processor = None
 
     def _load(self):
-        from transformers import CLIPModel, CLIPProcessor
+        from transformers import AutoModel, AutoProcessor
         logger.info(f"[CLIPEmbedder] Loading {CLIP_MODEL_NAME} ...")
-        self._processor = CLIPProcessor.from_pretrained(CLIP_MODEL_NAME)
-        self._model = CLIPModel.from_pretrained(CLIP_MODEL_NAME)
+        self._processor = AutoProcessor.from_pretrained(CLIP_MODEL_NAME)
+        self._model = AutoModel.from_pretrained(CLIP_MODEL_NAME)
         self._model.eval()
         logger.info("[CLIPEmbedder] Ready.")
 
