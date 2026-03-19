@@ -44,7 +44,12 @@ def _build_system_prompt() -> str:
         "from AI-based satellite/drone object detection data. "
         "Use standard section headers. Be factual. "
         "Focus exclusively on newly appeared and disappeared objects as indicators of activity. "
-        "Do not analyse or comment on stationary or repositioned objects."
+        "Do not analyse or comment on stationary or repositioned objects. "
+        "IMPORTANT: 'DISAPPEARED' means the object was observed in the PAST imagery but was "
+        "NOT detected in the CURRENT (most recent) imagery. It does NOT mean the object is "
+        "confirmed destroyed or permanently gone — it may have moved outside the sensor FOV, "
+        "be obscured, or relocated. Always qualify disappearance as 'no longer observed in "
+        "current imagery' rather than implying confirmed destruction or elimination."
     )
 
 
@@ -61,7 +66,7 @@ def _class_counts(objs) -> str:
     return "  ".join(f"{cls}:{n}" for cls, n in counts.most_common())
 
 
-def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> str:
+def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     """Serialise pairing records into a compact prompt for the LLM."""
 
     def fmt_dt(dt: Optional[datetime]) -> str:
@@ -79,23 +84,23 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
     lat_c = sum(lats) / len(lats) if lats else 0.0
     lon_c = sum(lons) / len(lons) if lons else 0.0
 
-    all_times = [
-        p.current_capture_time for p in pairings if p.current_capture_time
-    ] + [
-        p.past_capture_time for p in pairings if p.past_capture_time
-    ]
-    time_past = min(all_times).strftime("%Y-%m-%dT%H:%M:%SZ") if all_times else "UNKNOWN"
-    time_current = max(all_times).strftime("%Y-%m-%dT%H:%M:%SZ") if all_times else "UNKNOWN"
+    past_times = [p.past_capture_time for p in pairings if p.past_capture_time]
+    current_times = [p.current_capture_time for p in pairings if p.current_capture_time]
+    time_past = min(past_times).strftime("%Y-%m-%dT%H:%M:%SZ") if past_times else "UNKNOWN"
+    time_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
     lines = [
-        f"OBSERVATION_WINDOW: {time_past} → {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
+        f"PAST_OBS: {time_past}  CURRENT_OBS: {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
         f"TOTAL: {len(pairings)}  NEW:{len(new_objs)}  DISAPPEARED:{len(disappeared_objs)}"
         f"  (EXCLUDED — STATIONARY:{n_matched}  MOVED:{n_moved})",
+        "NOTE: NEW = detected in CURRENT_OBS but absent in PAST_OBS.",
+        "NOTE: DISAPPEARED = detected in PAST_OBS but NOT observed in CURRENT_OBS"
+        " (location unknown — may have relocated or exited sensor coverage).",
         "NOTE: Report covers only NEW and DISAPPEARED objects.",
     ]
 
     # --- NEW objects (high-value: list top _MAX_DETAIL by confidence) ---
-    lines.append("\n=== NEW OBJECTS ===")
+    lines.append(f"\n=== NEW OBJECTS (first observed at CURRENT_OBS: {time_current}) ===")
     top_new = sorted(new_objs, key=lambda p: p.current_confidence or 0, reverse=True)
     for p in top_new[:_MAX_DETAIL]:
         lines.append(
@@ -109,13 +114,16 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
         lines.append("  (none)")
 
     # --- DISAPPEARED objects ---
-    lines.append("\n=== DISAPPEARED OBJECTS ===")
+    lines.append(
+        f"\n=== DISAPPEARED OBJECTS"
+        f" (present at PAST_OBS: {time_past}, NOT observed at CURRENT_OBS: {time_current}) ==="
+    )
     top_gone = sorted(disappeared_objs, key=lambda p: p.past_confidence or 0, reverse=True)
     for p in top_gone[:_MAX_DETAIL]:
         lines.append(
             f"  {p.past_object_class} CONF={p.past_confidence:.2f}"
             f" ({p.past_lat:.3f},{p.past_lon:.3f})"
-            f" LAST={fmt_dt(p.past_capture_time)}"
+            f" LAST_SEEN={fmt_dt(p.past_capture_time)}"
         )
     if len(disappeared_objs) > _MAX_DETAIL:
         lines.append(f"  ... +{len(disappeared_objs) - _MAX_DETAIL} more: {_class_counts(disappeared_objs[_MAX_DETAIL:])}")
@@ -125,6 +133,9 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
     lines += [
         "\n=== TASK ===",
         "Write a military intelligence report based ONLY on the NEW and DISAPPEARED objects above.",
+        "Use PAST_OBS and CURRENT_OBS timestamps (not today's date) as the observation times.",
+        "For DISAPPEARED objects, state they were 'no longer observed in current imagery' — "
+        "do NOT imply they are destroyed, eliminated, or permanently gone.",
         "Do NOT mention stationary or repositioned/moved objects.",
         "Sections: 1.CLASSIFICATION 2.EXECUTIVE SUMMARY 3.SITUATION 4.CHANGE ANALYSIS"
         " 5.THREAT ASSESSMENT 6.INTELLIGENCE GAPS 7.RECOMMENDED ACTIONS 8.APPENDIX",
@@ -299,7 +310,7 @@ class MilitaryReporter:
 
         report_time = datetime.now(tz=timezone.utc)
         system_prompt = _build_system_prompt()
-        user_prompt = _build_user_prompt(pairings, report_time)
+        user_prompt = _build_user_prompt(pairings)
 
         logger.info(f"[Reporter] Generating military report for {len(pairings)} pairings...")
         report_text = self._backend.generate(system_prompt, user_prompt)
