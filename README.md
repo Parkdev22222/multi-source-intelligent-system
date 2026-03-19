@@ -252,6 +252,121 @@ civilian vehicle · civilian building · road · runway · unknown object
 
 ---
 
+## 탐지 결과 시각화
+
+파이프라인 실행 후 두 가지 도구로 결과를 확인할 수 있습니다.
+
+---
+
+### 1. DB 조회 (`view_detections.py`)
+
+탐지 결과를 터미널 텍스트로 조회합니다.
+
+```bash
+# 최근 탐지 20건 (기본)
+python view_detections.py
+
+# 최근 50건
+python view_detections.py --limit 50
+
+# 특정 클래스 필터 (부분 일치)
+python view_detections.py --class "military tank"
+
+# 특정 이미지의 탐지 결과
+python view_detections.py --image-id <uuid>
+
+# 특정 세션의 페어링 결과
+python view_detections.py --session <uuid>
+
+# 클래스별 통계 요약 + 이미지별 탐지 수
+python view_detections.py --summary
+
+# 페어링 결과 조회
+python view_detections.py --pairings
+
+# 페어링 결과 + status 필터 (matched / new / disappeared)
+python view_detections.py --pairings --status matched
+python view_detections.py --pairings --status new
+python view_detections.py --pairings --status disappeared
+```
+
+출력 예시:
+```
+══════════════════════════════════════════════════════════════════════════════════════════
+  SAM3 탐지 결과  (sensor_detections.db  →  detection_records)
+══════════════════════════════════════════════════════════════════════════════════════════
+  총 5건 표시 (최신순)
+
+  ID        탐지시각              클래스               신뢰도    위도          경도         BBox W×H
+  ──────────────────────────────────────────────────────────────────────────────────────────
+  a1b2c3d4  2026-03-18 12:00:00  military tank        0.872   37.5765    126.9680   120×80
+  ...
+```
+
+---
+
+### 2. 이미지 시각화 (`visualize_detections.py`)
+
+DB의 탐지 결과를 원본 이미지 위에 렌더링하여 PNG로 저장합니다.
+바운딩박스, 반투명 마스크 오버레이, 클래스·신뢰도 레이블을 그립니다.
+
+```bash
+# 최근 이미지 1장 시각화 (기본, detection_output/ 에 저장)
+python visualize_detections.py
+
+# 최근 이미지 5장 시각화
+python visualize_detections.py --limit 5
+
+# 특정 이미지 UUID 지정
+python visualize_detections.py --image-id <uuid>
+
+# 특정 클래스가 탐지된 이미지만 시각화
+python visualize_detections.py --class "military tank"
+
+# 마스크 오버레이 없이 bbox + 레이블만 그리기
+python visualize_detections.py --no-mask
+
+# 저장 디렉터리 지정
+python visualize_detections.py --out-dir ./my_output
+
+# 저장 후 기본 이미지 뷰어로 바로 열기
+python visualize_detections.py --show
+
+# 옵션 조합 예시
+python visualize_detections.py --limit 3 --class "helicopter" --no-mask --out-dir ./results --show
+```
+
+출력 파일명 형식: `YYYYMMDD_HHMMSS_<이미지ID8자>_<탐지수>dets.png`
+
+#### 렌더링 요소
+
+| 요소 | 설명 |
+|---|---|
+| 반투명 마스크 | SAM3가 출력한 `mask_rle`를 복원해 클래스별 색상으로 오버레이 (투명도 35%) |
+| 바운딩박스 | 3px 두께, 클래스별 고유 색상 |
+| 레이블 | `클래스명  신뢰도` 텍스트 (배경 박스 포함) |
+
+> `--no-mask` 옵션을 사용하면 mask_rle 없이 bbox + 레이블만 렌더링하므로 더 빠릅니다.
+
+---
+
+### 클래스별 색상 팔레트
+
+| 인덱스 | 색상 |
+|---|---|
+| 0 | 빨강 |
+| 1 | 파랑 |
+| 2 | 초록 |
+| 3 | 주황 |
+| 4 | 보라 |
+| 5 | 청록 |
+| 6 | 핑크 |
+| 7 | 노랑 |
+| 8 | 연주황 |
+| 9 | 연파랑 |
+
+---
+
 ## Notes
 
 - **SAM3 resolution**: SAM3 requires a fixed inference resolution of 1008×1008.
