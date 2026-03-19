@@ -295,10 +295,19 @@ def process(
               f"경로={img_rec.image_path}")
 
         # ── 원본 이미지 로드 ──────────────────────────────────────────
+        # image_loader.iter_images() 와 동일한 max_dim 리사이즈를 적용해야
+        # DB에 저장된 bbox 좌표계(탐지 시 리사이즈된 해상도)와 일치한다.
+        MAX_DIM = 2048
         img_path = find_image_file(img_rec.image_path)
         if img_path:
             try:
                 pil_img = Image.open(img_path).convert("RGB")
+                w, h = pil_img.size
+                if max(w, h) > MAX_DIM:
+                    scale = MAX_DIM / max(w, h)
+                    pil_img = pil_img.resize(
+                        (int(w * scale), int(h * scale)), Image.LANCZOS
+                    )
             except Exception as e:
                 print(f"  ⚠ 이미지 열기 실패 ({e}), 빈 캔버스 사용")
                 pil_img = Image.new("RGB", (800, 600), (30, 30, 30))
