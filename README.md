@@ -18,16 +18,25 @@ INGESTION LAYER  ──►  ImageLoader (metadata.json index)
          ▼
 DETECTION LAYER  ──►  SAM3 (facebook/sam3) via HuggingFace Transformers
                        Text-prompted concept segmentation (single forward pass)
-                       → object_class, confidence, bbox, mask, lat/lon
+                       → object_class, confidence, bbox, mask_rle, lat/lon
          │
          ▼
 SENSOR DB (SQLite)
   ├─ image_records       (image metadata)
-  └─ detection_records   (object_id, class, confidence, lat, lon, time)
+  └─ detection_records   (object_id, class, confidence, lat, lon, bbox, mask_rle, time)
          │
          ▼
 TEMPORAL PAIRING  ──►  current frame ↔ most-recent past frame
-                        status: new / matched / disappeared
+  ┌──────────────────────────────────────────────────────────────┐
+  │  Mode A  sam3_tracker (default)                              │
+  │    SAM3 video predictor tracks past bbox prompts → IoU match │
+  │                                                              │
+  │  Mode B  similarity                                          │
+  │    1. SAM mask_rle로 배경 마스킹 → bbox crop (object-only)   │
+  │    2. CLIP (openai/clip-vit-base-patch32) image embedding    │
+  │    3. cosine similarity + geo proximity → greedy assignment  │
+  └──────────────────────────────────────────────────────────────┘
+                        status: new / matched / moved / disappeared
          │
          ▼
 PAIRING DB (SQLite)
@@ -37,6 +46,41 @@ PAIRING DB (SQLite)
 REPORTING LAYER  ──►  EXAONE4-32b LLM
                        → Military change-detection intelligence report
 ```
+
+---
+
+## Temporal Pairing 전략
+
+### Mode A: `sam3_tracker` (기본값)
+
+SAM3 비디오 예측기를 이용한 ID-기반 추적.
+
+```
+과거 프레임 bbox + class → SAM3 video predictor → 현재 프레임 TrackedObject
+                                                         ↓ IoU matching
+                                              current DetectionResult
+```
+
+- 장점: 카메라 각도 변화·조명 변화에 강건
+- 단점: SAM3 비디오 세션 오버헤드, GPU 메모리 추가 소모
+
+### Mode B: `similarity` (SAM mask crop + CLIP embedding)
+
+```
+현재/과거 프레임 각 detection
+    ├─ SAM mask_rle로 배경 마스킹 (없으면 bbox crop fallback)
+    └─ CLIP 임베딩 → cosine similarity matrix (N × M)
+
+score = SIMILARITY_CLIP_WEIGHT × clip_sim
+      + (1 − SIMILARITY_CLIP_WEIGHT) × geo_score
+
+geo_dist ≥ COORD_MATCH_RADIUS → 후보 제외 (hard filter)
+greedy assignment (점수 내림차순)
+```
+
+- 장점: 비디오 세션 불필요, 프레임 간격이 길어도 사용 가능
+- 단점: CLIP 모델 로드 (~400 MB), 동일 외형 객체 혼동 가능
+- fallback: CLIP 로드 실패 시 geo-only scoring으로 자동 전환
 
 ---
 
@@ -79,14 +123,31 @@ cp .env.example .env
 
 주요 환경 변수:
 
+**SAM3 / 탐지**
+
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `SAM3_MODEL_NAME` | `facebook/sam3` | SAM3 HuggingFace 모델 ID |
 | `SAM3_DEVICE` | `cuda` | 추론 장치 (`cuda` / `cpu`) |
+| `DETECTION_CONFIDENCE` | `0.3` | 탐지 신뢰도 임계값 |
+
+**Temporal Pairing**
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `TRACKING_MODE` | `sam3_tracker` | `sam3_tracker` \| `similarity` |
+| `CLIP_MODEL_NAME` | `openai/clip-vit-base-patch32` | similarity 모드에서 사용할 CLIP 모델 |
+| `SIMILARITY_CLIP_WEIGHT` | `0.7` | CLIP cosine sim 가중치 (나머지는 geo proximity) |
+| `COORD_MATCH_RADIUS` | `0.01` | 매칭 탐색 반경 (도 단위, ≈ 1 km) |
+| `MOVE_DISTANCE_THRESHOLD` | `0.001` | matched/moved 구분 임계값 (도 단위, ≈ 100 m) |
+
+**LLM / 보고서**
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
 | `LLM_BACKEND` | `huggingface` | LLM 백엔드 (`huggingface` / `ollama`) |
 | `LLM_MODEL_NAME` | `LGAI-EXAONE/EXAONE-4.0-32B-Instruct` | EXAONE 모델 ID |
 | `OLLAMA_MODEL` | `exaone4:32b` | Ollama 사용 시 모델명 |
-| `DETECTION_CONFIDENCE` | `0.3` | 탐지 신뢰도 임계값 |
 
 ### 4. 실행
 
@@ -199,3 +260,7 @@ civilian vehicle · civilian building · road · runway · unknown object
   Falls back to Ollama if HuggingFace backend is unavailable.
 - **Fallback mode**: If SAM3 weights are unavailable (no GPU / offline),
   the system uses a grid-based pseudo-detector for development/testing.
+- **CLIP similarity mode**: `TRACKING_MODE=similarity` 설정 시
+  `openai/clip-vit-base-patch32` (~400 MB)가 첫 실행에 HuggingFace Hub에서
+  자동 다운로드됩니다. CLIP 로드에 실패하면 geo proximity 점수만으로 매칭하며
+  파이프라인은 중단 없이 계속 실행됩니다.
