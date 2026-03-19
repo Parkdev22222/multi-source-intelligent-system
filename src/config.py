@@ -83,5 +83,15 @@ MAX_BBOX_AREA_RATIO = float(os.getenv("MAX_BBOX_AREA_RATIO", "0.15"))
 # SAM3 마스크 세그멘테이션 전용 신뢰도 임계값 (post_process_instance_segmentation)
 SAM3_MASK_SCORE_THRESHOLD = float(os.getenv("SAM3_MASK_SCORE", "0.5"))
 
+# --- Tracking Mode ---
+# "sam3_tracker" : SAM3 video predictor tracks past objects into the current frame
+#                  (requires GPU; accurate but compute-heavy)
+# "similarity"   : matches current detections to past detections by geo-distance
+#                  + class similarity; no video session needed (CPU-friendly)
+TRACKING_MODE = os.getenv("TRACKING_MODE", "sam3_tracker")
+
+# Weight for same-class bonus in similarity scoring (0.0 – 1.0)
+SIMILARITY_CLASS_BONUS = float(os.getenv("SIMILARITY_CLASS_BONUS", "0.3"))
+
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

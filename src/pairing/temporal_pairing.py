@@ -1,34 +1,43 @@
 """
-Temporal object pairing – ID-based via Sam3Tracker.
+Temporal object pairing – two selectable strategies.
 
-Flow (called from pipeline.py):
+Strategy A – "sam3_tracker" (default):
   1. Sam3Tracker runs on the current frame with past-frame bboxes as prompts
      → returns TrackedObject list (past_detection_id + updated bbox + score)
-
   2. pair_by_tracking() assigns status for every object:
-
      ┌──────────────────────┬───────────────────────────────────────────────────┐
      │ status               │ condition                                         │
      ├──────────────────────┼───────────────────────────────────────────────────┤
-     │ "matched"            │ Sam3Tracker found the past object in current frame │
+     │ "matched" / "moved"  │ Sam3Tracker found the past object in current frame │
      │ "new"                │ current detection has no matching tracked past obj │
      │ "disappeared"        │ past object was NOT returned by Sam3Tracker        │
      └──────────────────────┴───────────────────────────────────────────────────┘
 
-  Matching tracked object → current detection:
-    After Sam3Tracker locates a past object, we find the current Sam3Model
-    detection with the highest bbox IoU (>= IOu_MATCH_THRESHOLD) to get the
-    authoritative current-frame detection record.
-    If no current detection overlaps sufficiently, the pair is still recorded
-    as "matched" with current_detection_id=None (tracker confirms presence
-    but Sam3Model did not produce a coincident detection).
+Strategy B – "similarity":
+  No video tracker session needed.
+  pair_by_similarity() directly matches current DetectionResult objects to
+  past DetectionRecord objects using a weighted score:
+    score = (1 - geo_dist / COORDINATE_MATCH_RADIUS_DEG)
+            + SIMILARITY_CLASS_BONUS  (if classes match)
+  Greedy assignment (best-score pair first).  Status rules:
+     ┌──────────────────────┬───────────────────────────────────────────────────┐
+     │ "matched" / "moved"  │ current ↔ past pair found within radius           │
+     │ "new"                │ current detection – no past match within radius    │
+     │ "disappeared"        │ past detection – no current match within radius    │
+     └──────────────────────┴───────────────────────────────────────────────────┘
+
+Select strategy via env var:  TRACKING_MODE=sam3_tracker | similarity
 """
 
 import logging
 from datetime import datetime
 from typing import List, Optional
 
-from src.config import COORDINATE_MATCH_RADIUS_DEG, MOVE_DISTANCE_THRESHOLD_DEG
+from src.config import (
+    COORDINATE_MATCH_RADIUS_DEG,
+    MOVE_DISTANCE_THRESHOLD_DEG,
+    SIMILARITY_CLASS_BONUS,
+)
 from src.database.models import DetectionRecord, PairingRecord
 from src.database.sensor_db import get_most_recent_past_detections
 from src.detection.sam2_detector import DetectionResult, TrackedObject
@@ -231,7 +240,175 @@ def pair_by_tracking(
         pairing_records.append(pr)
 
     logger.info(
-        f"[Pairing] ID-based results for ({region_lat:.4f}, {region_lon:.4f}): "
+        f"[Pairing/tracker] ({region_lat:.4f}, {region_lon:.4f}): "
+        f"{sum(1 for p in pairing_records if p.status == 'matched')} matched  "
+        f"{sum(1 for p in pairing_records if p.status == 'moved')} moved  "
+        f"{sum(1 for p in pairing_records if p.status == 'new')} new  "
+        f"{sum(1 for p in pairing_records if p.status == 'disappeared')} disappeared"
+    )
+    return pairing_records
+
+
+# ---------------------------------------------------------------------------
+# Strategy B: similarity-based pairing (no SAM3 video tracker)
+# ---------------------------------------------------------------------------
+
+def _similarity_score(
+    cur: DetectionResult,
+    past: DetectionRecord,
+) -> float:
+    """
+    Score in [0, 1 + SIMILARITY_CLASS_BONUS].
+    Higher is better.  Returns -1 if outside the match radius.
+    """
+    geo_dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
+    if geo_dist >= COORDINATE_MATCH_RADIUS_DEG:
+        return -1.0
+    geo_score = 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG
+    class_bonus = SIMILARITY_CLASS_BONUS if cur.object_class == past.object_class else 0.0
+    return geo_score + class_bonus
+
+
+def pair_by_similarity(
+    current_detections: List[DetectionResult],
+    past_detections: List[DetectionRecord],
+    current_capture_time: datetime,
+    region_lat: float,
+    region_lon: float,
+    session_id: str,
+    source_type: str = "satellite",
+) -> List[PairingRecord]:
+    """
+    Build PairingRecord list by matching current detections to past detections
+    using geo-distance + class similarity (no SAM3 video tracker required).
+
+    Args:
+        current_detections:   DetectionResult list for the current frame.
+        past_detections:      DetectionRecord list for the most-recent past frame.
+        current_capture_time: Capture timestamp of the current image.
+        region_lat/lon:       Geographic centre of the region.
+        session_id:           Pipeline run UUID.
+        source_type:          "satellite" | "drone"
+
+    Returns:
+        List of PairingRecord ORM objects ready for bulk insertion.
+    """
+    now = datetime.utcnow()
+    pairing_records: List[PairingRecord] = []
+
+    # Build all (score, cur_idx, past_idx) candidate pairs within radius
+    candidates = []
+    for ci, cur in enumerate(current_detections):
+        for pi, past in enumerate(past_detections):
+            score = _similarity_score(cur, past)
+            if score >= 0:
+                candidates.append((score, ci, pi))
+
+    # Greedy assignment: highest-score pair first, each object used once
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    matched_cur_ids: set = set()
+    matched_past_ids: set = set()
+    pairs: List[tuple] = []  # (DetectionResult, DetectionRecord)
+
+    for _score, ci, pi in candidates:
+        cur = current_detections[ci]
+        past = past_detections[pi]
+        if cur.detection_id in matched_cur_ids or past.id in matched_past_ids:
+            continue
+        matched_cur_ids.add(cur.detection_id)
+        matched_past_ids.add(past.id)
+        pairs.append((cur, past))
+
+    # ------------------------------------------------------------------
+    # 1. "matched" / "moved" – pairs within radius
+    # ------------------------------------------------------------------
+    for cur, past in pairs:
+        dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
+        status = "moved" if dist > MOVE_DISTANCE_THRESHOLD_DEG else "matched"
+        pr = PairingRecord(
+            pairing_time=now,
+            lat_center=region_lat,
+            lon_center=region_lon,
+            current_detection_id=cur.detection_id,
+            current_object_class=cur.object_class,
+            current_confidence=cur.confidence,
+            current_lat=cur.lat,
+            current_lon=cur.lon,
+            current_capture_time=current_capture_time,
+            current_bbox={
+                "x1": cur.bbox_x1, "y1": cur.bbox_y1,
+                "x2": cur.bbox_x2, "y2": cur.bbox_y2,
+            },
+            past_detection_id=past.id,
+            past_object_class=past.object_class,
+            past_confidence=past.confidence,
+            past_lat=past.lat,
+            past_lon=past.lon,
+            past_capture_time=past.detection_time,
+            past_bbox={
+                "x1": past.bbox_x1, "y1": past.bbox_y1,
+                "x2": past.bbox_x2, "y2": past.bbox_y2,
+            },
+            status=status,
+            source_type=source_type,
+            session_id=session_id,
+        )
+        pairing_records.append(pr)
+
+    # ------------------------------------------------------------------
+    # 2. "new" – current detections with no past match
+    # ------------------------------------------------------------------
+    for cur in current_detections:
+        if cur.detection_id in matched_cur_ids:
+            continue
+        pr = PairingRecord(
+            pairing_time=now,
+            lat_center=region_lat,
+            lon_center=region_lon,
+            current_detection_id=cur.detection_id,
+            current_object_class=cur.object_class,
+            current_confidence=cur.confidence,
+            current_lat=cur.lat,
+            current_lon=cur.lon,
+            current_capture_time=current_capture_time,
+            current_bbox={
+                "x1": cur.bbox_x1, "y1": cur.bbox_y1,
+                "x2": cur.bbox_x2, "y2": cur.bbox_y2,
+            },
+            status="new",
+            source_type=source_type,
+            session_id=session_id,
+        )
+        pairing_records.append(pr)
+
+    # ------------------------------------------------------------------
+    # 3. "disappeared" – past detections with no current match
+    # ------------------------------------------------------------------
+    for past in past_detections:
+        if past.id in matched_past_ids:
+            continue
+        pr = PairingRecord(
+            pairing_time=now,
+            lat_center=region_lat,
+            lon_center=region_lon,
+            past_detection_id=past.id,
+            past_object_class=past.object_class,
+            past_confidence=past.confidence,
+            past_lat=past.lat,
+            past_lon=past.lon,
+            past_capture_time=past.detection_time,
+            past_bbox={
+                "x1": past.bbox_x1, "y1": past.bbox_y1,
+                "x2": past.bbox_x2, "y2": past.bbox_y2,
+            },
+            status="disappeared",
+            source_type=source_type,
+            session_id=session_id,
+        )
+        pairing_records.append(pr)
+
+    logger.info(
+        f"[Pairing/similarity] ({region_lat:.4f}, {region_lon:.4f}): "
         f"{sum(1 for p in pairing_records if p.status == 'matched')} matched  "
         f"{sum(1 for p in pairing_records if p.status == 'moved')} moved  "
         f"{sum(1 for p in pairing_records if p.status == 'new')} new  "

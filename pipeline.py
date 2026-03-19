@@ -50,7 +50,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from src.config import IMAGES_DIR, COORDINATE_MATCH_RADIUS_DEG
+from src.config import IMAGES_DIR, COORDINATE_MATCH_RADIUS_DEG, TRACKING_MODE
 from src.database.models import DetectionRecord
 from src.database.sensor_db import (
     insert_image_record,
@@ -63,7 +63,7 @@ from src.database.pairing_db import (
 )
 from src.detection.image_loader import load_metadata_index, iter_images
 from src.detection.sam2_detector import SAM3Detector, DetectionResult
-from src.pairing.temporal_pairing import pair_by_tracking
+from src.pairing.temporal_pairing import pair_by_tracking, pair_by_similarity
 from src.reporting.military_reporter import MilitaryReporter
 
 logging.basicConfig(
@@ -239,26 +239,37 @@ class MavenPipeline:
                 before_time=meta.capture_time,
             )
 
-            # --- Run Sam3Tracker ---
+            # --- Build pairing records ---
             orig_h, orig_w = loaded.array.shape[:2]
-            pil_image = PILImage.fromarray(loaded.array).convert("RGB")
 
-            tracked_objects = (
-                self.detector.track_objects(pil_image, past_records, orig_w, orig_h)
-                if past_records else []
-            )
-
-            # --- Build pairing records by object ID ---
-            pairing_records = pair_by_tracking(
-                tracked_objects=tracked_objects,
-                current_detections=current_dets,
-                past_detections=past_records,
-                current_capture_time=meta.capture_time,
-                region_lat=meta.lat_center,
-                region_lon=meta.lon_center,
-                session_id=session_id,
-                source_type=meta.source_type,
-            )
+            if TRACKING_MODE == "similarity":
+                # Strategy B: geo-distance + class similarity, no video tracker
+                pairing_records = pair_by_similarity(
+                    current_detections=current_dets,
+                    past_detections=past_records,
+                    current_capture_time=meta.capture_time,
+                    region_lat=meta.lat_center,
+                    region_lon=meta.lon_center,
+                    session_id=session_id,
+                    source_type=meta.source_type,
+                )
+            else:
+                # Strategy A (default): SAM3 video tracker
+                pil_image = PILImage.fromarray(loaded.array).convert("RGB")
+                tracked_objects = (
+                    self.detector.track_objects(pil_image, past_records, orig_w, orig_h)
+                    if past_records else []
+                )
+                pairing_records = pair_by_tracking(
+                    tracked_objects=tracked_objects,
+                    current_detections=current_dets,
+                    past_detections=past_records,
+                    current_capture_time=meta.capture_time,
+                    region_lat=meta.lat_center,
+                    region_lon=meta.lon_center,
+                    session_id=session_id,
+                    source_type=meta.source_type,
+                )
 
             if pairing_records:
                 insert_pairings_bulk(pairing_records)
