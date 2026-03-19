@@ -33,7 +33,7 @@ TEMPORAL PAIRING  ──►  current frame ↔ most-recent past frame
   │                                                              │
   │  Mode B  similarity                                          │
   │    1. SAM mask_rle로 배경 마스킹 → bbox crop (object-only)   │
-  │    2. CLIP (openai/clip-vit-base-patch32) image embedding    │
+  │    2. CLIP (openai/clip-vit-base-patch16) image embedding    │
   │    3. cosine similarity + geo proximity → greedy assignment  │
   └──────────────────────────────────────────────────────────────┘
                         status: new / matched / moved / disappeared
@@ -136,7 +136,7 @@ cp .env.example .env
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `TRACKING_MODE` | `sam3_tracker` | `sam3_tracker` \| `similarity` |
-| `CLIP_MODEL_NAME` | `openai/clip-vit-base-patch32` | similarity 모드에서 사용할 CLIP 모델 |
+| `CLIP_MODEL_NAME` | `openai/clip-vit-base-patch16` | similarity 모드에서 사용할 CLIP 모델 |
 | `SIMILARITY_CLIP_WEIGHT` | `0.7` | CLIP cosine sim 가중치 (나머지는 geo proximity) |
 | `COORD_MATCH_RADIUS` | `0.01` | 매칭 탐색 반경 (도 단위, ≈ 1 km) |
 | `MOVE_DISTANCE_THRESHOLD` | `0.001` | matched/moved 구분 임계값 (도 단위, ≈ 100 m) |
@@ -376,6 +376,6 @@ python visualize_detections.py --limit 3 --class "helicopter" --no-mask --out-di
 - **Fallback mode**: If SAM3 weights are unavailable (no GPU / offline),
   the system uses a grid-based pseudo-detector for development/testing.
 - **CLIP similarity mode**: `TRACKING_MODE=similarity` 설정 시
-  `openai/clip-vit-base-patch32` (~400 MB)가 첫 실행에 HuggingFace Hub에서
+  `openai/clip-vit-base-patch16` (~400 MB)가 첫 실행에 HuggingFace Hub에서
   자동 다운로드됩니다. CLIP 로드에 실패하면 geo proximity 점수만으로 매칭하며
   파이프라인은 중단 없이 계속 실행됩니다.
