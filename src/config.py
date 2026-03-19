@@ -90,8 +90,11 @@ SAM3_MASK_SCORE_THRESHOLD = float(os.getenv("SAM3_MASK_SCORE", "0.5"))
 #                  + class similarity; no video session needed (CPU-friendly)
 TRACKING_MODE = os.getenv("TRACKING_MODE", "sam3_tracker")
 
-# Weight for same-class bonus in similarity scoring (0.0 – 1.0)
-SIMILARITY_CLASS_BONUS = float(os.getenv("SIMILARITY_CLASS_BONUS", "0.3"))
+# CLIP model used for visual embedding in similarity mode
+CLIP_MODEL_NAME = os.getenv("CLIP_MODEL_NAME", "openai/clip-vit-base-patch32")
+# Weight of CLIP cosine similarity vs geo proximity score (0.0 – 1.0)
+# score = CLIP_WEIGHT * clip_sim + (1 - CLIP_WEIGHT) * geo_score
+SIMILARITY_CLIP_WEIGHT = float(os.getenv("SIMILARITY_CLIP_WEIGHT", "0.7"))
 
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

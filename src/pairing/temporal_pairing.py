@@ -29,18 +29,27 @@ Strategy B – "similarity":
 Select strategy via env var:  TRACKING_MODE=sam3_tracker | similarity
 """
 
+import json
 import logging
+from collections import defaultdict
 from datetime import datetime
-from typing import List, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, List, Optional
+
+import numpy as np
 
 from src.config import (
+    CLIP_MODEL_NAME,
     COORDINATE_MATCH_RADIUS_DEG,
     MOVE_DISTANCE_THRESHOLD_DEG,
-    SIMILARITY_CLASS_BONUS,
+    SIMILARITY_CLIP_WEIGHT,
 )
 from src.database.models import DetectionRecord, PairingRecord
-from src.database.sensor_db import get_most_recent_past_detections
+from src.database.sensor_db import get_image_record_by_id, get_most_recent_past_detections
 from src.detection.sam2_detector import DetectionResult, TrackedObject
+
+if TYPE_CHECKING:
+    from PIL import Image as PILImage
 
 logger = logging.getLogger(__name__)
 
@@ -250,28 +259,159 @@ def pair_by_tracking(
 
 
 # ---------------------------------------------------------------------------
-# Strategy B: similarity-based pairing (no SAM3 video tracker)
+# Strategy B: SAM mask crop + CLIP embedding similarity
 # ---------------------------------------------------------------------------
 
-def _similarity_score(
-    cur: DetectionResult,
-    past: DetectionRecord,
-) -> float:
+class _CLIPEmbedder:
+    """Lazy-loaded CLIP image encoder (module-level singleton)."""
+
+    def __init__(self):
+        self._model = None
+        self._processor = None
+
+    def _load(self):
+        from transformers import CLIPModel, CLIPProcessor
+        logger.info(f"[CLIPEmbedder] Loading {CLIP_MODEL_NAME} ...")
+        self._processor = CLIPProcessor.from_pretrained(CLIP_MODEL_NAME)
+        self._model = CLIPModel.from_pretrained(CLIP_MODEL_NAME)
+        self._model.eval()
+        logger.info("[CLIPEmbedder] Ready.")
+
+    def embed(self, crops: list) -> np.ndarray:
+        """
+        Compute L2-normalised CLIP image embeddings for a list of PIL crops.
+        Returns float32 array of shape (N, D).
+        """
+        import torch
+
+        if self._model is None:
+            self._load()
+
+        inputs = self._processor(images=crops, return_tensors="pt", padding=True)
+        with torch.no_grad():
+            feats = self._model.get_image_features(**inputs)   # (N, D)
+        feats = feats / feats.norm(dim=-1, keepdim=True)
+        return feats.cpu().numpy().astype(np.float32)
+
+
+_clip_embedder = _CLIPEmbedder()
+
+
+def _decode_rle(mask_rle_json: str) -> Optional[np.ndarray]:
+    """Decode a JSON RLE string produced by sam2_detector._encode_rle()."""
+    try:
+        data = json.loads(mask_rle_json)
+        h, w = data["shape"]
+        flat: list = []
+        for val, count in data["rle"]:
+            flat.extend([val] * count)
+        return np.array(flat, dtype=bool).reshape(h, w)
+    except Exception:
+        return None
+
+
+def _mask_crop(image: "PILImage", x1: float, y1: float, x2: float, y2: float,
+               mask_rle: Optional[str], padding: int = 4) -> "PILImage":
     """
-    Score in [0, 1 + SIMILARITY_CLASS_BONUS].
-    Higher is better.  Returns -1 if outside the match radius.
+    Crop the object region from *image* using the SAM segmentation mask.
+
+    If mask_rle is available the background is zeroed out before cropping,
+    so CLIP sees only the object pixels.  Falls back to a plain bbox crop
+    when mask_rle is absent or cannot be decoded.
     """
-    geo_dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
-    if geo_dist >= COORDINATE_MATCH_RADIUS_DEG:
-        return -1.0
-    geo_score = 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG
-    class_bonus = SIMILARITY_CLASS_BONUS if cur.object_class == past.object_class else 0.0
-    return geo_score + class_bonus
+    from PIL import Image as PILImage
+
+    iw, ih = image.size
+    bx1 = max(0, int(x1) - padding)
+    by1 = max(0, int(y1) - padding)
+    bx2 = min(iw, int(x2) + padding)
+    by2 = min(ih, int(y2) + padding)
+
+    if bx2 <= bx1 or by2 <= by1:
+        return image.crop((0, 0, iw, ih))
+
+    if mask_rle:
+        mask = _decode_rle(mask_rle)
+        if mask is not None and mask.shape == (ih, iw):
+            arr = np.array(image)
+            arr[~mask] = 0          # zero out background
+            crop = arr[by1:by2, bx1:bx2]
+            return PILImage.fromarray(crop)
+
+    # Fallback: plain bbox crop
+    return image.crop((bx1, by1, bx2, by2))
+
+
+def _load_pil_image(image_id: str) -> Optional["PILImage"]:
+    """Load a PIL image from disk given a sensor-DB image_id."""
+    from PIL import Image as PILImage
+
+    record = get_image_record_by_id(image_id)
+    if record is None:
+        logger.warning(f"[CLIPSim] ImageRecord not found for image_id={image_id}")
+        return None
+    path = Path(record.image_path)
+    if not path.exists():
+        logger.warning(f"[CLIPSim] Image file missing: {path}")
+        return None
+    return PILImage.open(path).convert("RGB")
+
+
+def _compute_embeddings(
+    detections: list,
+    image: Optional["PILImage"],
+    image_cache: Dict[str, Optional["PILImage"]],
+    is_current: bool,
+) -> np.ndarray:
+    """
+    Produce CLIP embeddings for *detections*.
+
+    For current-frame detections the caller supplies *image* directly.
+    For past-frame detections the image is looked up by image_id and cached
+    in *image_cache*.  Objects whose source image cannot be loaded receive a
+    zero vector (they will never win the greedy assignment).
+
+    Returns float32 array of shape (N, D).
+    """
+    crops = []
+    valid_indices = []
+
+    for i, det in enumerate(detections):
+        if is_current:
+            src_image = image
+        else:
+            iid = det.image_id
+            if iid not in image_cache:
+                image_cache[iid] = _load_pil_image(iid)
+            src_image = image_cache[iid]
+
+        if src_image is None:
+            continue
+
+        crop = _mask_crop(
+            src_image,
+            det.bbox_x1, det.bbox_y1, det.bbox_x2, det.bbox_y2,
+            det.mask_rle,
+        )
+        crops.append(crop)
+        valid_indices.append(i)
+
+    if not crops:
+        # Return zero matrix – no valid crops
+        return np.zeros((len(detections), 1), dtype=np.float32)
+
+    embeds_valid = _clip_embedder.embed(crops)          # (len(valid), D)
+    D = embeds_valid.shape[1]
+    embeds = np.zeros((len(detections), D), dtype=np.float32)
+    for out_idx, orig_idx in enumerate(valid_indices):
+        embeds[orig_idx] = embeds_valid[out_idx]
+    return embeds
 
 
 def pair_by_similarity(
     current_detections: List[DetectionResult],
     past_detections: List[DetectionRecord],
+    current_image: "PILImage",
     current_capture_time: datetime,
     region_lat: float,
     region_lon: float,
@@ -280,15 +420,24 @@ def pair_by_similarity(
 ) -> List[PairingRecord]:
     """
     Build PairingRecord list by matching current detections to past detections
-    using geo-distance + class similarity (no SAM3 video tracker required).
+    using SAM mask crop + CLIP embedding cosine similarity.
+
+    Scoring (for each candidate pair within COORDINATE_MATCH_RADIUS_DEG):
+        clip_sim  = cosine_similarity(cur_embed, past_embed)   ∈ [-1, 1]
+        geo_score = 1 - geo_dist / COORDINATE_MATCH_RADIUS_DEG ∈ [0, 1]
+        score     = SIMILARITY_CLIP_WEIGHT * clip_sim
+                  + (1 - SIMILARITY_CLIP_WEIGHT) * geo_score
+
+    Greedy assignment by descending score; each detection used at most once.
 
     Args:
-        current_detections:   DetectionResult list for the current frame.
-        past_detections:      DetectionRecord list for the most-recent past frame.
+        current_detections:  DetectionResult list for the current frame.
+        past_detections:     DetectionRecord list for the most-recent past frame.
+        current_image:       PIL image of the current frame (for crop + embed).
         current_capture_time: Capture timestamp of the current image.
-        region_lat/lon:       Geographic centre of the region.
-        session_id:           Pipeline run UUID.
-        source_type:          "satellite" | "drone"
+        region_lat/lon:      Geographic centre of the region.
+        session_id:          Pipeline run UUID.
+        source_type:         "satellite" | "drone"
 
     Returns:
         List of PairingRecord ORM objects ready for bulk insertion.
@@ -296,19 +445,73 @@ def pair_by_similarity(
     now = datetime.utcnow()
     pairing_records: List[PairingRecord] = []
 
-    # Build all (score, cur_idx, past_idx) candidate pairs within radius
-    candidates = []
+    if not current_detections or not past_detections:
+        # Nothing to match – all current are "new", all past are "disappeared"
+        for cur in current_detections:
+            pairing_records.append(PairingRecord(
+                pairing_time=now, lat_center=region_lat, lon_center=region_lon,
+                current_detection_id=cur.detection_id,
+                current_object_class=cur.object_class,
+                current_confidence=cur.confidence,
+                current_lat=cur.lat, current_lon=cur.lon,
+                current_capture_time=current_capture_time,
+                current_bbox={"x1": cur.bbox_x1, "y1": cur.bbox_y1,
+                              "x2": cur.bbox_x2, "y2": cur.bbox_y2},
+                status="new", source_type=source_type, session_id=session_id,
+            ))
+        for past in past_detections:
+            pairing_records.append(PairingRecord(
+                pairing_time=now, lat_center=region_lat, lon_center=region_lon,
+                past_detection_id=past.id,
+                past_object_class=past.object_class,
+                past_confidence=past.confidence,
+                past_lat=past.lat, past_lon=past.lon,
+                past_capture_time=past.detection_time,
+                past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
+                           "x2": past.bbox_x2, "y2": past.bbox_y2},
+                status="disappeared", source_type=source_type, session_id=session_id,
+            ))
+        return pairing_records
+
+    # ------------------------------------------------------------------
+    # Compute CLIP embeddings (batch per frame)
+    # ------------------------------------------------------------------
+    past_image_cache: Dict[str, Optional] = {}
+    try:
+        cur_embeds = _compute_embeddings(
+            current_detections, current_image, {}, is_current=True,
+        )                                                    # (N, D)
+        past_embeds = _compute_embeddings(
+            past_detections, None, past_image_cache, is_current=False,
+        )                                                    # (M, D)
+        # Cosine similarity matrix (N, M); embeddings are already L2-normalised
+        clip_sim_matrix = cur_embeds @ past_embeds.T        # (N, M)
+    except Exception as exc:
+        logger.warning(f"[CLIPSim] Embedding failed ({exc}); falling back to geo-only scoring.")
+        clip_sim_matrix = None
+
+    # ------------------------------------------------------------------
+    # Build scored candidate pairs (geo hard filter + combined score)
+    # ------------------------------------------------------------------
+    candidates = []   # (score, cur_idx, past_idx)
     for ci, cur in enumerate(current_detections):
         for pi, past in enumerate(past_detections):
-            score = _similarity_score(cur, past)
-            if score >= 0:
-                candidates.append((score, ci, pi))
+            geo_dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
+            if geo_dist >= COORDINATE_MATCH_RADIUS_DEG:
+                continue
+            geo_score = 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG
+            if clip_sim_matrix is not None:
+                clip_sim = float(clip_sim_matrix[ci, pi])
+                score = SIMILARITY_CLIP_WEIGHT * clip_sim + (1.0 - SIMILARITY_CLIP_WEIGHT) * geo_score
+            else:
+                score = geo_score
+            candidates.append((score, ci, pi))
 
-    # Greedy assignment: highest-score pair first, each object used once
+    # Greedy assignment
     candidates.sort(key=lambda x: x[0], reverse=True)
     matched_cur_ids: set = set()
     matched_past_ids: set = set()
-    pairs: List[tuple] = []  # (DetectionResult, DetectionRecord)
+    pairs: list = []   # [(DetectionResult, DetectionRecord)]
 
     for _score, ci, pi in candidates:
         cur = current_detections[ci]
@@ -320,92 +523,65 @@ def pair_by_similarity(
         pairs.append((cur, past))
 
     # ------------------------------------------------------------------
-    # 1. "matched" / "moved" – pairs within radius
+    # 1. "matched" / "moved"
     # ------------------------------------------------------------------
     for cur, past in pairs:
         dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
         status = "moved" if dist > MOVE_DISTANCE_THRESHOLD_DEG else "matched"
-        pr = PairingRecord(
-            pairing_time=now,
-            lat_center=region_lat,
-            lon_center=region_lon,
+        pairing_records.append(PairingRecord(
+            pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             current_detection_id=cur.detection_id,
             current_object_class=cur.object_class,
             current_confidence=cur.confidence,
-            current_lat=cur.lat,
-            current_lon=cur.lon,
+            current_lat=cur.lat, current_lon=cur.lon,
             current_capture_time=current_capture_time,
-            current_bbox={
-                "x1": cur.bbox_x1, "y1": cur.bbox_y1,
-                "x2": cur.bbox_x2, "y2": cur.bbox_y2,
-            },
+            current_bbox={"x1": cur.bbox_x1, "y1": cur.bbox_y1,
+                          "x2": cur.bbox_x2, "y2": cur.bbox_y2},
             past_detection_id=past.id,
             past_object_class=past.object_class,
             past_confidence=past.confidence,
-            past_lat=past.lat,
-            past_lon=past.lon,
+            past_lat=past.lat, past_lon=past.lon,
             past_capture_time=past.detection_time,
-            past_bbox={
-                "x1": past.bbox_x1, "y1": past.bbox_y1,
-                "x2": past.bbox_x2, "y2": past.bbox_y2,
-            },
-            status=status,
-            source_type=source_type,
-            session_id=session_id,
-        )
-        pairing_records.append(pr)
+            past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
+                       "x2": past.bbox_x2, "y2": past.bbox_y2},
+            status=status, source_type=source_type, session_id=session_id,
+        ))
 
     # ------------------------------------------------------------------
-    # 2. "new" – current detections with no past match
+    # 2. "new"
     # ------------------------------------------------------------------
     for cur in current_detections:
         if cur.detection_id in matched_cur_ids:
             continue
-        pr = PairingRecord(
-            pairing_time=now,
-            lat_center=region_lat,
-            lon_center=region_lon,
+        pairing_records.append(PairingRecord(
+            pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             current_detection_id=cur.detection_id,
             current_object_class=cur.object_class,
             current_confidence=cur.confidence,
-            current_lat=cur.lat,
-            current_lon=cur.lon,
+            current_lat=cur.lat, current_lon=cur.lon,
             current_capture_time=current_capture_time,
-            current_bbox={
-                "x1": cur.bbox_x1, "y1": cur.bbox_y1,
-                "x2": cur.bbox_x2, "y2": cur.bbox_y2,
-            },
-            status="new",
-            source_type=source_type,
-            session_id=session_id,
-        )
-        pairing_records.append(pr)
+            current_bbox={"x1": cur.bbox_x1, "y1": cur.bbox_y1,
+                          "x2": cur.bbox_x2, "y2": cur.bbox_y2},
+            status="new", source_type=source_type, session_id=session_id,
+        ))
 
     # ------------------------------------------------------------------
-    # 3. "disappeared" – past detections with no current match
+    # 3. "disappeared"
     # ------------------------------------------------------------------
     for past in past_detections:
         if past.id in matched_past_ids:
             continue
-        pr = PairingRecord(
-            pairing_time=now,
-            lat_center=region_lat,
-            lon_center=region_lon,
+        pairing_records.append(PairingRecord(
+            pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             past_detection_id=past.id,
             past_object_class=past.object_class,
             past_confidence=past.confidence,
-            past_lat=past.lat,
-            past_lon=past.lon,
+            past_lat=past.lat, past_lon=past.lon,
             past_capture_time=past.detection_time,
-            past_bbox={
-                "x1": past.bbox_x1, "y1": past.bbox_y1,
-                "x2": past.bbox_x2, "y2": past.bbox_y2,
-            },
-            status="disappeared",
-            source_type=source_type,
-            session_id=session_id,
-        )
-        pairing_records.append(pr)
+            past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
+                       "x2": past.bbox_x2, "y2": past.bbox_y2},
+            status="disappeared", source_type=source_type, session_id=session_id,
+        ))
 
     logger.info(
         f"[Pairing/similarity] ({region_lat:.4f}, {region_lon:.4f}): "

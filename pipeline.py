@@ -243,10 +243,12 @@ class MavenPipeline:
             orig_h, orig_w = loaded.array.shape[:2]
 
             if TRACKING_MODE == "similarity":
-                # Strategy B: geo-distance + class similarity, no video tracker
+                # Strategy B: SAM mask crop + CLIP embedding similarity
+                pil_image = PILImage.fromarray(loaded.array).convert("RGB")
                 pairing_records = pair_by_similarity(
                     current_detections=current_dets,
                     past_detections=past_records,
+                    current_image=pil_image,
                     current_capture_time=meta.capture_time,
                     region_lat=meta.lat_center,
                     region_lon=meta.lon_center,
