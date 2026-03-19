@@ -88,8 +88,8 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
     time_current = max(all_times).strftime("%Y-%m-%dT%H:%M:%SZ") if all_times else "UNKNOWN"
 
     lines = [
-        f"TIME: {fmt_dt(report_time)}  ROI: {lat_c:.3f},{lon_c:.3f}"
-        f"  WINDOW: {time_past}→{time_current}",
+        f"OBSERVATION_WINDOW: {time_past} → {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
+        f"REPORT_GENERATED: {fmt_dt(report_time)}",
         f"TOTAL: {len(pairings)}  NEW:{len(new_objs)}  DISAPPEARED:{len(disappeared_objs)}"
         f"  (EXCLUDED — STATIONARY:{n_matched}  MOVED:{n_moved})",
         "NOTE: Report covers only NEW and DISAPPEARED objects.",
@@ -102,6 +102,7 @@ def _build_user_prompt(pairings: List[PairingRecord], report_time: datetime) -> 
         lines.append(
             f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
             f" ({p.current_lat:.3f},{p.current_lon:.3f})"
+            f" DETECTED={fmt_dt(p.current_capture_time)}"
         )
     if len(new_objs) > _MAX_DETAIL:
         lines.append(f"  ... +{len(new_objs) - _MAX_DETAIL} more: {_class_counts(new_objs[_MAX_DETAIL:])}")
