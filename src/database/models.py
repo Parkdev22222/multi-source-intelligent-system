@@ -64,7 +64,7 @@ class DetectionRecord(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     image_id = Column(String(36), ForeignKey("image_records.id"), nullable=False)
-    detection_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    detection_time = Column(DateTime, nullable=False)  # must be set to ImageRecord.capture_time
 
     # Object classification
     object_class = Column(String(128), nullable=False)   # e.g. "military tank"
