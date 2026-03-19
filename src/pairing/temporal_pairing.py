@@ -279,7 +279,9 @@ class _CLIPEmbedder:
 
     def embed(self, crops: list) -> np.ndarray:
         """
-        Compute L2-normalised CLIP image embeddings for a list of PIL crops.
+        Compute L2-normalised image embeddings for a list of PIL crops.
+        Supports both CLIPModel (get_image_features) and plain ViTModel
+        (pooler_output / CLS token from last_hidden_state).
         Returns float32 array of shape (N, D).
         """
         import torch
@@ -288,8 +290,21 @@ class _CLIPEmbedder:
             self._load()
 
         inputs = self._processor(images=crops, return_tensors="pt", padding=True)
+        # CLIPProcessor may include text keys – keep only vision inputs for ViT
+        vision_inputs = {k: v for k, v in inputs.items() if k == "pixel_values"}
+
         with torch.no_grad():
-            feats = self._model.get_image_features(**inputs)   # (N, D)
+            if hasattr(self._model, "get_image_features"):
+                # CLIPModel path
+                feats = self._model.get_image_features(**inputs)   # (N, D)
+            else:
+                # ViTModel / CLIPVisionModel path
+                out = self._model(**vision_inputs)
+                if hasattr(out, "pooler_output") and out.pooler_output is not None:
+                    feats = out.pooler_output                       # (N, D)
+                else:
+                    feats = out.last_hidden_state[:, 0, :]          # CLS token
+
         feats = feats / feats.norm(dim=-1, keepdim=True)
         return feats.cpu().numpy().astype(np.float32)
 
