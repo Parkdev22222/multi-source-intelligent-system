@@ -300,6 +300,14 @@ class MavenPipeline:
             # Fall back to global latest
             pairings = get_latest_pairings()
 
+        # A session may contain pairings from multiple image frames processed
+        # sequentially.  Keep only the most recent pairing_time batch so that
+        # the report reflects the single latest PAST→CURRENT comparison instead
+        # of mixing detections from earlier frames into the counts.
+        if pairings:
+            latest_pt = max(p.pairing_time for p in pairings)
+            pairings = [p for p in pairings if p.pairing_time == latest_pt]
+
         report = self.reporter.generate_report(
             pairings, output_path=output_path, session_id=session_id
         )
