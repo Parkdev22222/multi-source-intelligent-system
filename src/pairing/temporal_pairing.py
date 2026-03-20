@@ -43,6 +43,7 @@ from src.config import (
     COORDINATE_MATCH_RADIUS_DEG,
     MOVE_DISTANCE_THRESHOLD_DEG,
     SIMILARITY_CLIP_WEIGHT,
+    SIMILARITY_MATCH_THRESHOLD,
 )
 from src.database.models import DetectionRecord, PairingRecord
 from src.database.sensor_db import get_image_record_by_id, get_most_recent_past_detections
@@ -506,29 +507,31 @@ def pair_by_similarity(
         clip_sim_matrix = None
 
     # ------------------------------------------------------------------
-    # Build scored candidate pairs (geo hard filter + combined score)
+    # Build scored candidate pairs (all combinations; no geo hard filter)
+    # Score = CLIP cosine similarity when available, otherwise geo score.
     # ------------------------------------------------------------------
     candidates = []   # (score, cur_idx, past_idx)
     for ci, cur in enumerate(current_detections):
         for pi, past in enumerate(past_detections):
-            geo_dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
-            if geo_dist >= COORDINATE_MATCH_RADIUS_DEG:
-                continue
-            geo_score = 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG
             if clip_sim_matrix is not None:
-                clip_sim = float(clip_sim_matrix[ci, pi])
-                score = SIMILARITY_CLIP_WEIGHT * clip_sim + (1.0 - SIMILARITY_CLIP_WEIGHT) * geo_score
+                score = float(clip_sim_matrix[ci, pi])
             else:
-                score = geo_score
+                # Fallback: geo proximity score when CLIP is unavailable
+                geo_dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
+                score = max(0.0, 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG)
             candidates.append((score, ci, pi))
 
-    # Greedy assignment
+    # Greedy assignment: highest-score pairs first.
+    # A pair is accepted only when score > SIMILARITY_MATCH_THRESHOLD;
+    # because the list is sorted descending we can break early.
     candidates.sort(key=lambda x: x[0], reverse=True)
     matched_cur_ids: set = set()
     matched_past_ids: set = set()
     pairs: list = []   # [(DetectionResult, DetectionRecord)]
 
     for _score, ci, pi in candidates:
+        if _score <= SIMILARITY_MATCH_THRESHOLD:
+            break   # remaining candidates all have lower scores
         cur = current_detections[ci]
         past = past_detections[pi]
         if cur.detection_id in matched_cur_ids or past.id in matched_past_ids:
