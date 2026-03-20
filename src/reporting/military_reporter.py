@@ -79,6 +79,9 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     n_matched = sum(1 for p in pairings if p.status == "matched")
     n_moved   = sum(1 for p in pairings if p.status == "moved")
 
+    # 현재 프레임 탐지 건수 = new + matched + moved (visualize_detections.py 기준과 동일)
+    n_current_detections = len(new_objs) + n_matched + n_moved
+
     lats = [p.lat_center for p in pairings]
     lons = [p.lon_center for p in pairings]
     lat_c = sum(lats) / len(lats) if lats else 0.0
@@ -91,8 +94,9 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
 
     lines = [
         f"PAST_OBS: {time_past}  CURRENT_OBS: {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
-        f"TOTAL: {len(pairings)}  NEW:{len(new_objs)}  DISAPPEARED:{len(disappeared_objs)}"
-        f"  (EXCLUDED — STATIONARY:{n_matched}  MOVED:{n_moved})",
+        f"CURRENT_FRAME_DETECTIONS: {n_current_detections}"
+        f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}  MOVED:{n_moved})",
+        f"PAST_ONLY (disappeared from current): {len(disappeared_objs)}",
         "NOTE: NEW = detected in CURRENT_OBS but absent in PAST_OBS.",
         "NOTE: DISAPPEARED = detected in PAST_OBS but NOT observed in CURRENT_OBS"
         " (location unknown — may have relocated or exited sensor coverage).",
@@ -322,6 +326,11 @@ class MilitaryReporter:
         obs_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
         # Prepend metadata header
+        n_current = sum(1 for p in pairings if p.status in ('new', 'matched', 'moved'))
+        n_new_rep = sum(1 for p in pairings if p.status == 'new')
+        n_matched_rep = sum(1 for p in pairings if p.status == 'matched')
+        n_moved_rep = sum(1 for p in pairings if p.status == 'moved')
+        n_disappeared_rep = sum(1 for p in pairings if p.status == 'disappeared')
         header = (
             f"{'='*72}\n"
             f"  MILITARY INTELLIGENCE REPORT\n"
@@ -330,8 +339,10 @@ class MilitaryReporter:
             f"  Past observation:    {obs_past}\n"
             f"  Current observation: {obs_current}\n"
             f"  Report generated:    {report_time.strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
-            f"  Records analysed: {len(pairings)} total  "
-        f"({sum(1 for p in pairings if p.status in ('new','disappeared'))} new/disappeared used)\n"
+            f"  Current frame detections: {n_current}"
+            f"  (new={n_new_rep} / stationary={n_matched_rep} / moved={n_moved_rep})\n"
+            f"  Disappeared (past only):  {n_disappeared_rep}\n"
+            f"  Total pairing records:    {len(pairings)}\n"
             f"{'='*72}\n\n"
         )
         full_report = header + report_text
