@@ -62,6 +62,13 @@ IOU_MATCH_THRESHOLD = 0.25
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _naive(dt: Optional[datetime]) -> Optional[datetime]:
+    """Strip timezone info so naive/aware datetimes can be compared safely."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=None)
+
+
 def _geo_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Simple Euclidean distance in degrees between two lat/lon points."""
     return ((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) ** 0.5
@@ -124,7 +131,8 @@ def pair_by_tracking(
     now = datetime.utcnow()
 
     # Guard: current frame must be strictly later than past frame.
-    if past_capture_time is not None and current_capture_time <= past_capture_time:
+    # Use naive datetimes to avoid offset-naive vs offset-aware comparison errors.
+    if past_capture_time is not None and _naive(current_capture_time) <= _naive(past_capture_time):
         logger.warning(
             f"[Pairing/tracker] Skipping region ({region_lat:.4f}, {region_lon:.4f}): "
             f"current_capture_time ({current_capture_time}) is not later than "
@@ -135,7 +143,8 @@ def pair_by_tracking(
     # Only pair against past detections that truly belong to the earlier frame.
     if past_capture_time is not None:
         past_detections = [
-            d for d in past_detections if d.detection_time <= past_capture_time
+            d for d in past_detections
+            if _naive(d.detection_time) <= _naive(past_capture_time)
         ]
 
     past_by_id = {d.id: d for d in past_detections}
@@ -494,7 +503,8 @@ def pair_by_similarity(
     pairing_records: List[PairingRecord] = []
 
     # Guard: current frame must be strictly later than past frame.
-    if past_capture_time is not None and current_capture_time <= past_capture_time:
+    # Use naive datetimes to avoid offset-naive vs offset-aware comparison errors.
+    if past_capture_time is not None and _naive(current_capture_time) <= _naive(past_capture_time):
         logger.warning(
             f"[Pairing/similarity] Skipping region ({region_lat:.4f}, {region_lon:.4f}): "
             f"current_capture_time ({current_capture_time}) is not later than "
@@ -506,7 +516,8 @@ def pair_by_similarity(
     # detection_time is set to meta.capture_time at ingestion time.
     if past_capture_time is not None:
         past_detections = [
-            d for d in past_detections if d.detection_time <= past_capture_time
+            d for d in past_detections
+            if _naive(d.detection_time) <= _naive(past_capture_time)
         ]
 
     if not current_detections or not past_detections:
