@@ -93,6 +93,11 @@ def insert_detections_bulk(detections: List[DetectionRecord]) -> List[str]:
     return ids
 
 
+def _naive(dt: datetime) -> datetime:
+    """Strip timezone info so SQLite (which stores naive datetimes) comparisons work."""
+    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
 def get_most_recent_past_detections(
     lat_center: float,
     lon_center: float,
@@ -108,6 +113,9 @@ def get_most_recent_past_detections(
     past_capture_time is the capture_time of that past batch (None if no records).
     """
     engine = get_engine()
+    # Normalise before_time to naive so SQLite string comparison works correctly
+    # (metadata.json ISO strings may include timezone offsets).
+    before_time_naive = _naive(before_time)
     with Session(engine) as session:
         # First find the most recent capture_time in that region before current time
         from sqlalchemy import func, and_
@@ -117,7 +125,7 @@ def get_most_recent_past_detections(
             session.query(func.max(ImageRecord.capture_time))
             .join(DetectionRecord, DetectionRecord.image_id == ImageRecord.id)
             .filter(
-                ImageRecord.capture_time < before_time,
+                ImageRecord.capture_time < before_time_naive,
                 DetectionRecord.lat.between(lat_center - radius_deg, lat_center + radius_deg),
                 DetectionRecord.lon.between(lon_center - radius_deg, lon_center + radius_deg),
             )

@@ -137,7 +137,7 @@ class MavenPipeline:
                 DetectionRecord(
                     id=det.detection_id,
                     image_id=image_id,
-                    detection_time=meta.capture_time,  # capture_time from metadata.json (not wall clock)
+                    detection_time=meta.capture_time.replace(tzinfo=None),  # naive UTC for SQLite
                     object_class=det.object_class,
                     object_class_index=det.object_class_index,
                     confidence=det.confidence,
@@ -201,12 +201,14 @@ class MavenPipeline:
             engine = get_engine()
 
             # --- Fetch current detections from Sensor DB ---
+            # Normalise capture_time to naive for SQLite comparison
+            capture_time_naive = meta.capture_time.replace(tzinfo=None)
             with Session(engine) as sess:
                 img_rec = (
                     sess.query(ImageRecord)
                     .filter(
                         ImageRecord.image_path == meta.image_path,
-                        ImageRecord.capture_time == meta.capture_time,
+                        ImageRecord.capture_time == capture_time_naive,
                     )
                     .order_by(ImageRecord.ingestion_time.desc())
                     .first()
