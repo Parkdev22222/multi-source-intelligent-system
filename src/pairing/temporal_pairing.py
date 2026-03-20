@@ -90,6 +90,7 @@ def pair_by_tracking(
     current_detections: List[DetectionResult],
     past_detections: List[DetectionRecord],
     current_capture_time: datetime,
+    past_capture_time: Optional[datetime],
     region_lat: float,
     region_lon: float,
     session_id: str,
@@ -98,13 +99,21 @@ def pair_by_tracking(
     """
     Build PairingRecord list using Sam3Tracker object IDs.
 
+    Status assignment is explicitly based on metadata.json capture times:
+      "new"         – object only in the LATER frame (current_capture_time)
+      "matched"     – object in BOTH the earlier frame (past_capture_time) AND
+                      the later frame (current_capture_time), same position
+      "moved"       – same as matched but position changed significantly
+      "disappeared" – object only in the EARLIER frame (past_capture_time)
+
     Args:
         tracked_objects:      Output of SAM3Detector.track_objects() –
                               past objects confirmed present in current frame.
         current_detections:   Sam3Model detections for the current frame
                               (from sensor DB, already stored).
         past_detections:      DetectionRecord list for the most-recent past frame.
-        current_capture_time: Capture timestamp of the current image.
+        current_capture_time: Capture timestamp of the current (later) image.
+        past_capture_time:    Capture timestamp of the past (earlier) image batch.
         region_lat/lon:       Geographic centre of the region.
         session_id:           Pipeline run UUID.
         source_type:          "satellite" | "drone"
@@ -113,6 +122,21 @@ def pair_by_tracking(
         List of PairingRecord ORM objects ready for bulk insertion.
     """
     now = datetime.utcnow()
+
+    # Guard: current frame must be strictly later than past frame.
+    if past_capture_time is not None and current_capture_time <= past_capture_time:
+        logger.warning(
+            f"[Pairing/tracker] Skipping region ({region_lat:.4f}, {region_lon:.4f}): "
+            f"current_capture_time ({current_capture_time}) is not later than "
+            f"past_capture_time ({past_capture_time}). Check metadata.json ordering."
+        )
+        return []
+
+    # Only pair against past detections that truly belong to the earlier frame.
+    if past_capture_time is not None:
+        past_detections = [
+            d for d in past_detections if d.detection_time <= past_capture_time
+        ]
 
     past_by_id = {d.id: d for d in past_detections}
 
@@ -186,7 +210,7 @@ def pair_by_tracking(
             past_confidence=past.confidence if past else None,
             past_lat=past_lat,
             past_lon=past_lon,
-            past_capture_time=past.detection_time if past else None,
+            past_capture_time=past_capture_time,
             past_bbox={
                 "x1": past.bbox_x1, "y1": past.bbox_y1,
                 "x2": past.bbox_x2, "y2": past.bbox_y2,
@@ -238,7 +262,7 @@ def pair_by_tracking(
             past_confidence=past.confidence,
             past_lat=past.lat,
             past_lon=past.lon,
-            past_capture_time=past.detection_time,
+            past_capture_time=past_capture_time,
             past_bbox={
                 "x1": past.bbox_x1, "y1": past.bbox_y1,
                 "x2": past.bbox_x2, "y2": past.bbox_y2,
@@ -429,6 +453,7 @@ def pair_by_similarity(
     past_detections: List[DetectionRecord],
     current_image: "PILImage",
     current_capture_time: datetime,
+    past_capture_time: Optional[datetime],
     region_lat: float,
     region_lon: float,
     session_id: str,
@@ -438,19 +463,26 @@ def pair_by_similarity(
     Build PairingRecord list by matching current detections to past detections
     using SAM mask crop + CLIP embedding cosine similarity.
 
-    Scoring (for each candidate pair within COORDINATE_MATCH_RADIUS_DEG):
-        clip_sim  = cosine_similarity(cur_embed, past_embed)   ∈ [-1, 1]
-        geo_score = 1 - geo_dist / COORDINATE_MATCH_RADIUS_DEG ∈ [0, 1]
-        score     = SIMILARITY_CLIP_WEIGHT * clip_sim
-                  + (1 - SIMILARITY_CLIP_WEIGHT) * geo_score
+    Status assignment is explicitly based on metadata.json capture times:
+      "new"         – object only in the LATER frame (current_capture_time):
+                      unmatched current detections
+      "matched"     – object in BOTH the earlier frame (past_capture_time) AND
+                      the later frame (current_capture_time), same position
+      "moved"       – same as matched but position changed significantly
+      "disappeared" – object only in the EARLIER frame (past_capture_time):
+                      unmatched past detections
 
-    Greedy assignment by descending score; each detection used at most once.
+    Scoring (CLIP cosine similarity; geo proximity as fallback):
+        score = cosine_similarity(cur_embed, past_embed)   ∈ [-1, 1]
+    Greedy assignment by descending score; pair accepted only when
+    score > SIMILARITY_MATCH_THRESHOLD.
 
     Args:
-        current_detections:  DetectionResult list for the current frame.
+        current_detections:  DetectionResult list for the current (later) frame.
         past_detections:     DetectionRecord list for the most-recent past frame.
         current_image:       PIL image of the current frame (for crop + embed).
-        current_capture_time: Capture timestamp of the current image.
+        current_capture_time: Capture timestamp of the current (later) image.
+        past_capture_time:   Capture timestamp of the past (earlier) image batch.
         region_lat/lon:      Geographic centre of the region.
         session_id:          Pipeline run UUID.
         source_type:         "satellite" | "drone"
@@ -460,6 +492,22 @@ def pair_by_similarity(
     """
     now = datetime.utcnow()
     pairing_records: List[PairingRecord] = []
+
+    # Guard: current frame must be strictly later than past frame.
+    if past_capture_time is not None and current_capture_time <= past_capture_time:
+        logger.warning(
+            f"[Pairing/similarity] Skipping region ({region_lat:.4f}, {region_lon:.4f}): "
+            f"current_capture_time ({current_capture_time}) is not later than "
+            f"past_capture_time ({past_capture_time}). Check metadata.json ordering."
+        )
+        return []
+
+    # Only pair against past detections that truly belong to the earlier frame.
+    # detection_time is set to meta.capture_time at ingestion time.
+    if past_capture_time is not None:
+        past_detections = [
+            d for d in past_detections if d.detection_time <= past_capture_time
+        ]
 
     if not current_detections or not past_detections:
         # Nothing to match – all current are "new", all past are "disappeared"
@@ -482,7 +530,7 @@ def pair_by_similarity(
                 past_object_class=past.object_class,
                 past_confidence=past.confidence,
                 past_lat=past.lat, past_lon=past.lon,
-                past_capture_time=past.detection_time,
+                past_capture_time=past_capture_time,
                 past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
                            "x2": past.bbox_x2, "y2": past.bbox_y2},
                 status="disappeared", source_type=source_type, session_id=session_id,
@@ -559,7 +607,7 @@ def pair_by_similarity(
             past_object_class=past.object_class,
             past_confidence=past.confidence,
             past_lat=past.lat, past_lon=past.lon,
-            past_capture_time=past.detection_time,
+            past_capture_time=past_capture_time,
             past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
                        "x2": past.bbox_x2, "y2": past.bbox_y2},
             status=status, source_type=source_type, session_id=session_id,
@@ -595,7 +643,7 @@ def pair_by_similarity(
             past_object_class=past.object_class,
             past_confidence=past.confidence,
             past_lat=past.lat, past_lon=past.lon,
-            past_capture_time=past.detection_time,
+            past_capture_time=past_capture_time,
             past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
                        "x2": past.bbox_x2, "y2": past.bbox_y2},
             status="disappeared", source_type=source_type, session_id=session_id,

@@ -99,11 +99,13 @@ def get_most_recent_past_detections(
     radius_deg: float,
     before_time: datetime,
     limit: int = 100,
-) -> List[DetectionRecord]:
+) -> tuple:
     """
-    Return detections within `radius_deg` of (lat_center, lon_center)
-    captured strictly BEFORE `before_time`, ordered by capture time descending,
-    limited to the single most recent capture_time batch.
+    Return (detections, past_capture_time) where detections are within
+    `radius_deg` of (lat_center, lon_center) captured strictly BEFORE
+    `before_time`, limited to the single most recent capture_time batch.
+
+    past_capture_time is the capture_time of that past batch (None if no records).
     """
     engine = get_engine()
     with Session(engine) as session:
@@ -123,7 +125,7 @@ def get_most_recent_past_detections(
         )
 
         if latest_time_row is None:
-            return []
+            return [], None
 
         # Get all detections from that most-recent past batch
         past_records = (
@@ -146,7 +148,7 @@ def get_most_recent_past_detections(
             f"[SensorDB] Found {len(past_records)} past detections near "
             f"({lat_center:.4f}, {lon_center:.4f}) at {latest_time_row}"
         )
-        return past_records
+        return past_records, latest_time_row
 
 
 def get_image_record_by_id(image_id: str) -> Optional[ImageRecord]:

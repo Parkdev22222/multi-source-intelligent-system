@@ -102,7 +102,7 @@ class MavenPipeline:
 
         Returns list of image_ids processed.
         """
-        metas = load_metadata_index(metadata_json)
+        metas = sorted(load_metadata_index(metadata_json), key=lambda m: m.capture_time)
         image_ids = []
 
         for loaded in iter_images(metas):
@@ -137,7 +137,7 @@ class MavenPipeline:
                 DetectionRecord(
                     id=det.detection_id,
                     image_id=image_id,
-                    detection_time=det.detection_time,
+                    detection_time=meta.capture_time,  # capture_time from metadata.json (not wall clock)
                     object_class=det.object_class,
                     object_class_index=det.object_class_index,
                     confidence=det.confidence,
@@ -191,7 +191,9 @@ class MavenPipeline:
         from src.database.models import ImageRecord, DetectionRecord as DR
         from sqlalchemy.orm import Session
 
-        metas = load_metadata_index(metadata_json)
+        # Sort by capture_time ascending so older frames are always stored before
+        # newer ones — ensuring get_most_recent_past_detections finds them correctly.
+        metas = sorted(load_metadata_index(metadata_json), key=lambda m: m.capture_time)
         total_pairings = 0
 
         for loaded in iter_images(metas):
@@ -231,8 +233,8 @@ class MavenPipeline:
                     for d in current_orm
                 ]
 
-            # --- Fetch past detections ---
-            past_records = get_most_recent_past_detections(
+            # --- Fetch past detections (returns records + past batch capture_time) ---
+            past_records, past_capture_time = get_most_recent_past_detections(
                 lat_center=meta.lat_center,
                 lon_center=meta.lon_center,
                 radius_deg=COORDINATE_MATCH_RADIUS_DEG,
@@ -250,6 +252,7 @@ class MavenPipeline:
                     past_detections=past_records,
                     current_image=pil_image,
                     current_capture_time=meta.capture_time,
+                    past_capture_time=past_capture_time,
                     region_lat=meta.lat_center,
                     region_lon=meta.lon_center,
                     session_id=session_id,
@@ -267,6 +270,7 @@ class MavenPipeline:
                     current_detections=current_dets,
                     past_detections=past_records,
                     current_capture_time=meta.capture_time,
+                    past_capture_time=past_capture_time,
                     region_lat=meta.lat_center,
                     region_lon=meta.lon_center,
                     session_id=session_id,
