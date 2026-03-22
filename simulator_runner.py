@@ -24,6 +24,7 @@ import random
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -48,25 +49,74 @@ PIPELINE_CMD = [
 
 def _pick_images(n: int = 2) -> list:
     """
-    SAMPLE_DIR 에서 PNG 파일 n 장을 중복 없이 랜덤 선택.
+    SAMPLE_DIR 에서 TIFF 파일 n 장을 중복 없이 랜덤 선택.
     반환값은 metadata.json 에 쓰이는 상대 경로 'sample/<파일명>' 형식.
+    PNG 파일로 폴백.
     """
+    tiffs = sorted(SAMPLE_DIR.glob("*.tiff")) + sorted(SAMPLE_DIR.glob("*.tif"))
+    if len(tiffs) >= n:
+        chosen = random.sample(tiffs, n)
+        return [f"sample/{p.name}" for p in chosen]
+
     pngs = sorted(SAMPLE_DIR.glob("*.png"))
-    if len(pngs) < n:
-        raise RuntimeError(
-            f"data/images/sample/ 에 PNG 가 {len(pngs)}장뿐입니다 (최소 {n}장 필요)."
-        )
-    chosen = random.sample(pngs, n)
-    return [f"sample/{p.name}" for p in chosen]
+    if len(pngs) >= n:
+        chosen = random.sample(pngs, n)
+        return [f"sample/{p.name}" for p in chosen]
+
+    total = len(tiffs) + len(pngs)
+    raise RuntimeError(
+        f"data/images/sample/ 에 이미지가 {total}장뿐입니다 (최소 {n}장 필요)."
+    )
+
+
+def _extract_tiff_capture_time(path: Path) -> datetime:
+    """
+    TIFF 파일에서 촬영 시각을 추출.
+    우선순위:
+      1. Tag 42112 (GDAL_METADATA) XML의 ACQUISITION_DATETIME
+      2. Tag 306  (DateTime) "YYYY:MM:DD HH:MM:SS"
+      3. 파일 수정시간 폴백
+    """
+    try:
+        from PIL import Image as PILImage
+        with PILImage.open(str(path)) as img:
+            tag_info = img.tag_v2 if hasattr(img, "tag_v2") else {}
+
+            # 1. Tag 42112 GDAL_METADATA
+            gdal_xml = tag_info.get(42112)
+            if gdal_xml:
+                try:
+                    root = ET.fromstring(gdal_xml)
+                    for item in root.findall("Item"):
+                        if item.get("name") == "ACQUISITION_DATETIME" and item.text:
+                            return datetime.fromisoformat(item.text)
+                except Exception:
+                    pass
+
+            # 2. Tag 306 DateTime "YYYY:MM:DD HH:MM:SS"
+            dt_tag = tag_info.get(306)
+            if dt_tag:
+                try:
+                    return datetime.strptime(dt_tag, "%Y:%m:%d %H:%M:%S").replace(
+                        tzinfo=timezone.utc
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 3. 파일 수정시간 폴백
+    mtime = path.stat().st_mtime
+    return datetime.fromtimestamp(mtime, tz=timezone.utc)
 
 
 def _build_metadata(sat: dict, imgs: list) -> list:
     """
     위성 위치와 선택된 이미지 2장으로 metadata.json 항목 2개 생성.
-    imgs[0] = 과거 프레임, imgs[1] = 현재 프레임.
+    capture_time 은 TIFF 파일에 내장된 태그에서 추출.
+    태그 없으면 파일 수정시간 사용.
+    imgs 를 capture_time 순으로 정렬해 [과거, 현재] 순서 유지.
     """
-    now  = datetime.now(timezone.utc)
-    past = now - timedelta(hours=6)
     lat, lon = sat["lat"], sat["lon"]
     r = 0.01   # 촬영 범위 반경 (° ≈ 1.1 km)
 
@@ -83,9 +133,18 @@ def _build_metadata(sat: dict, imgs: list) -> list:
         region_name    = sat["id"],
     )
 
+    # capture_time 추출 및 정렬
+    timed = []
+    for img_rel in imgs:
+        img_path = SAMPLE_DIR.parent / img_rel  # data/images/<img_rel>
+        ct = _extract_tiff_capture_time(img_path)
+        timed.append((ct, img_rel))
+
+    timed.sort(key=lambda x: x[0])   # 오래된 것이 앞 (과거 프레임)
+
     return [
-        {**base, "image_file": imgs[0], "capture_time": past.isoformat()},
-        {**base, "image_file": imgs[1], "capture_time": now.isoformat()},
+        {**base, "image_file": img_rel, "capture_time": ct.isoformat()}
+        for ct, img_rel in timed
     ]
 
 
