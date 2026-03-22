@@ -16,6 +16,7 @@ MSIS Web API – FastAPI 백엔드 (위성 모의기 + 탐지 결과 대시보�
 """
 
 import base64
+import io
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -32,7 +33,13 @@ from src.database.reports_db import (
     get_latest_report_for_sessions,
     get_report_by_id,
 )
-from src.database.sensor_db import get_latest_detections_near, get_latest_image_near
+from src.database.sensor_db import (
+    get_latest_detections_near,
+    get_latest_image_near,
+    get_image_record_by_id,
+    get_detections_by_image,
+    get_all_images_with_count,
+)
 from src.satellite.simulator import get_positions
 
 logging.basicConfig(level=logging.INFO)
@@ -57,6 +64,18 @@ if _images_dir.exists():
     app.mount("/static/images", StaticFiles(directory=str(_images_dir)), name="images")
 
 _dashboard_path = Path(__file__).parent / "dashboard" / "index.html"
+
+
+def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
+    """이미지 파일(TIFF 포함)을 PNG로 변환 후 base64 반환."""
+    from PIL import Image
+    with Image.open(image_path) as img:
+        img.thumbnail((max_size, max_size))
+        if img.mode not in ("RGB", "RGBA", "L"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -155,7 +174,10 @@ def api_latest_image(
         rel = image_path.relative_to(_images_dir) if image_path.is_relative_to(_images_dir) else image_path.name
         image_url = f"/static/images/{rel}"
         if embed:
-            image_b64 = base64.b64encode(image_path.read_bytes()).decode()
+            try:
+                image_b64 = _image_to_png_b64(image_path)
+            except Exception:
+                image_b64 = base64.b64encode(image_path.read_bytes()).decode()
 
     return {
         "id":              record.id,
@@ -167,6 +189,79 @@ def api_latest_image(
         "resolution_m":    record.resolution_m,
         "image_url":       image_url,
         "image_b64":       image_b64,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# DB 전체 이미지/탐지 목록
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/images")
+def api_all_images(limit: int = Query(default=30, le=100)):
+    """DB에 저장된 모든 위성영상 메타데이터 + 탐지 건수 목록 (capture_time DESC)."""
+    rows = get_all_images_with_count(limit=limit)
+    result = []
+    for r, cnt in rows:
+        result.append({
+            "id":              r.id,
+            "capture_time":    r.capture_time.isoformat() if r.capture_time else None,
+            "source_type":     r.source_type,
+            "sensor_platform": r.sensor_platform,
+            "lat_center":      r.lat_center,
+            "lon_center":      r.lon_center,
+            "resolution_m":    r.resolution_m,
+            "detection_count": cnt,
+        })
+    return {"images": result, "count": len(result)}
+
+
+@app.get("/api/image/{image_id}/thumb")
+def api_image_thumb(image_id: str):
+    """특정 이미지를 PNG로 변환하여 base64 반환 (TIFF 포함)."""
+    record = get_image_record_by_id(image_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="이미지 없음.")
+
+    image_path = Path(record.image_path)
+    if not image_path.is_absolute():
+        image_path = _images_dir / record.image_path
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="이미지 파일 없음.")
+
+    try:
+        b64 = _image_to_png_b64(image_path, max_size=600)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"이미지 변환 실패: {exc}")
+
+    return {
+        "id":           record.id,
+        "capture_time": record.capture_time.isoformat() if record.capture_time else None,
+        "image_b64":    b64,
+        "image_mime":   "image/png",
+    }
+
+
+@app.get("/api/detections/by-image/{image_id}")
+def api_detections_by_image(image_id: str):
+    """특정 이미지에 속한 탐지 결과 전체 반환."""
+    records = get_detections_by_image(image_id)
+    return {
+        "detections": [
+            {
+                "id":             r.id,
+                "object_class":   r.object_class,
+                "confidence":     round(r.confidence, 3),
+                "lat":            r.lat,
+                "lon":            r.lon,
+                "bbox":           {"x1": r.bbox_x1, "y1": r.bbox_y1,
+                                   "x2": r.bbox_x2, "y2": r.bbox_y2},
+                "source_type":    r.source_type,
+                "detection_time": r.detection_time.isoformat() if r.detection_time else None,
+            }
+            for r in records
+        ],
+        "count": len(records),
     }
 
 
