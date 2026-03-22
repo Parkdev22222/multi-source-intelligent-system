@@ -14,7 +14,23 @@ import sys
 import urllib.request
 from pathlib import Path
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "static"
+# __file__ 이 없는 환경(Jupyter 등)에서는 현재 디렉터리 기준으로 탐색
+if "__file__" in dir():
+    _base = Path(__file__).resolve().parent.parent
+else:
+    # cwd 가 프로젝트 루트이거나, 그 안의 하위 디렉터리일 때 모두 대응
+    _cwd = Path.cwd()
+    if (_cwd / "dashboard").exists():
+        _base = _cwd
+    elif (_cwd.parent / "dashboard").exists():
+        _base = _cwd.parent
+    else:
+        raise RuntimeError(
+            "dashboard/ 폴더를 찾을 수 없습니다. "
+            "프로젝트 루트 또는 scripts/ 디렉터리에서 실행하세요."
+        )
+
+STATIC_DIR = _base / "dashboard" / "static"
 
 ASSETS = [
     {
