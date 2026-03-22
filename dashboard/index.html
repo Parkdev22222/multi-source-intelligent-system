@@ -100,7 +100,7 @@
     .dp-sec-count { font-size:9px; color:var(--dim); }
 
     /* 목록 공통 */
-    .db-list { overflow-y:auto; max-height:170px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; padding:0 8px 6px; }
+    .db-list { overflow-y:auto; max-height:150px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; padding:0 8px 6px; }
     .db-item {
       position:relative; padding:5px 8px; margin:2px 0;
       border:1px solid var(--border); background:#0c1520; border-radius:3px;
@@ -111,6 +111,14 @@
     .db-item-sub  { color:var(--dim); font-size:9px; margin-top:1px; }
     .db-item-badge { float:right; background:#1a2d1a; color:var(--green); font-size:9px; padding:1px 5px; border-radius:2px; border:1px solid var(--green); }
     .dp-empty { padding:6px 14px; font-size:11px; color:var(--dim); }
+
+    /* 판독보고서 목록 */
+    .rpt-list { overflow-y:auto; max-height:160px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; padding:0 8px 6px; }
+    .rpt-item { padding:5px 8px; border:1px solid var(--border); border-radius:2px; margin-top:4px; cursor:pointer; transition:background .12s, border-color .12s; }
+    .rpt-item:hover { background:#152030; border-color:var(--amber); }
+    .rpt-item-name { font-size:10px; color:var(--amber); letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .rpt-item-meta { font-size:9px; color:var(--dim); margin-top:2px; }
+    .rpt-item-badge { float:right; background:#1a1a0a; color:var(--amber); font-size:9px; padding:1px 5px; border-radius:2px; border:1px solid var(--amber); opacity:.7; }
 
     /* hover 팝업 (이미지/탐지 정보) */
     #db-popup {
@@ -234,7 +242,18 @@
       </div>
     </div>
 
-    <div id="dp-hint">더블클릭 → 판독 보고서 열기</div>
+    <!-- 판독 보고서 목록 -->
+    <div class="dp-section" style="flex:1;min-height:0;">
+      <div class="dp-sec-hdr">
+        <span class="dp-sec">◈ 판독 보고서 (DB)</span>
+        <span class="dp-sec-count" id="rpt-count">—</span>
+      </div>
+      <div class="rpt-list" id="rpt-list">
+        <div class="dp-empty">보고서 없음 – 시뮬레이션을 먼저 실행하세요</div>
+      </div>
+    </div>
+
+    <div id="dp-hint">영상·탐지 더블클릭 → 해당 위치 보고서 | 보고서 목록 더블클릭 → 직접 열기</div>
   </div>
 
   <!-- hover 팝업 -->
@@ -570,6 +589,7 @@ document.getElementById('run-btn').addEventListener('click', async () => {
       popImgCache = {}; popDetCache = {};
       await loadAllImages();
       await loadAllDetections();
+      await loadAllReports();
     } else {
       status.textContent = '오류: 서버 응답 실패';
     }
@@ -586,7 +606,84 @@ document.getElementById('run-btn').addEventListener('click', async () => {
 /* ── 위치 갱신 버튼 ── */
 document.getElementById('refresh-btn').addEventListener('click', loadSatellites);
 
-/* ── 보고서 모달 (더블클릭) ── */
+/* ══════════════════════════════════════════════════
+   판독 보고서 목록 로드 (DB)
+   ══════════════════════════════════════════════════ */
+async function loadAllReports() {
+  const list  = document.getElementById('rpt-list');
+  const count = document.getElementById('rpt-count');
+  try {
+    const res = await fetch(`${API}/api/reports?limit=50`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const reports = data.reports || [];
+    count.textContent = `${reports.length}건`;
+
+    if (reports.length === 0) {
+      list.innerHTML = '<div class="dp-empty">보고서 없음 – 시뮬레이션을 먼저 실행하세요</div>';
+      return;
+    }
+
+    list.innerHTML = reports.map(r => {
+      const dt  = r.report_time ? new Date(r.report_time) : null;
+      const ts  = dt ? dt.toLocaleString('ko-KR') : '—';
+      const fname = dt
+        ? `MSIS_report_${dt.toISOString().replace(/[:.]/g,'-').slice(0,19)}.txt`
+        : `MSIS_report_${r.id}.txt`;
+      const model = (r.llm_model || '').split('/').pop() || '—';
+      return `<div class="rpt-item" data-id="${r.id}" data-fname="${fname}">
+        <span class="rpt-item-badge">${r.pairing_count ?? 0}건</span>
+        <div class="rpt-item-name" title="${fname}">${fname}</div>
+        <div class="rpt-item-meta">${ts} | ${model}</div>
+      </div>`;
+    }).join('');
+
+    // 더블클릭 → 보고서 ID로 직접 열기
+    list.querySelectorAll('.rpt-item').forEach(el => {
+      el.addEventListener('dblclick', () => openReportById(el.dataset.id, el.dataset.fname));
+    });
+  } catch(e) { console.warn('[loadAllReports]', e); }
+}
+
+/* ── 보고서 ID 직접 열기 ── */
+async function openReportById(id, fname) {
+  const modal   = document.getElementById('report-modal');
+  const meta    = document.getElementById('report-meta');
+  const content = document.getElementById('report-content');
+  const dlBtn   = document.getElementById('download-btn');
+
+  modal.classList.add('open');
+  meta.textContent = '보고서 로딩 중...';
+  content.textContent = '';
+  dlBtn.style.display = 'none';
+
+  try {
+    const res = await fetch(`${API}/api/report/${encodeURIComponent(id)}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      meta.textContent = `오류: ${err.detail || res.statusText}`;
+      return;
+    }
+    const report = await res.json();
+    meta.innerHTML =
+      `파일명: <b>${fname || id}</b><br>` +
+      `생성: ${report.report_time ? new Date(report.report_time).toLocaleString('ko-KR') : '—'}<br>` +
+      `LLM: ${report.llm_model || '—'} (${report.llm_backend || '—'})  |  페어링: ${report.pairing_count}건`;
+    content.textContent = report.report_content || '(내용 없음)';
+    dlBtn.style.display = 'block';
+    dlBtn.onclick = () => {
+      const blob = new Blob([report.report_content || ''], { type: 'text/plain;charset=utf-8' });
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob), download: fname || `MSIS_report_${id}.txt`
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    };
+  } catch(e) {
+    meta.textContent = `네트워크 오류: ${e.message}`;
+  }
+}
+
+/* ── 보고서 모달 (위치 기반 더블클릭) ── */
 async function openReport(lat, lon) {
   const modal = document.getElementById('report-modal');
   const meta  = document.getElementById('report-meta');
@@ -713,6 +810,7 @@ async function pollSimStatus() {
       popImgCache = {}; popDetCache = {};
       await loadAllImages();
       await loadAllDetections();
+      await loadAllReports();
       await loadSatellites();
     }
 
@@ -744,6 +842,7 @@ setInterval(async () => {
     popImgCache = {}; popDetCache = {};
     await loadAllImages();
     await loadAllDetections();
+    await loadAllReports();
   }
 }, 30_000);
 
@@ -752,6 +851,7 @@ initMap();
 loadSatellites();
 loadAllImages();
 loadAllDetections();
+loadAllReports();
 pollSimStatus();
 </script>
 </body>
