@@ -1,7 +1,7 @@
 [
   {
-    "image_file": "sample/alpha_past_20260317T235424.png",
-    "capture_time": "2026-03-17T23:54:24+00:00",
+    "image_file": "sample/alpha_past_20260321T232810.png",
+    "capture_time": "2026-03-21T23:28:10+00:00",
     "source_type": "satellite",
     "lat_center": 37.576499999999996,
     "lon_center": 126.96799999999999,
@@ -14,9 +14,9 @@
     "region_name": "alpha"
   },
   {
-    "image_file": "sample/alpha_current_20260318T055424.png",
-    "capture_time": "2026-03-18T05:54:24+00:00",
-    "source_type": "drone",
+    "image_file": "sample/alpha_current_20260322T052810.png",
+    "capture_time": "2026-03-22T05:28:10+00:00",
+    "source_type": "satellite",
     "lat_center": 37.576499999999996,
     "lon_center": 126.96799999999999,
     "lat_min": 37.5665,
@@ -28,8 +28,8 @@
     "region_name": "alpha"
   },
   {
-    "image_file": "sample/bravo_past_20260317T235424.png",
-    "capture_time": "2026-03-17T23:54:24+00:00",
+    "image_file": "sample/bravo_past_20260321T232810.png",
+    "capture_time": "2026-03-21T23:28:10+00:00",
     "source_type": "satellite",
     "lat_center": 37.5565,
     "lon_center": 126.988,
@@ -42,8 +42,8 @@
     "region_name": "bravo"
   },
   {
-    "image_file": "sample/bravo_current_20260318T055424.png",
-    "capture_time": "2026-03-18T05:54:24+00:00",
+    "image_file": "sample/bravo_current_20260322T052810.png",
+    "capture_time": "2026-03-22T05:28:10+00:00",
     "source_type": "satellite",
     "lat_center": 37.5565,
     "lon_center": 126.988,
