@@ -4,298 +4,169 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MSIS – 위성 감시 대시보드</title>
-
-  <!-- Leaflet.js -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
   <style>
-    /* ── Base ─────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:       #0a0e14;
-      --panel:    #111820;
-      --border:   #1e3040;
-      --green:    #00ff88;
-      --amber:    #ffb300;
-      --red:      #ff4040;
-      --blue:     #40aaff;
-      --text:     #c8d8e8;
-      --dim:      #5a7a90;
-      --font:     'Courier New', Courier, monospace;
+      --bg:    #0a0e14; --panel: #111820; --border: #1e3040;
+      --green: #00ff88; --amber: #ffb300; --red:   #ff4040;
+      --blue:  #40aaff; --text:  #c8d8e8; --dim:   #5a7a90;
+      --font:  'Courier New', Courier, monospace;
     }
+    html, body { height:100%; background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; overflow:hidden; }
 
-    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; overflow: hidden; }
+    /* ── 레이아웃 ── */
+    #app { display:flex; height:100vh; }
 
-    /* ── Layout ───────────────────────────────────────────── */
-    #app { display: flex; height: 100vh; }
+    /* 좌측 사이드바 */
+    #sidebar { width:270px; min-width:270px; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
 
-    /* Left sidebar */
-    #sidebar {
-      width: 260px; min-width: 260px;
-      background: var(--panel);
-      border-right: 1px solid var(--border);
-      display: flex; flex-direction: column;
-      overflow: hidden;
-    }
+    #sb-header { padding:12px 14px; background:#0d1520; border-bottom:1px solid var(--border); }
+    #sb-header h1 { font-size:13px; color:var(--green); letter-spacing:2px; }
+    #sb-header .sub { color:var(--dim); font-size:10px; margin-top:2px; }
 
-    #sidebar-header {
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--border);
-      background: #0d1520;
+    /* 시뮬레이터 컨트롤 */
+    #sim-panel { padding:10px 12px; background:#0b1520; border-bottom:1px solid var(--border); }
+    .sim-title { color:var(--amber); font-size:10px; letter-spacing:1px; margin-bottom:8px; }
+    #run-btn {
+      width:100%; padding:8px 0; background:transparent; border:1px solid var(--green);
+      color:var(--green); cursor:pointer; font-family:var(--font); font-size:12px;
+      border-radius:3px; letter-spacing:1px; transition:all .15s;
     }
-    #sidebar-header h1 { font-size: 13px; color: var(--green); letter-spacing: 2px; }
-    #sidebar-header .sub { color: var(--dim); font-size: 11px; margin-top: 2px; }
+    #run-btn:hover:not(:disabled) { background:var(--green); color:#000; }
+    #run-btn:disabled { opacity:.4; cursor:not-allowed; }
+    #sim-status { margin-top:6px; font-size:10px; color:var(--dim); min-height:14px; }
+    #sim-progress { height:2px; background:var(--border); margin-top:6px; border-radius:1px; overflow:hidden; }
+    #sim-progress-bar { height:100%; width:0; background:var(--green); transition:width .3s; }
 
-    #category-bar {
-      display: flex; gap: 4px; padding: 8px 10px;
-      border-bottom: 1px solid var(--border);
-      flex-wrap: wrap;
-    }
-    .cat-btn {
-      padding: 3px 8px; border-radius: 3px; border: 1px solid var(--border);
-      background: transparent; color: var(--dim); cursor: pointer; font-family: var(--font); font-size: 11px;
-      transition: all .15s;
-    }
-    .cat-btn.active { background: var(--green); color: #000; border-color: var(--green); }
-    .cat-btn:hover:not(.active) { border-color: var(--green); color: var(--green); }
+    /* 위성 목록 */
+    #sat-list-hdr { display:flex; justify-content:space-between; padding:6px 12px; font-size:10px; color:var(--dim); border-bottom:1px solid var(--border); background:#0d1520; }
+    #sat-count { color:var(--amber); }
+    #sat-list { overflow-y:auto; flex:1; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+    .sat-item { padding:6px 12px; border-bottom:1px solid #0d1520; cursor:pointer; transition:background .1s; }
+    .sat-item:hover { background:#152030; }
+    .sat-item.active { background:#1a2d40; border-left:3px solid var(--green); }
+    .sat-name { font-size:11px; color:var(--text); }
+    .sat-meta { font-size:10px; color:var(--dim); margin-top:1px; }
+    .sat-pos  { font-size:10px; color:var(--blue); margin-top:1px; }
 
-    #intel-box {
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--border);
-      background: #0c1219;
-    }
-    .intel-title { color: var(--amber); font-size: 10px; letter-spacing: 1px; margin-bottom: 4px; }
-    .intel-row { display: flex; justify-content: space-between; margin: 2px 0; font-size: 11px; }
-    .intel-val { color: var(--green); }
-    .signal-item { color: var(--red); font-size: 10px; margin: 2px 0; }
+    /* 하단 갱신 바 */
+    #refresh-bar { padding:6px 12px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+    #refresh-btn { padding:4px 10px; background:transparent; border:1px solid var(--green); color:var(--green); cursor:pointer; font-family:var(--font); font-size:10px; border-radius:3px; transition:all .15s; }
+    #refresh-btn:hover { background:var(--green); color:#000; }
+    #refresh-ts { font-size:10px; color:var(--dim); }
 
-    #sat-list-header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 6px 12px; font-size: 10px; color: var(--dim);
-      border-bottom: 1px solid var(--border);
-    }
-    #sat-count { color: var(--amber); }
+    /* ── 지도 ── */
+    #map-wrap { flex:1; position:relative; }
+    #map { width:100%; height:100%; }
 
-    #sat-list {
-      overflow-y: auto; flex: 1;
-      scrollbar-width: thin;
-      scrollbar-color: var(--border) transparent;
-    }
-    .sat-item {
-      padding: 6px 12px; cursor: pointer;
-      border-bottom: 1px solid #0d1520;
-      display: flex; flex-direction: column; gap: 2px;
-      transition: background .1s;
-    }
-    .sat-item:hover { background: #152030; }
-    .sat-item.active { background: #1a2d40; border-left: 3px solid var(--green); }
-    .sat-name { font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .sat-meta { font-size: 10px; color: var(--dim); }
-    .sat-pos  { font-size: 10px; color: var(--blue); }
+    /* ── 우측 상세 패널 ── */
+    #detail-panel { width:330px; min-width:330px; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; }
+    #detail-panel.hidden { display:none; }
+    #dp-header { padding:10px 14px; background:#0d1520; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+    #dp-title { font-size:12px; color:var(--amber); letter-spacing:1px; }
+    #dp-close { cursor:pointer; color:var(--dim); font-size:16px; }
+    #dp-close:hover { color:var(--red); }
 
-    #refresh-bar {
-      padding: 6px 12px; border-top: 1px solid var(--border);
-      display: flex; align-items: center; gap: 8px;
-    }
-    #refresh-btn {
-      padding: 4px 10px; background: transparent; border: 1px solid var(--green);
-      color: var(--green); cursor: pointer; font-family: var(--font); font-size: 11px;
-      border-radius: 3px; transition: all .15s;
-    }
-    #refresh-btn:hover { background: var(--green); color: #000; }
-    #refresh-status { font-size: 10px; color: var(--dim); }
+    #dp-sat-info { padding:10px 14px; background:#0c1219; border-bottom:1px solid var(--border); }
+    #dp-sat-name { font-size:13px; color:var(--green); font-weight:bold; margin-bottom:4px; }
+    #dp-sat-detail { font-size:10px; color:var(--dim); line-height:1.7; }
 
-    /* ── Map ──────────────────────────────────────────────── */
-    #map-wrap { flex: 1; position: relative; }
-    #map { width: 100%; height: 100%; }
+    #dp-image-wrap { padding:10px 14px; border-bottom:1px solid var(--border); }
+    .dp-sec { font-size:10px; color:var(--amber); letter-spacing:1px; margin-bottom:6px; }
+    #dp-image { width:100%; border:1px solid var(--border); border-radius:3px; display:none; }
+    #dp-img-meta { font-size:9px; color:var(--dim); margin-top:4px; line-height:1.5; }
+    #dp-no-image { font-size:11px; color:var(--dim); }
 
-    /* ── Right panel (hover) ──────────────────────────────── */
-    #detail-panel {
-      width: 320px; min-width: 320px;
-      background: var(--panel);
-      border-left: 1px solid var(--border);
-      display: flex; flex-direction: column;
-      transition: transform .25s ease;
-      transform: translateX(0);
-    }
-    #detail-panel.hidden { transform: translateX(320px); position: absolute; right: 0; }
+    #dp-detections { padding:10px 14px; flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+    .det-row { display:flex; justify-content:space-between; align-items:center; padding:4px 8px; margin:3px 0; border:1px solid var(--border); background:#0c1520; border-radius:2px; }
+    .det-cls { font-size:10px; color:var(--text); }
+    .det-conf { font-size:10px; color:var(--green); font-weight:bold; }
+    #dp-no-det { font-size:11px; color:var(--dim); }
 
-    #dp-header {
-      padding: 10px 14px; border-bottom: 1px solid var(--border);
-      background: #0d1520; display: flex; justify-content: space-between; align-items: center;
-    }
-    #dp-title { font-size: 12px; color: var(--amber); letter-spacing: 1px; }
-    #dp-close { cursor: pointer; color: var(--dim); font-size: 16px; line-height: 1; }
-    #dp-close:hover { color: var(--red); }
+    #dp-hint { padding:6px 14px; border-top:1px solid var(--border); font-size:10px; color:var(--dim); text-align:center; background:#0d1520; }
 
-    #dp-sat-info {
-      padding: 10px 14px; border-bottom: 1px solid var(--border);
-      background: #0c1219;
-    }
-    #dp-sat-name  { font-size: 13px; color: var(--green); margin-bottom: 4px; }
-    #dp-sat-detail { font-size: 11px; color: var(--dim); line-height: 1.6; }
+    /* ── 보고서 모달 ── */
+    #report-modal { display:none; position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,.75); align-items:center; justify-content:center; }
+    #report-modal.open { display:flex; }
+    #report-box { width:700px; max-width:96vw; max-height:88vh; background:var(--panel); border:1px solid var(--border); border-radius:4px; display:flex; flex-direction:column; overflow:hidden; }
+    #report-hdr { padding:10px 16px; background:#0d1520; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+    #report-hdr h2 { font-size:13px; color:var(--amber); letter-spacing:1px; }
+    #report-hdr-close { cursor:pointer; color:var(--dim); font-size:18px; }
+    #report-hdr-close:hover { color:var(--red); }
+    #report-meta { padding:8px 16px; border-bottom:1px solid var(--border); font-size:10px; color:var(--dim); line-height:1.6; }
+    #report-body { flex:1; overflow-y:auto; padding:14px 16px; }
+    #report-content { white-space:pre-wrap; font-size:11px; color:var(--text); line-height:1.7; }
 
-    #dp-image-wrap {
-      padding: 10px 14px; border-bottom: 1px solid var(--border);
-    }
-    .dp-section-title { font-size: 10px; color: var(--amber); letter-spacing: 1px; margin-bottom: 6px; }
-    #dp-image { width: 100%; border: 1px solid var(--border); border-radius: 3px; display: none; }
-    #dp-image-meta { font-size: 10px; color: var(--dim); margin-top: 4px; line-height: 1.5; }
-    #dp-no-image { font-size: 11px; color: var(--dim); }
+    /* 다운로드 버튼 (우하단 고정) */
+    #download-btn { position:fixed; bottom:24px; right:24px; z-index:9100; padding:10px 20px; background:var(--amber); color:#000; border:none; border-radius:4px; cursor:pointer; font-family:var(--font); font-size:12px; font-weight:bold; letter-spacing:1px; display:none; transition:background .15s; }
+    #download-btn:hover { background:#ffd040; }
 
-    #dp-detections {
-      padding: 10px 14px; flex: 1; overflow-y: auto;
-      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
-    }
-    .det-item {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 5px 8px; margin: 3px 0; border-radius: 3px;
-      border: 1px solid var(--border); background: #0c1520;
-    }
-    .det-class { font-size: 11px; color: var(--text); }
-    .det-conf  { font-size: 11px; color: var(--green); }
-    .det-status {
-      font-size: 9px; padding: 1px 5px; border-radius: 2px; margin-left: 4px;
-    }
-    .det-status.new         { background: #00aa44; color: #000; }
-    .det-status.matched     { background: #0066cc; color: #fff; }
-    .det-status.moved       { background: #cc8800; color: #000; }
-    .det-status.disappeared { background: #660000; color: #fff; }
-    #dp-no-det { font-size: 11px; color: var(--dim); }
+    /* ── 마커 스타일 ── */
+    .sat-dot { width:10px; height:10px; border-radius:50%; border:2px solid; cursor:pointer; transition:transform .1s; }
+    .sat-dot:hover { transform:scale(1.8); }
+    .sat-dot.military { background:rgba(255,64,64,.5); border-color:#ff4040; }
+    .sat-dot.active-sat { background:rgba(0,255,136,.6); border-color:#00ff88; box-shadow:0 0 8px #00ff88; }
 
-    #dp-hint {
-      padding: 8px 14px; border-top: 1px solid var(--border);
-      font-size: 10px; color: var(--dim); text-align: center;
-    }
-
-    /* ── Report Modal ─────────────────────────────────────── */
-    #report-modal {
-      display: none; position: fixed; inset: 0; z-index: 9000;
-      background: rgba(0,0,0,.75); align-items: center; justify-content: center;
-    }
-    #report-modal.open { display: flex; }
-    #report-box {
-      width: 680px; max-width: 96vw; max-height: 88vh;
-      background: var(--panel); border: 1px solid var(--border);
-      border-radius: 4px; display: flex; flex-direction: column; overflow: hidden;
-    }
-    #report-hdr {
-      padding: 10px 16px; background: #0d1520;
-      border-bottom: 1px solid var(--border);
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    #report-hdr h2 { font-size: 13px; color: var(--amber); letter-spacing: 1px; }
-    #report-hdr-close { cursor: pointer; color: var(--dim); font-size: 18px; }
-    #report-hdr-close:hover { color: var(--red); }
-    #report-meta { padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--dim); }
-    #report-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
-    #report-content {
-      white-space: pre-wrap; font-size: 12px; color: var(--text);
-      line-height: 1.65;
-    }
-
-    /* Download button – bottom-right */
-    #download-btn {
-      position: fixed; bottom: 24px; right: 24px; z-index: 9100;
-      padding: 10px 20px; background: var(--amber); color: #000;
-      border: none; border-radius: 4px; cursor: pointer;
-      font-family: var(--font); font-size: 12px; font-weight: bold;
-      letter-spacing: 1px; display: none; transition: background .15s;
-    }
-    #download-btn:hover { background: #ffd040; }
-
-    /* ── Map markers ──────────────────────────────────────── */
-    .sat-marker {
-      width: 10px; height: 10px; border-radius: 50%;
-      border: 2px solid;
-      cursor: pointer;
-      transition: transform .1s;
-    }
-    .sat-marker:hover { transform: scale(1.6); }
-    .sat-marker.military  { background: rgba(255,64,64,.6);  border-color: #ff4040; }
-    .sat-marker.stations  { background: rgba(64,170,255,.6); border-color: #40aaff; }
-    .sat-marker.starlink  { background: rgba(160,80,255,.6); border-color: #aa44ff; }
-    .sat-marker.gps-ops   { background: rgba(0,255,136,.4);  border-color: #00ff88; }
-
-    .region-marker {
-      width: 14px; height: 14px; background: var(--amber);
-      border: 2px solid #fff; border-radius: 3px; cursor: pointer;
-      box-shadow: 0 0 8px rgba(255,179,0,.7);
-    }
-
-    /* Spinner */
-    #spinner {
-      display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-      color: var(--green); font-size: 14px; z-index: 1000;
-      background: rgba(10,14,20,.8); padding: 10px 20px; border: 1px solid var(--border);
-      border-radius: 4px;
-    }
+    /* 스피너 */
+    #spinner { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:var(--green); font-size:13px; z-index:999; background:rgba(10,14,20,.85); padding:10px 20px; border:1px solid var(--border); border-radius:4px; }
   </style>
 </head>
 <body>
 <div id="app">
 
-  <!-- ── Left sidebar ──────────────────────────────────── -->
+  <!-- ── 좌측 사이드바 ── -->
   <div id="sidebar">
-    <div id="sidebar-header">
+    <div id="sb-header">
       <h1>◈ MSIS SATELLITE</h1>
       <div class="sub">Multi-Source Intelligent System</div>
     </div>
 
-    <div id="category-bar">
-      <button class="cat-btn active" data-cat="military">군사</button>
-      <button class="cat-btn active" data-cat="stations">정거장</button>
-      <button class="cat-btn" data-cat="gps-ops">GPS</button>
-      <button class="cat-btn" data-cat="starlink">Starlink</button>
+    <!-- 시뮬레이터 컨트롤 -->
+    <div id="sim-panel">
+      <div class="sim-title">◈ 위성 모의기</div>
+      <button id="run-btn">▶ 시뮬레이션 1스텝 실행</button>
+      <div id="sim-status">대기 중 – 버튼을 눌러 탐지 + 보고서 생성</div>
+      <div id="sim-progress"><div id="sim-progress-bar"></div></div>
     </div>
 
-    <div id="intel-box">
-      <div class="intel-title">◈ SPACE INTELLIGENCE</div>
-      <div class="intel-row"><span>군사 위성</span><span class="intel-val" id="mil-count">—</span></div>
-      <div class="intel-row"><span>최근 발사 (30일)</span><span class="intel-val" id="launch-count">—</span></div>
-      <div class="intel-row"><span>ISS 위치</span><span class="intel-val" id="iss-pos">—</span></div>
-      <div id="signals-box"></div>
-    </div>
-
-    <div id="sat-list-header">
-      <span>위성 목록</span>
+    <div id="sat-list-hdr">
+      <span>위성 목록 (모의기)</span>
       <span id="sat-count">0개</span>
     </div>
-
     <div id="sat-list"></div>
 
     <div id="refresh-bar">
-      <button id="refresh-btn">↺ 갱신</button>
-      <span id="refresh-status">—</span>
+      <button id="refresh-btn">↺ 위치 갱신</button>
+      <span id="refresh-ts">—</span>
     </div>
   </div>
 
-  <!-- ── Map ──────────────────────────────────────────── -->
+  <!-- ── 지도 ── -->
   <div id="map-wrap">
     <div id="map"></div>
-    <div id="spinner">위성 위치 계산 중...</div>
+    <div id="spinner">처리 중...</div>
   </div>
 
-  <!-- ── Right detail panel ────────────────────────────── -->
+  <!-- ── 우측 상세 패널 ── -->
   <div id="detail-panel" class="hidden">
     <div id="dp-header">
       <span id="dp-title">위성 정보</span>
-      <span id="dp-close" title="닫기">✕</span>
+      <span id="dp-close">✕</span>
     </div>
     <div id="dp-sat-info">
       <div id="dp-sat-name">—</div>
       <div id="dp-sat-detail">—</div>
     </div>
     <div id="dp-image-wrap">
-      <div class="dp-section-title">◈ 위성 영상</div>
+      <div class="dp-sec">◈ 위성 영상 (DB 최신)</div>
       <img id="dp-image" alt="위성 영상" />
-      <div id="dp-image-meta"></div>
-      <div id="dp-no-image">해당 지역 영상 없음</div>
+      <div id="dp-img-meta"></div>
+      <div id="dp-no-image">영상 없음 – 시뮬레이션을 먼저 실행하세요</div>
     </div>
     <div id="dp-detections">
-      <div class="dp-section-title">◈ SAM3 객체탐지 결과</div>
+      <div class="dp-sec">◈ SAM3 객체탐지 결과 (DB 최신)</div>
       <div id="det-list"></div>
       <div id="dp-no-det" style="display:none">탐지 결과 없음</div>
     </div>
@@ -304,259 +175,227 @@
 
 </div>
 
-<!-- ── Report Modal ─────────────────────────────────────── -->
+<!-- ── 보고서 모달 ── -->
 <div id="report-modal">
   <div id="report-box">
     <div id="report-hdr">
       <h2>◈ 위성 판독 보고서</h2>
-      <span id="report-hdr-close" title="닫기">✕</span>
+      <span id="report-hdr-close">✕</span>
     </div>
     <div id="report-meta">로딩 중...</div>
-    <div id="report-body">
-      <pre id="report-content"></pre>
-    </div>
+    <div id="report-body"><pre id="report-content"></pre></div>
   </div>
 </div>
-
-<!-- Download button (fixed bottom-right) -->
 <button id="download-btn">⬇ 보고서 다운로드</button>
 
 <script>
-/* ══════════════════════════════════════════════════════════
-   MSIS Dashboard – Satellite Tracker + SAM3 Detection UI
-   ══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   MSIS Dashboard – 위성 모의기 + SAM3 탐지 결과 + 판독보고서 UI
+   ═══════════════════════════════════════════════════════════════════════ */
 
-const API = '';  // same origin
-let map, satelliteMarkers = [], regionMarkers = [];
-let allSatellites = [];
-let activeCategories = new Set(['military', 'stations']);
-let hoveredSatId = null;
-let currentReportId = null;
-let hoverTimer = null;
+const API = '';
+let map, satMarkers = [], activeSatId = null, hoverTimer = null;
+let satellites = [];
 
-/* ── Map init ───────────────────────────────────────────── */
+/* ── 지도 초기화 ── */
 function initMap() {
-  map = L.map('map', {
-    center: [20, 0],
-    zoom: 2,
-    zoomControl: true,
-    preferCanvas: true,
-  });
-
+  map = L.map('map', { center: [30, 100], zoom: 3, preferCanvas: true });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap © CARTO',
-    maxZoom: 18,
-    subdomains: 'abcd',
+    attribution: '© OpenStreetMap © CARTO', maxZoom: 18, subdomains: 'abcd',
   }).addTo(map);
 }
 
-/* ── Category filter buttons ────────────────────────────── */
-document.querySelectorAll('.cat-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const cat = btn.dataset.cat;
-    if (activeCategories.has(cat)) {
-      activeCategories.delete(cat);
-      btn.classList.remove('active');
-    } else {
-      activeCategories.add(cat);
-      btn.classList.add('active');
-    }
-    renderMarkers();
-    renderSidebarList();
-  });
-});
-
-/* ── Fetch satellites from API ──────────────────────────── */
-async function fetchSatellites() {
-  setSpinner(true);
-  document.getElementById('refresh-status').textContent = '갱신 중...';
+/* ── 위성 위치 로드 (모의기) ── */
+async function loadSatellites() {
   try {
-    const cats = [...activeCategories].join(',') || 'military,stations';
-    const allCats = 'military,stations,gps-ops,starlink';
-    const res = await fetch(`${API}/api/satellites?categories=${allCats}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    allSatellites = data.satellites || [];
-    document.getElementById('sat-count').textContent = `${allSatellites.length}개`;
-    renderMarkers();
-    renderSidebarList();
-    document.getElementById('refresh-status').textContent =
-      `갱신: ${new Date().toLocaleTimeString('ko-KR')}`;
-  } catch (err) {
-    document.getElementById('refresh-status').textContent = `오류: ${err.message}`;
-    console.error('[Satellites] fetch error:', err);
-  } finally {
-    setSpinner(false);
-  }
-}
-
-/* ── Fetch space intelligence ───────────────────────────── */
-async function fetchIntelligence() {
-  try {
-    const res = await fetch(`${API}/api/space/intelligence`);
+    const res = await fetch(`${API}/api/satellites`);
     if (!res.ok) return;
-    const d = await res.json();
-    document.getElementById('mil-count').textContent = d.militarySatellites ?? '—';
-    document.getElementById('launch-count').textContent = d.totalNewObjects ?? '—';
-    if (d.iss && d.iss.lat !== undefined) {
-      document.getElementById('iss-pos').textContent =
-        `${d.iss.lat.toFixed(1)}°, ${d.iss.lon.toFixed(1)}°`;
-    }
-    const sb = document.getElementById('signals-box');
-    sb.innerHTML = '';
-    (d.signals || []).forEach(sig => {
-      const div = document.createElement('div');
-      div.className = 'signal-item';
-      div.textContent = '⚠ ' + sig;
-      sb.appendChild(div);
-    });
-  } catch (err) {
-    console.warn('[Intelligence] fetch error:', err);
-  }
+    const data = await res.json();
+    satellites = data.satellites || [];
+    renderMarkers();
+    renderSidebarList();
+    document.getElementById('sat-count').textContent = `${satellites.length}개`;
+    document.getElementById('refresh-ts').textContent =
+      `갱신: ${new Date().toLocaleTimeString('ko-KR')}`;
+  } catch(e) { console.warn('[Satellites]', e); }
 }
 
-/* ── Render satellite markers on map ────────────────────── */
+/* ── 마커 렌더링 ── */
 function renderMarkers() {
-  // Remove old markers
-  satelliteMarkers.forEach(m => m.remove());
-  satelliteMarkers = [];
+  satMarkers.forEach(m => m.remove());
+  satMarkers = [];
 
-  const visible = allSatellites.filter(s => activeCategories.has(s.category));
-
-  visible.forEach(sat => {
-    const cat = sat.category.replace('-', '-');
+  satellites.forEach(sat => {
+    const isActive = (sat.id === activeSatId);
     const el = document.createElement('div');
-    el.className = `sat-marker ${cat}`;
+    el.className = `sat-dot ${isActive ? 'active-sat' : 'military'}`;
     el.title = sat.name;
 
     const marker = L.marker([sat.lat, sat.lon], {
       icon: L.divIcon({ html: el, className: '', iconSize: [10, 10], iconAnchor: [5, 5] }),
     }).addTo(map);
 
-    marker._satData = sat;
+    marker._sat = sat;
 
-    // Hover
     marker.on('mouseover', () => {
       clearTimeout(hoverTimer);
-      hoverTimer = setTimeout(() => onSatHover(sat, marker), 200);
+      hoverTimer = setTimeout(() => showDetail(sat), 250);
     });
-
-    // Double-click → report
-    marker.on('dblclick', (e) => {
+    marker.on('dblclick', e => {
       L.DomEvent.stopPropagation(e);
       openReport(sat.lat, sat.lon);
     });
 
-    satelliteMarkers.push(marker);
+    satMarkers.push(marker);
   });
 }
 
-/* ── Sidebar satellite list ─────────────────────────────── */
+/* ── 사이드바 목록 ── */
 function renderSidebarList() {
   const list = document.getElementById('sat-list');
   list.innerHTML = '';
-  const visible = allSatellites.filter(s => activeCategories.has(s.category));
-  visible.slice(0, 150).forEach(sat => {
+  satellites.forEach(sat => {
     const div = document.createElement('div');
-    div.className = 'sat-item';
+    div.className = `sat-item${sat.id === activeSatId ? ' active' : ''}`;
     div.innerHTML = `
       <div class="sat-name">${sat.name}</div>
-      <div class="sat-meta">${sat.country || '—'} · ${sat.category_label} · ${sat.period_min ? sat.period_min.toFixed(1)+'분' : ''}</div>
-      <div class="sat-pos">LAT ${sat.lat.toFixed(2)} LON ${sat.lon.toFixed(2)} ALT ${sat.alt_km.toFixed(0)}km</div>
-    `;
-    div.addEventListener('mouseenter', () => onSatHover(sat, null));
+      <div class="sat-meta">${sat.id} · ${sat.country} · 고도 ${sat.alt_km}km</div>
+      <div class="sat-pos">LAT ${sat.lat.toFixed(3)}° &nbsp; LON ${sat.lon.toFixed(3)}°</div>`;
+    div.addEventListener('mouseenter', () => showDetail(sat));
     div.addEventListener('dblclick', () => openReport(sat.lat, sat.lon));
     list.appendChild(div);
   });
-  document.getElementById('sat-count').textContent = `${visible.length}개`;
 }
 
-/* ── On satellite hover: load image + detections ─────────── */
-async function onSatHover(sat, marker) {
-  hoveredSatId = sat.norad_id;
-  showDetailPanel();
-
-  // Update satellite info
+/* ── 위성 상세 패널 (호버) ── */
+async function showDetail(sat) {
+  document.getElementById('detail-panel').classList.remove('hidden');
   document.getElementById('dp-sat-name').textContent = sat.name;
   document.getElementById('dp-sat-detail').innerHTML =
-    `NORAD: ${sat.norad_id} | ${sat.country || '—'}<br>` +
-    `궤도 고도: ${sat.alt_km.toFixed(0)} km<br>` +
-    `경도: ${sat.lon.toFixed(3)}° 위도: ${sat.lat.toFixed(3)}°<br>` +
-    `주기: ${sat.period_min ? sat.period_min.toFixed(2)+'분' : '—'} | 경사각: ${sat.inclination ? sat.inclination.toFixed(1)+'°' : '—'}`;
+    `ID: ${sat.id}  |  국가: ${sat.country}<br>` +
+    `고도: ${sat.alt_km} km  |  경사각: ${sat.inclination}°<br>` +
+    `주기: ${sat.period_min}분<br>` +
+    `현재 위치: ${sat.lat.toFixed(4)}°N  ${sat.lon.toFixed(4)}°E`;
 
-  // Reset image area
+  // 영상
   const img = document.getElementById('dp-image');
   const noImg = document.getElementById('dp-no-image');
-  const imgMeta = document.getElementById('dp-image-meta');
-  img.style.display = 'none'; noImg.style.display = 'block'; imgMeta.textContent = '';
+  const meta = document.getElementById('dp-img-meta');
+  img.style.display = 'none'; noImg.style.display = 'block'; meta.textContent = '';
 
-  // Reset detection area
+  // 탐지
   const detList = document.getElementById('det-list');
   const noDet = document.getElementById('dp-no-det');
   detList.innerHTML = ''; noDet.style.display = 'none';
 
-  // Fetch image (1 degree radius – wide enough to find any DB region near satellite)
+  // DB에서 해당 위치 영상 조회
   try {
-    const imgRes = await fetch(`${API}/api/image/latest?lat=${sat.lat}&lon=${sat.lon}&radius=5`);
-    if (imgRes.ok) {
-      const imgData = await imgRes.json();
-      if (imgData.image_b64) {
-        img.src = `data:image/png;base64,${imgData.image_b64}`;
-        img.style.display = 'block';
-        noImg.style.display = 'none';
-        imgMeta.innerHTML =
-          `촬영: ${imgData.capture_time ? new Date(imgData.capture_time).toLocaleString('ko-KR') : '—'}<br>` +
-          `플랫폼: ${imgData.sensor_platform || '—'} | ${imgData.source_type || '—'}<br>` +
-          `해상도: ${imgData.resolution_m ? imgData.resolution_m+'m/px' : '—'}`;
+    const r = await fetch(`${API}/api/image/latest?lat=${sat.lat}&lon=${sat.lon}&radius=5`);
+    if (r.ok) {
+      const d = await r.json();
+      if (d.image_b64) {
+        img.src = `data:image/png;base64,${d.image_b64}`;
+        img.style.display = 'block'; noImg.style.display = 'none';
+        meta.innerHTML =
+          `촬영: ${d.capture_time ? new Date(d.capture_time).toLocaleString('ko-KR') : '—'}<br>` +
+          `플랫폼: ${d.sensor_platform || '—'}  |  해상도: ${d.resolution_m || '—'}m/px`;
       }
     }
-  } catch (err) {
-    console.warn('[Image] fetch error:', err);
-  }
+  } catch(e) { console.warn('[Image]', e); }
 
-  // Fetch detections
+  // DB에서 탐지 결과 조회
   try {
-    const detRes = await fetch(`${API}/api/detections?lat=${sat.lat}&lon=${sat.lon}&radius=5`);
-    if (detRes.ok) {
-      const detData = await detRes.json();
-      if (detData.detections && detData.detections.length > 0) {
-        detData.detections.forEach(d => {
-          const div = document.createElement('div');
-          div.className = 'det-item';
-          const pct = (d.confidence * 100).toFixed(1);
-          div.innerHTML = `
-            <div>
-              <span class="det-class">${d.object_class}</span>
-            </div>
-            <div>
-              <span class="det-conf">${pct}%</span>
-            </div>
-          `;
-          detList.appendChild(div);
+    const r = await fetch(`${API}/api/detections?lat=${sat.lat}&lon=${sat.lon}&radius=5`);
+    if (r.ok) {
+      const d = await r.json();
+      if (d.detections && d.detections.length) {
+        d.detections.forEach(det => {
+          const row = document.createElement('div');
+          row.className = 'det-row';
+          row.innerHTML = `<span class="det-cls">${det.object_class}</span>
+                           <span class="det-conf">${(det.confidence*100).toFixed(1)}%</span>`;
+          detList.appendChild(row);
         });
+      } else { noDet.style.display = 'block'; }
+    } else { noDet.style.display = 'block'; }
+  } catch(e) { noDet.style.display = 'block'; }
+}
+
+document.getElementById('dp-close').addEventListener('click', () => {
+  document.getElementById('detail-panel').classList.add('hidden');
+});
+
+/* ── 시뮬레이션 1스텝 실행 ── */
+document.getElementById('run-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('run-btn');
+  const status = document.getElementById('sim-status');
+  const bar = document.getElementById('sim-progress-bar');
+
+  btn.disabled = true;
+  document.getElementById('spinner').style.display = 'block';
+
+  // 진행 애니메이션
+  let progress = 0;
+  const timer = setInterval(() => {
+    progress = Math.min(progress + 2, 90);
+    bar.style.width = progress + '%';
+  }, 300);
+
+  const steps = [
+    '위성 궤도 계산 중...',
+    '이미지 2장 선택 중...',
+    'metadata.json 갱신 중...',
+    'SAM3 탐지 실행 중...',
+    '시간적 페어링 처리 중...',
+    '판독 보고서 생성 중...',
+  ];
+  let si = 0;
+  status.textContent = steps[si];
+  const stepTimer = setInterval(() => {
+    si = Math.min(si + 1, steps.length - 1);
+    status.textContent = steps[si];
+  }, 2500);
+
+  try {
+    const res = await fetch(`${API}/api/simulator/step`, { method: 'POST' });
+    clearInterval(timer); clearInterval(stepTimer);
+    bar.style.width = '100%';
+
+    if (res.ok) {
+      const data = await res.json();
+      activeSatId = data.active?.id || null;
+
+      // 위성 위치 업데이트
+      if (data.satellites) {
+        satellites = data.satellites;
+        renderMarkers();
+        renderSidebarList();
+      }
+
+      if (data.success) {
+        status.textContent = `✓ 완료 (${data.elapsed_s}s) | 이미지: ${(data.images||[]).map(p=>p.split('/').pop()).join(', ')}`;
+        // 활성 위성 패널 자동 열기
+        if (data.active) showDetail(data.active);
       } else {
-        noDet.style.display = 'block';
+        status.textContent = `⚠ 파이프라인 오류 – DB에 기존 데이터 유지`;
       }
     } else {
-      noDet.style.display = 'block';
+      status.textContent = '오류: 서버 응답 실패';
     }
-  } catch (err) {
-    console.warn('[Detections] fetch error:', err);
-    noDet.style.display = 'block';
+  } catch(e) {
+    clearInterval(timer); clearInterval(stepTimer);
+    status.textContent = `오류: ${e.message}`;
+  } finally {
+    document.getElementById('spinner').style.display = 'none';
+    btn.disabled = false;
+    setTimeout(() => { bar.style.width = '0'; }, 2000);
   }
-}
+});
 
-/* ── Detail panel show/hide ─────────────────────────────── */
-function showDetailPanel() {
-  document.getElementById('detail-panel').classList.remove('hidden');
-}
-function hideDetailPanel() {
-  document.getElementById('detail-panel').classList.add('hidden');
-  hoveredSatId = null;
-}
-document.getElementById('dp-close').addEventListener('click', hideDetailPanel);
+/* ── 위치 갱신 버튼 ── */
+document.getElementById('refresh-btn').addEventListener('click', loadSatellites);
 
-/* ── Open Report Modal ──────────────────────────────────── */
+/* ── 보고서 모달 (더블클릭) ── */
 async function openReport(lat, lon) {
   const modal = document.getElementById('report-modal');
   const meta  = document.getElementById('report-meta');
@@ -567,7 +406,6 @@ async function openReport(lat, lon) {
   meta.textContent = '보고서 로딩 중...';
   content.textContent = '';
   dlBtn.style.display = 'none';
-  currentReportId = null;
 
   try {
     const res = await fetch(`${API}/api/report/latest?lat=${lat}&lon=${lon}&radius=5`);
@@ -577,65 +415,45 @@ async function openReport(lat, lon) {
       return;
     }
     const report = await res.json();
-    currentReportId = report.id;
-
     meta.innerHTML =
-      `보고서 ID: ${report.id}<br>` +
-      `생성 시각: ${report.report_time ? new Date(report.report_time).toLocaleString('ko-KR') : '—'}<br>` +
-      `LLM: ${report.llm_model || '—'} (${report.llm_backend || '—'}) | 페어링: ${report.pairing_count}건`;
+      `ID: ${report.id}<br>` +
+      `생성: ${report.report_time ? new Date(report.report_time).toLocaleString('ko-KR') : '—'}<br>` +
+      `LLM: ${report.llm_model || '—'} (${report.llm_backend || '—'})  |  페어링: ${report.pairing_count}건`;
     content.textContent = report.report_content || '(내용 없음)';
-
-    // Show download button
     dlBtn.style.display = 'block';
-    dlBtn.onclick = () => downloadReport(report);
-  } catch (err) {
-    meta.textContent = `네트워크 오류: ${err.message}`;
+    dlBtn.onclick = () => {
+      const ts = report.report_time
+        ? new Date(report.report_time).toISOString().replace(/[:.]/g,'-')
+        : 'report';
+      const blob = new Blob([report.report_content||''], {type:'text/plain;charset=utf-8'});
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob), download: `MSIS_report_${ts}.txt`
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    };
+  } catch(e) {
+    meta.textContent = `네트워크 오류: ${e.message}`;
   }
 }
 
-/* ── Download report ────────────────────────────────────── */
-function downloadReport(report) {
-  const ts = report.report_time
-    ? new Date(report.report_time).toISOString().replace(/[:.]/g, '-')
-    : 'report';
-  const blob = new Blob([report.report_content || ''], { type: 'text/plain;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `MSIS_report_${ts}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/* Close modal */
+/* 모달 닫기 */
 document.getElementById('report-hdr-close').addEventListener('click', () => {
   document.getElementById('report-modal').classList.remove('open');
   document.getElementById('download-btn').style.display = 'none';
 });
-document.getElementById('report-modal').addEventListener('click', (e) => {
+document.getElementById('report-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('report-modal')) {
     document.getElementById('report-modal').classList.remove('open');
     document.getElementById('download-btn').style.display = 'none';
   }
 });
 
-/* ── Spinner ────────────────────────────────────────────── */
-function setSpinner(on) {
-  document.getElementById('spinner').style.display = on ? 'block' : 'none';
-}
+/* ── 자동 위치 갱신 (10초) ── */
+setInterval(loadSatellites, 10_000);
 
-/* ── Refresh button ─────────────────────────────────────── */
-document.getElementById('refresh-btn').addEventListener('click', () => {
-  fetchSatellites();
-  fetchIntelligence();
-});
-
-/* ── Auto-refresh every 90 seconds ─────────────────────── */
-setInterval(() => { fetchSatellites(); fetchIntelligence(); }, 90_000);
-
-/* ── Boot ───────────────────────────────────────────────── */
+/* ── 부트 ── */
 initMap();
-fetchSatellites();
-fetchIntelligence();
+loadSatellites();
 </script>
 </body>
 </html>
