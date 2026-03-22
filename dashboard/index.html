@@ -29,14 +29,35 @@
     /* 시뮬레이터 컨트롤 */
     #sim-panel { padding:10px 12px; background:#0b1520; border-bottom:1px solid var(--border); }
     .sim-title { color:var(--amber); font-size:10px; letter-spacing:1px; margin-bottom:8px; }
+
+    /* 자동 시뮬레이션 상태 바 */
+    #auto-sim-bar { display:flex; align-items:center; gap:6px; margin-bottom:7px; }
+    #auto-indicator {
+      width:8px; height:8px; border-radius:50%; background:var(--dim); flex-shrink:0;
+      transition:background .3s;
+    }
+    #auto-indicator.on  { background:var(--green); box-shadow:0 0 6px var(--green); }
+    #auto-indicator.run { background:var(--amber); box-shadow:0 0 6px var(--amber); animation:pulse .8s infinite alternate; }
+    @keyframes pulse { from { opacity:1; } to { opacity:.3; } }
+    #auto-label { font-size:10px; color:var(--dim); flex:1; }
+    #auto-toggle-btn {
+      padding:2px 7px; font-family:var(--font); font-size:9px; cursor:pointer;
+      border-radius:2px; border:1px solid var(--green); background:transparent;
+      color:var(--green); letter-spacing:.5px; transition:all .15s;
+    }
+    #auto-toggle-btn:hover { background:var(--green); color:#000; }
+    #auto-toggle-btn.off  { border-color:var(--dim); color:var(--dim); }
+    #auto-toggle-btn.off:hover { background:var(--dim); color:#000; }
+
     #run-btn {
-      width:100%; padding:8px 0; background:transparent; border:1px solid var(--green);
-      color:var(--green); cursor:pointer; font-family:var(--font); font-size:12px;
+      width:100%; padding:7px 0; background:transparent; border:1px solid var(--border);
+      color:var(--dim); cursor:pointer; font-family:var(--font); font-size:11px;
       border-radius:3px; letter-spacing:1px; transition:all .15s;
     }
-    #run-btn:hover:not(:disabled) { background:var(--green); color:#000; }
-    #run-btn:disabled { opacity:.4; cursor:not-allowed; }
+    #run-btn:hover:not(:disabled) { border-color:var(--green); color:var(--green); }
+    #run-btn:disabled { opacity:.35; cursor:not-allowed; }
     #sim-status { margin-top:6px; font-size:10px; color:var(--dim); min-height:14px; }
+    #auto-run-count { font-size:9px; color:var(--dim); margin-top:3px; }
     #sim-progress { height:2px; background:var(--border); margin-top:6px; border-radius:1px; overflow:hidden; }
     #sim-progress-bar { height:100%; width:0; background:var(--green); transition:width .3s; }
 
@@ -147,8 +168,18 @@
     <!-- 시뮬레이터 컨트롤 -->
     <div id="sim-panel">
       <div class="sim-title">◈ 위성 모의기</div>
-      <button id="run-btn">▶ 시뮬레이션 1스텝 실행</button>
-      <div id="sim-status">대기 중 – 버튼을 눌러 탐지 + 보고서 생성</div>
+
+      <!-- 자동 시뮬레이션 상태 -->
+      <div id="auto-sim-bar">
+        <div id="auto-indicator"></div>
+        <span id="auto-label">자동 실행 OFF</span>
+        <button id="auto-toggle-btn" class="off">AUTO ON</button>
+      </div>
+
+      <!-- 수동 실행 버튼 -->
+      <button id="run-btn">▶ 수동 1스텝 실행</button>
+      <div id="sim-status">자동 시뮬레이션을 켜거나 수동 실행하세요</div>
+      <div id="auto-run-count"></div>
       <div id="sim-progress"><div id="sim-progress-bar"></div></div>
     </div>
 
@@ -528,10 +559,12 @@ document.getElementById('run-btn').addEventListener('click', async () => {
         renderSidebarList();
       }
       if (data.success) {
-        status.textContent = `✓ 완료 (${data.elapsed_s}s) | 이미지: ${(data.images||[]).map(p=>p.split('/').pop()).join(', ')}`;
+        status.textContent = `✓ 수동 완료 (${data.elapsed_s}s) | ${(data.images||[]).map(p=>p.split('/').pop()).join(', ')}`;
+        status.style.color = 'var(--green)';
         if (data.active) showSatDetail(data.active);
       } else {
         status.textContent = `⚠ 파이프라인 오류 – DB에 기존 데이터 유지`;
+        status.style.color = 'var(--red)';
       }
       // DB 목록 즉시 갱신
       popImgCache = {}; popDetCache = {};
@@ -605,12 +638,113 @@ document.getElementById('report-modal').addEventListener('click', e => {
   }
 });
 
+/* ══════════════════════════════════════════════════
+   자동 시뮬레이션 상태 폴링
+   ══════════════════════════════════════════════════ */
+let _prevRunCount   = 0;
+let _prevRunning    = false;
+let _autoEnabled    = false;
+
+async function pollSimStatus() {
+  try {
+    const res = await fetch(`${API}/api/simulator/status`);
+    if (!res.ok) return;
+    const s = await res.json();
+
+    const indicator = document.getElementById('auto-indicator');
+    const label     = document.getElementById('auto-label');
+    const toggleBtn = document.getElementById('auto-toggle-btn');
+    const statusEl  = document.getElementById('sim-status');
+    const countEl   = document.getElementById('auto-run-count');
+    const runBtn    = document.getElementById('run-btn');
+
+    _autoEnabled = s.auto_enabled;
+
+    // 지시등 & 라벨
+    if (s.running) {
+      indicator.className = 'run';
+      label.textContent   = '자동 실행 중...';
+      label.style.color   = 'var(--amber)';
+    } else if (s.auto_enabled) {
+      indicator.className = 'on';
+      label.textContent   = '자동 실행 ON – 좌표 변경 대기';
+      label.style.color   = 'var(--green)';
+    } else {
+      indicator.className = '';
+      label.textContent   = '자동 실행 OFF';
+      label.style.color   = 'var(--dim)';
+    }
+
+    // 토글 버튼
+    if (s.auto_enabled) {
+      toggleBtn.textContent = 'AUTO OFF';
+      toggleBtn.className   = '';
+    } else {
+      toggleBtn.textContent = 'AUTO ON';
+      toggleBtn.className   = 'off';
+    }
+
+    // 수동 실행 버튼 – 실행 중에는 비활성
+    runBtn.disabled = s.running;
+
+    // 누적 실행 횟수 / 마지막 결과
+    if (s.run_count > 0) {
+      const ts = s.last_run ? new Date(s.last_run + 'Z').toLocaleTimeString('ko-KR') : '—';
+      countEl.textContent =
+        `총 ${s.run_count}회 실행 | 마지막: ${ts} | ${s.last_elapsed}s`;
+      countEl.style.color = s.last_success ? 'var(--green)' : 'var(--red)';
+    }
+
+    // 새 실행이 완료됐으면 상태 메시지 갱신 + DB 목록 새로고침
+    if (_prevRunning && !s.running) {
+      if (s.last_success) {
+        const imgs = (s.last_images || []).map(p => p.split('/').pop()).join(', ');
+        statusEl.textContent = `✓ 자동 완료 (#${s.run_count}, ${s.last_elapsed}s) | ${imgs}`;
+        statusEl.style.color = 'var(--green)';
+      } else {
+        statusEl.textContent = `⚠ 파이프라인 오류 (#${s.run_count})`;
+        statusEl.style.color = 'var(--red)';
+      }
+
+      // 활성 위성 정보 업데이트
+      if (s.last_active) showSatDetail(s.last_active);
+
+      // DB 목록 갱신
+      popImgCache = {}; popDetCache = {};
+      await loadAllImages();
+      await loadAllDetections();
+      await loadSatellites();
+    }
+
+    // 새 실행이 시작됐으면 메시지 갱신
+    if (!_prevRunning && s.running) {
+      statusEl.textContent = `⚙ 자동 실행 중 (#${s.run_count + 1})...`;
+      statusEl.style.color = 'var(--amber)';
+    }
+
+    _prevRunning  = s.running;
+    _prevRunCount = s.run_count;
+
+  } catch(e) { console.warn('[SimStatus]', e); }
+}
+
+/* 자동 시뮬레이션 토글 버튼 */
+document.getElementById('auto-toggle-btn').addEventListener('click', async () => {
+  try {
+    const res = await fetch(`${API}/api/simulator/auto/toggle`, { method: 'POST' });
+    if (res.ok) await pollSimStatus();
+  } catch(e) { console.warn('[AutoToggle]', e); }
+});
+
 /* ── 자동 갱신 ── */
-setInterval(loadSatellites, 10_000);
+setInterval(loadSatellites,  10_000);
+setInterval(pollSimStatus,    5_000);   // 5초마다 자동 시뮬레이션 상태 체크
 setInterval(async () => {
-  popImgCache = {}; popDetCache = {};
-  await loadAllImages();
-  await loadAllDetections();
+  if (!_prevRunning) {  // 실행 중이 아닐 때만 주기 갱신
+    popImgCache = {}; popDetCache = {};
+    await loadAllImages();
+    await loadAllDetections();
+  }
 }, 30_000);
 
 /* ── 부트 ── */
@@ -618,6 +752,7 @@ initMap();
 loadSatellites();
 loadAllImages();
 loadAllDetections();
+pollSimStatus();
 </script>
 </body>
 </html>

@@ -18,6 +18,9 @@ MSIS Web API – FastAPI 백엔드 (위성 모의기 + 탐지 결과 대시보�
 import base64
 import io
 import logging
+import threading
+import time as _time
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -66,6 +69,92 @@ if _images_dir.exists():
 _dashboard_path = Path(__file__).parent / "dashboard" / "index.html"
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# 자동 시뮬레이션 백그라운드 스레드
+# ══════════════════════════════════════════════════════════════════════════
+
+_auto_state: dict = {
+    "enabled":        True,   # 자동 실행 ON/OFF
+    "running":        False,  # 파이프라인 실행 중 여부
+    "last_run":       None,   # 마지막 완료 시각 (ISO str)
+    "run_count":      0,      # 누적 실행 횟수
+    "last_success":   None,   # 마지막 실행 성공 여부
+    "last_elapsed":   None,   # 마지막 실행 소요 시간 (s)
+    "last_images":    [],     # 마지막 선택 이미지
+    "last_active":    None,   # 마지막 활성 위성
+    "last_positions": {},     # sat_id → (lat, lon)  위치 변경 감지용
+}
+_auto_lock = threading.Lock()
+
+POSITION_CHANGE_THRESHOLD_DEG = 0.003   # ~300 m – 이 이상 이동하면 실행
+AUTO_SIM_POLL_SEC              = 10      # 위치 체크 간격 (초)
+
+
+def _any_satellite_moved(new_sats: list) -> bool:
+    """이전 위치 대비 임계값 이상 이동한 위성이 있으면 True."""
+    prev = _auto_state["last_positions"]
+    if not prev:
+        return True
+    for s in new_sats:
+        p = prev.get(s["id"])
+        if p is None:
+            return True
+        if (abs(s["lat"] - p[0]) > POSITION_CHANGE_THRESHOLD_DEG or
+                abs(s["lon"] - p[1]) > POSITION_CHANGE_THRESHOLD_DEG):
+            return True
+    return False
+
+
+def _auto_sim_worker():
+    """위성 좌표 변경 감지 → 시뮬레이션 자동 실행 백그라운드 스레드."""
+    logger.info("[AutoSim] 백그라운드 스레드 시작 (%.1fs 간격)", AUTO_SIM_POLL_SEC)
+    _time.sleep(3)   # 서버 초기화 대기
+
+    while True:
+        try:
+            if _auto_state["enabled"] and not _auto_state["running"]:
+                sats = get_positions()
+
+                if _any_satellite_moved(sats):
+                    # 위치 스냅샷 갱신
+                    _auto_state["last_positions"] = {
+                        s["id"]: (s["lat"], s["lon"]) for s in sats
+                    }
+
+                    with _auto_lock:
+                        _auto_state["running"] = True
+
+                    logger.info("[AutoSim] 좌표 변경 감지 → 파이프라인 시작 (실행 #%d)",
+                                _auto_state["run_count"] + 1)
+                    try:
+                        from simulator_runner import run_step
+                        result = run_step()
+                        _auto_state["run_count"]    += 1
+                        _auto_state["last_run"]      = datetime.utcnow().isoformat()
+                        _auto_state["last_success"]  = result["success"]
+                        _auto_state["last_elapsed"]  = result["elapsed_s"]
+                        _auto_state["last_images"]   = result.get("images", [])
+                        _auto_state["last_active"]   = result.get("active")
+                        logger.info("[AutoSim] 완료 (#%d, %.1fs, success=%s)",
+                                    _auto_state["run_count"],
+                                    result["elapsed_s"],
+                                    result["success"])
+                    except Exception as exc:
+                        logger.error("[AutoSim] 실행 오류: %s", exc)
+                    finally:
+                        with _auto_lock:
+                            _auto_state["running"] = False
+
+        except Exception as exc:
+            logger.error("[AutoSim] 루프 오류: %s", exc)
+
+        _time.sleep(AUTO_SIM_POLL_SEC)
+
+
+# 서버 시작 시 스레드 자동 실행
+threading.Thread(target=_auto_sim_worker, daemon=True, name="AutoSimThread").start()
+
+
 def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
     """이미지 파일(TIFF 포함)을 PNG로 변환 후 base64 반환."""
     from PIL import Image
@@ -87,6 +176,29 @@ def api_satellites():
     """위성 모의기에서 계산된 현재 위성 위치 목록을 반환."""
     sats = get_positions()
     return {"satellites": sats, "count": len(sats)}
+
+
+@app.get("/api/simulator/status")
+def api_simulator_status():
+    """자동 시뮬레이션 현재 상태 조회."""
+    return {
+        "auto_enabled": _auto_state["enabled"],
+        "running":      _auto_state["running"],
+        "run_count":    _auto_state["run_count"],
+        "last_run":     _auto_state["last_run"],
+        "last_success": _auto_state["last_success"],
+        "last_elapsed": _auto_state["last_elapsed"],
+        "last_images":  _auto_state["last_images"],
+        "last_active":  _auto_state["last_active"],
+    }
+
+
+@app.post("/api/simulator/auto/toggle")
+def api_simulator_auto_toggle():
+    """자동 시뮬레이션 ON/OFF 토글."""
+    _auto_state["enabled"] = not _auto_state["enabled"]
+    logger.info("[AutoSim] 자동 실행 %s", "ON" if _auto_state["enabled"] else "OFF")
+    return {"auto_enabled": _auto_state["enabled"]}
 
 
 @app.post("/api/simulator/step")
