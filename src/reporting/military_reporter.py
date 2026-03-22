@@ -22,6 +22,7 @@ from typing import List, Optional
 
 from src.config import (
     LLM_BACKEND,
+    LLM_GPU_MEMORY_UTILIZATION,
     LLM_MAX_NEW_TOKENS,
     LLM_MODEL_NAME,
     LLM_TEMPERATURE,
@@ -159,8 +160,14 @@ class _VllmBackend:
     def _load(self):
         from vllm import LLM
 
-        logger.info(f"[Reporter] Loading {LLM_MODEL_NAME} via vLLM...")
-        self._llm = LLM(model=LLM_MODEL_NAME, trust_remote_code=True)
+        logger.info(f"[Reporter] Loading {LLM_MODEL_NAME} via vLLM (AWQ)...")
+        self._llm = LLM(
+            model=LLM_MODEL_NAME,
+            trust_remote_code=True,
+            quantization="awq",
+            dtype="float16",
+            gpu_memory_utilization=LLM_GPU_MEMORY_UTILIZATION,
+        )
         logger.info(f"[Reporter] {LLM_MODEL_NAME} loaded.")
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
@@ -256,6 +263,9 @@ class _OllamaBackend:
 def _get_backend():
     if LLM_BACKEND == "ollama":
         return _OllamaBackend()
+    if LLM_BACKEND == "vllm":
+        return _VllmBackend()
+    logger.warning(f"[Reporter] 알 수 없는 LLM_BACKEND='{LLM_BACKEND}', vLLM으로 대체합니다.")
     return _VllmBackend()
 
 

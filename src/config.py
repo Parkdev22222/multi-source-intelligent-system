@@ -61,16 +61,20 @@ COORDINATE_MATCH_RADIUS_DEG = float(os.getenv("COORD_MATCH_RADIUS", "0.01"))
 # 0.001 deg ≈ 111 m at equator – smaller than this is considered noise.
 MOVE_DISTANCE_THRESHOLD_DEG = float(os.getenv("MOVE_DISTANCE_THRESHOLD", "0.001"))
 
-# --- LLM (EXAONE4-32b) ---
-LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "LGAI-EXAONE/EXAONE-4.0-32B-Instruct")
+# --- LLM (EXAONE-3.5-7.8B-Instruct-AWQ via vLLM) ---
+LLM_MODEL_NAME = os.getenv(
+    "LLM_MODEL_NAME",
+    "/content/drive/MyDrive/multi-source-intelligent-system-claude-satellite-object-detection/models/EXAONE-3.5-7.8B-Instruct-AWQ",
+)
 LLM_DEVICE = os.getenv("LLM_DEVICE", "cuda")
 LLM_MAX_NEW_TOKENS = int(os.getenv("LLM_MAX_NEW_TOKENS", "2048"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
+LLM_GPU_MEMORY_UTILIZATION = float(os.getenv("LLM_GPU_MEMORY_UTILIZATION", "0.85"))
 # Ollama endpoint alternative
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "exaone4:32b")
-# Use "huggingface" or "ollama"
-LLM_BACKEND = os.getenv("LLM_BACKEND", "huggingface")
+# Use "vllm" or "ollama"
+LLM_BACKEND = os.getenv("LLM_BACKEND", "vllm")
 
 # --- Detection Confidence ---
 DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE", "0.3"))
