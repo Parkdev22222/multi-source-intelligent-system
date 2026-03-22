@@ -76,3 +76,26 @@ def get_latest_pairings(session_id: Optional[str] = None, limit: int = 500) -> L
 
 def get_pairings_by_session(session_id: str) -> List[PairingRecord]:
     return get_latest_pairings(session_id=session_id)
+
+
+def get_session_ids_near(
+    lat: float,
+    lon: float,
+    radius_deg: float = 0.1,
+    limit: int = 20,
+) -> List[str]:
+    """Return distinct session_ids of pairings within radius_deg of (lat, lon)."""
+    engine = get_engine()
+    with Session(engine) as session:
+        rows = (
+            session.query(PairingRecord.session_id)
+            .filter(
+                PairingRecord.lat_center.between(lat - radius_deg, lat + radius_deg),
+                PairingRecord.lon_center.between(lon - radius_deg, lon + radius_deg),
+                PairingRecord.session_id.isnot(None),
+            )
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+        return [r[0] for r in rows]

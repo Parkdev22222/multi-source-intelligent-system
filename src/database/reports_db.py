@@ -104,3 +104,20 @@ def get_reports_by_session(session_id: str) -> List[ReportRecord]:
         for r in records:
             session.expunge(r)
         return records
+
+
+def get_latest_report_for_sessions(session_ids: List[str]) -> Optional[ReportRecord]:
+    """Return the most recent ReportRecord matching any of the given session_ids."""
+    if not session_ids:
+        return None
+    engine = get_engine()
+    with Session(engine) as session:
+        record = (
+            session.query(ReportRecord)
+            .filter(ReportRecord.session_id.in_(session_ids))
+            .order_by(ReportRecord.saved_time.desc())
+            .first()
+        )
+        if record:
+            session.expunge(record)
+        return record

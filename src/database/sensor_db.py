@@ -180,3 +180,63 @@ def get_detections_by_image(image_id: str) -> List[DetectionRecord]:
         for r in records:
             session.expunge(r)
         return records
+
+
+def get_latest_image_near(
+    lat: float,
+    lon: float,
+    radius_deg: float = 0.1,
+) -> Optional[ImageRecord]:
+    """Return the most recently captured ImageRecord within radius_deg of (lat, lon)."""
+    engine = get_engine()
+    from sqlalchemy import func
+    with Session(engine) as session:
+        record = (
+            session.query(ImageRecord)
+            .filter(
+                ImageRecord.lat_center.between(lat - radius_deg, lat + radius_deg),
+                ImageRecord.lon_center.between(lon - radius_deg, lon + radius_deg),
+            )
+            .order_by(ImageRecord.capture_time.desc())
+            .first()
+        )
+        if record:
+            session.expunge(record)
+        return record
+
+
+def get_latest_detections_near(
+    lat: float,
+    lon: float,
+    radius_deg: float = 0.1,
+    limit: int = 200,
+) -> List[DetectionRecord]:
+    """Return detections from the most recent image batch within radius_deg of (lat, lon)."""
+    engine = get_engine()
+    from sqlalchemy import func
+    with Session(engine) as session:
+        # Find the latest capture_time near this region
+        latest_time = (
+            session.query(func.max(ImageRecord.capture_time))
+            .filter(
+                ImageRecord.lat_center.between(lat - radius_deg, lat + radius_deg),
+                ImageRecord.lon_center.between(lon - radius_deg, lon + radius_deg),
+            )
+            .scalar()
+        )
+        if latest_time is None:
+            return []
+        records = (
+            session.query(DetectionRecord)
+            .join(ImageRecord, DetectionRecord.image_id == ImageRecord.id)
+            .filter(
+                ImageRecord.capture_time == latest_time,
+                ImageRecord.lat_center.between(lat - radius_deg, lat + radius_deg),
+                ImageRecord.lon_center.between(lon - radius_deg, lon + radius_deg),
+            )
+            .limit(limit)
+            .all()
+        )
+        for r in records:
+            session.expunge(r)
+        return records

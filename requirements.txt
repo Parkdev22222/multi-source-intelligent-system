@@ -30,3 +30,9 @@ huggingface_hub>=0.20.0
 
 # --- Utilities ---
 tqdm>=4.65.0
+
+# --- Satellite Dashboard ---
+fastapi>=0.110.0          # REST API backend
+uvicorn[standard]>=0.29.0 # ASGI server
+python-multipart>=0.0.9   # FastAPI form/file upload support
+sgp4>=2.22                # TLE propagation (satellite position from orbital elements)
