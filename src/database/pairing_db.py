@@ -78,6 +78,23 @@ def get_pairings_by_session(session_id: str) -> List[PairingRecord]:
     return get_latest_pairings(session_id=session_id)
 
 
+def get_session_location(session_id: str):
+    """Return (lat_center, lon_center) for the first pairing of a session, or (None, None)."""
+    engine = get_engine()
+    with Session(engine) as session:
+        row = (
+            session.query(PairingRecord.lat_center, PairingRecord.lon_center)
+            .filter(
+                PairingRecord.session_id == session_id,
+                PairingRecord.lat_center.isnot(None),
+            )
+            .first()
+        )
+        if row:
+            return row[0], row[1]
+        return None, None
+
+
 def get_session_ids_near(
     lat: float,
     lon: float,

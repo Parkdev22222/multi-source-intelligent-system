@@ -295,6 +295,22 @@ function initMap() {
   }).addTo(map);
 }
 
+/* ══════════════════════════════════════════════════
+   지도 위치 이동 헬퍼
+   ══════════════════════════════════════════════════ */
+const FLY_ZOOM = 10;        // 항목 호버 시 줌 레벨
+const FLY_DURATION = 0.6;   // flyTo 애니메이션 초
+
+let _flyTimer = null;
+function flyToLocation(lat, lon) {
+  if (lat == null || lon == null) return;
+  clearTimeout(_flyTimer);
+  // 120 ms 디바운스 – 마우스가 빠르게 지나칠 때 불필요한 flyTo 방지
+  _flyTimer = setTimeout(() => {
+    map.flyTo([lat, lon], FLY_ZOOM, { duration: FLY_DURATION, easeLinearity: 0.5 });
+  }, 120);
+}
+
 /* ── 위성 위치 로드 (모의기) ── */
 async function loadSatellites() {
   try {
@@ -398,7 +414,7 @@ async function loadAllImages() {
         <span class="db-item-badge">${img.detection_count}개 탐지</span>
         <div class="db-item-time">${fmtTime(img.capture_time)}</div>
         <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>`;
-      item.addEventListener('mouseenter', e => showImagePopup(img, e));
+      item.addEventListener('mouseenter', e => { flyToLocation(img.lat_center, img.lon_center); showImagePopup(img, e); });
       item.addEventListener('mousemove', e => movePopup(e));
       item.addEventListener('mouseleave', hidePopup);
       list.appendChild(item);
@@ -430,7 +446,7 @@ async function loadAllDetections() {
         <span class="db-item-badge">${img.detection_count}개</span>
         <div class="db-item-time">${fmtTime(img.capture_time)}</div>
         <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>`;
-      item.addEventListener('mouseenter', e => showDetectionPopup(img.id, img, e));
+      item.addEventListener('mouseenter', e => { flyToLocation(img.lat_center, img.lon_center); showDetectionPopup(img.id, img, e); });
       item.addEventListener('mousemove', e => movePopup(e));
       item.addEventListener('mouseleave', hidePopup);
       list.appendChild(item);
@@ -631,15 +647,22 @@ async function loadAllReports() {
         ? `MSIS_report_${dt.toISOString().replace(/[:.]/g,'-').slice(0,19)}.txt`
         : `MSIS_report_${r.id}.txt`;
       const model = (r.llm_model || '').split('/').pop() || '—';
-      return `<div class="rpt-item" data-id="${r.id}" data-fname="${fname}">
+      const lat = r.lat_center ?? '';
+      const lon = r.lon_center ?? '';
+      return `<div class="rpt-item" data-id="${r.id}" data-fname="${fname}" data-lat="${lat}" data-lon="${lon}">
         <span class="rpt-item-badge">${r.pairing_count ?? 0}건</span>
         <div class="rpt-item-name" title="${fname}">${fname}</div>
         <div class="rpt-item-meta">${ts} | ${model}</div>
       </div>`;
     }).join('');
 
-    // 더블클릭 → 보고서 ID로 직접 열기
+    // 마우스 호버 → 지도 이동  /  더블클릭 → 보고서 열기
     list.querySelectorAll('.rpt-item').forEach(el => {
+      el.addEventListener('mouseenter', () => {
+        const lat = parseFloat(el.dataset.lat);
+        const lon = parseFloat(el.dataset.lon);
+        flyToLocation(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon);
+      });
       el.addEventListener('dblclick', () => openReportById(el.dataset.id, el.dataset.fname));
     });
   } catch(e) { console.warn('[loadAllReports]', e); }

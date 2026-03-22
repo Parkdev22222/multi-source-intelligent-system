@@ -30,7 +30,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.config import IMAGES_DIR
-from src.database.pairing_db import get_session_ids_near
+from src.database.pairing_db import get_session_ids_near, get_session_location
 from src.database.reports_db import (
     get_all_reports,
     get_latest_report_for_sessions,
@@ -412,20 +412,22 @@ def api_report_by_id(report_id: str):
 @app.get("/api/reports")
 def api_all_reports(limit: int = Query(default=50, le=200)):
     reports = get_all_reports(limit=limit)
-    return {
-        "reports": [
-            {
-                "id":           r.id,
-                "report_time":  r.report_time.isoformat() if r.report_time else None,
-                "saved_time":   r.saved_time.isoformat()  if r.saved_time  else None,
-                "llm_model":    r.llm_model,
-                "pairing_count":r.pairing_count,
-                "session_id":   r.session_id,
-            }
-            for r in reports
-        ],
-        "count": len(reports),
-    }
+    items = []
+    for r in reports:
+        lat, lon = (None, None)
+        if r.session_id:
+            lat, lon = get_session_location(r.session_id)
+        items.append({
+            "id":           r.id,
+            "report_time":  r.report_time.isoformat() if r.report_time else None,
+            "saved_time":   r.saved_time.isoformat()  if r.saved_time  else None,
+            "llm_model":    r.llm_model,
+            "pairing_count":r.pairing_count,
+            "session_id":   r.session_id,
+            "lat_center":   lat,
+            "lon_center":   lon,
+        })
+    return {"reports": items, "count": len(items)}
 
 
 def _report_dict(r) -> dict:
