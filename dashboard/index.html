@@ -4,8 +4,22 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MSIS – 위성 감시 대시보드</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet: 로컬 파일 우선, 없으면 CDN 폴백 -->
+  <link rel="stylesheet" href="/static/dashboard/leaflet.min.css"
+        onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'" />
+  <script>
+    /* Leaflet JS 로컬 로드 – 실패 시 CDN 폴백 */
+    (function(){
+      var s = document.createElement('script');
+      s.src = '/static/dashboard/leaflet.min.js';
+      s.onerror = function(){
+        var fb = document.createElement('script');
+        fb.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        document.head.appendChild(fb);
+      };
+      document.head.appendChild(s);
+    })();
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -290,9 +304,31 @@ let satellites = [];
 /* ── 지도 초기화 ── */
 function initMap() {
   map = L.map('map', { center: [30, 100], zoom: 3, preferCanvas: true });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap © CARTO', maxZoom: 18, subdomains: 'abcd',
-  }).addTo(map);
+
+  // 로컬 GeoJSON 세계지도 (폐쇄망 대응) ─────────────────────────────────────
+  // CartoDB 타일 대신 로컬 세계 국경 GeoJSON 폴리곤 레이어 사용
+  fetch('/static/dashboard/world.geojson')
+    .then(r => {
+      if (!r.ok) throw new Error(`world.geojson not found (${r.status})`);
+      return r.json();
+    })
+    .then(geo => {
+      L.geoJSON(geo, {
+        style: {
+          color:       '#1e3040',   // 국경선 색
+          weight:      0.6,
+          fillColor:   '#0d1a26',   // 육지 색 (UI 테마와 동일한 다크)
+          fillOpacity: 1,
+        },
+      }).addTo(map);
+    })
+    .catch(err => {
+      // world.geojson 없을 때: 외부 CDN 타일 폴백 + 콘솔 경고
+      console.warn('[Map] 로컬 world.geojson 로드 실패, CDN 타일로 폴백합니다.', err);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap © CARTO', maxZoom: 18, subdomains: 'abcd',
+      }).addTo(map);
+    });
 }
 
 /* ══════════════════════════════════════════════════
