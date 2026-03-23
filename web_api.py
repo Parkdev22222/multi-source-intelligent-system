@@ -30,7 +30,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.config import IMAGES_DIR
-from src.database.pairing_db import get_session_ids_near, get_session_location
+from src.database.pairing_db import get_session_ids_near, get_session_location, get_pairings_by_session
 from src.database.reports_db import (
     get_all_reports,
     get_latest_report_for_sessions,
@@ -40,6 +40,7 @@ from src.database.sensor_db import (
     get_latest_detections_near,
     get_latest_image_near,
     get_image_record_by_id,
+    get_detection_by_id,
     get_detections_by_image,
     get_all_images_with_count,
 )
@@ -168,6 +169,34 @@ def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
         img.thumbnail((max_size, max_size))
         if img.mode not in ("RGB", "RGBA", "L"):
             img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
+
+def _image_with_detections_b64(image_path: Path, detections: list, max_size: int = 480) -> str:
+    """이미지에 탐지 결과 바운딩박스를 그린 뒤 base64 PNG 반환."""
+    from PIL import Image, ImageDraw, ImageFont
+    with Image.open(image_path) as img:
+        orig_w, orig_h = img.size
+        img.thumbnail((max_size, max_size))
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGB")
+        scale_x = img.width  / orig_w
+        scale_y = img.height / orig_h
+        draw = ImageDraw.Draw(img, "RGBA")
+        for det in detections:
+            x1 = det.bbox_x1 * scale_x
+            y1 = det.bbox_y1 * scale_y
+            x2 = det.bbox_x2 * scale_x
+            y2 = det.bbox_y2 * scale_y
+            draw.rectangle([x1, y1, x2, y2], outline=(0, 255, 136, 220), width=2)
+            label = f"{det.object_class} {det.confidence:.2f}"
+            draw.rectangle([x1, y1 - 12, x1 + len(label) * 5.5, y1], fill=(0, 255, 136, 160))
+            try:
+                draw.text((x1 + 2, y1 - 12), label, fill=(0, 0, 0, 255))
+            except Exception:
+                pass
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return base64.b64encode(buf.getvalue()).decode()
@@ -413,6 +442,63 @@ def api_report_by_id(report_id: str):
     if report is None:
         raise HTTPException(status_code=404, detail="보고서 없음.")
     return _report_dict(report)
+
+
+@app.get("/api/report/{report_id}/images")
+def api_report_images(report_id: str):
+    """보고서 생성에 활용된 이전/현재 위성사진 base64 반환."""
+    report = get_report_by_id(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="보고서 없음.")
+
+    if not report.session_id:
+        return {"current_images": [], "past_images": []}
+
+    pairings = get_pairings_by_session(report.session_id)
+
+    # Collect unique image IDs from detection references (limit DB lookups)
+    current_img_ids: dict = {}
+    past_img_ids: dict = {}
+    for p in pairings:
+        if p.current_detection_id and len(current_img_ids) < 3:
+            det = get_detection_by_id(p.current_detection_id)
+            if det and det.image_id not in current_img_ids:
+                current_img_ids[det.image_id] = p.current_capture_time
+        if p.past_detection_id and len(past_img_ids) < 3:
+            det = get_detection_by_id(p.past_detection_id)
+            if det and det.image_id not in past_img_ids:
+                past_img_ids[det.image_id] = p.past_capture_time
+
+    def _build_info(image_id, capture_time_fallback, with_detections: bool = False):
+        rec = get_image_record_by_id(image_id)
+        if rec is None:
+            return None
+        img_path = Path(rec.image_path)
+        if not img_path.is_absolute():
+            img_path = _images_dir / rec.image_path
+        b64 = None
+        if img_path.exists():
+            try:
+                if with_detections:
+                    dets = get_detections_by_image(image_id)
+                    b64 = _image_with_detections_b64(img_path, dets, max_size=480)
+                else:
+                    b64 = _image_to_png_b64(img_path, max_size=480)
+            except Exception:
+                b64 = None
+        ct = rec.capture_time or capture_time_fallback
+        return {
+            "id":           rec.id,
+            "capture_time": ct.isoformat() if ct else None,
+            "image_b64":    b64,
+        }
+
+    return {
+        "current_images": [i for img_id, ct in current_img_ids.items()
+                           if (i := _build_info(img_id, ct, with_detections=True))],
+        "past_images":    [i for img_id, ct in past_img_ids.items()
+                           if (i := _build_info(img_id, ct, with_detections=False))],
+    }
 
 
 @app.get("/api/reports")

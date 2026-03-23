@@ -159,6 +159,16 @@ def get_most_recent_past_detections(
         return past_records, latest_time_row
 
 
+def get_detection_by_id(detection_id: str) -> Optional[DetectionRecord]:
+    """Return the DetectionRecord for the given id, or None if not found."""
+    engine = get_engine()
+    with Session(engine) as session:
+        record = session.query(DetectionRecord).filter(DetectionRecord.id == detection_id).first()
+        if record is not None:
+            session.expunge(record)
+        return record
+
+
 def get_image_record_by_id(image_id: str) -> Optional[ImageRecord]:
     """Return the ImageRecord for the given id, or None if not found."""
     engine = get_engine()

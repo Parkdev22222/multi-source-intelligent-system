@@ -146,12 +146,23 @@
     /* ── 보고서 모달 ── */
     #report-modal { display:none; position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,.75); align-items:center; justify-content:center; }
     #report-modal.open { display:flex; }
-    #report-box { width:700px; max-width:96vw; max-height:88vh; background:var(--panel); border:1px solid var(--border); border-radius:4px; display:flex; flex-direction:column; overflow:hidden; }
+    #report-box { width:900px; max-width:96vw; max-height:92vh; background:var(--panel); border:1px solid var(--border); border-radius:4px; display:flex; flex-direction:column; overflow:hidden; }
     #report-hdr { padding:10px 16px; background:#0d1520; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
     #report-hdr h2 { font-size:13px; color:var(--amber); letter-spacing:1px; }
     #report-hdr-close { cursor:pointer; color:var(--dim); font-size:18px; }
     #report-hdr-close:hover { color:var(--red); }
     #report-meta { padding:8px 16px; border-bottom:1px solid var(--border); font-size:10px; color:var(--dim); line-height:1.6; }
+    /* 위성사진 비교 패널 */
+    #report-img-row { display:none; gap:8px; padding:10px 16px; border-bottom:1px solid var(--border); background:#080d14; }
+    #report-img-row.has-images { display:flex; }
+    .rpt-img-panel { flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .rpt-img-label { font-size:9px; letter-spacing:1px; text-transform:uppercase; color:var(--dim); }
+    .rpt-img-label.past-lbl  { color:#5599ff; }
+    .rpt-img-label.curr-lbl  { color:var(--green); }
+    .rpt-img-wrap { position:relative; background:#0a0f18; border:1px solid var(--border); border-radius:3px; overflow:hidden; display:flex; align-items:center; justify-content:center; min-height:140px; }
+    .rpt-img-wrap img { max-width:100%; max-height:220px; object-fit:contain; display:block; }
+    .rpt-img-time { position:absolute; bottom:4px; right:6px; font-size:8px; color:rgba(255,255,255,.5); background:rgba(0,0,0,.5); padding:1px 4px; border-radius:2px; }
+    .rpt-img-loading { font-size:10px; color:var(--dim); padding:12px; }
     #report-body { flex:1; overflow-y:auto; padding:14px 16px; }
     #report-content { white-space:pre-wrap; font-size:11px; color:var(--text); line-height:1.7; }
 
@@ -286,6 +297,16 @@
       <span id="report-hdr-close">✕</span>
     </div>
     <div id="report-meta">로딩 중...</div>
+    <div id="report-img-row">
+      <div class="rpt-img-panel">
+        <div class="rpt-img-label past-lbl">이전 위성사진</div>
+        <div class="rpt-img-wrap" id="rpt-past-wrap"><span class="rpt-img-loading">로딩 중...</span></div>
+      </div>
+      <div class="rpt-img-panel">
+        <div class="rpt-img-label curr-lbl">현재 위성사진 (객체탐지)</div>
+        <div class="rpt-img-wrap" id="rpt-curr-wrap"><span class="rpt-img-loading">로딩 중...</span></div>
+      </div>
+    </div>
     <div id="report-body"><pre id="report-content"></pre></div>
   </div>
 </div>
@@ -734,24 +755,35 @@ async function loadAllReports() {
 
 /* ── 보고서 ID 직접 열기 ── */
 async function openReportById(id, fname) {
-  const modal   = document.getElementById('report-modal');
-  const meta    = document.getElementById('report-meta');
-  const content = document.getElementById('report-content');
-  const dlBtn   = document.getElementById('download-btn');
+  const modal    = document.getElementById('report-modal');
+  const meta     = document.getElementById('report-meta');
+  const content  = document.getElementById('report-content');
+  const dlBtn    = document.getElementById('download-btn');
+  const imgRow   = document.getElementById('report-img-row');
+  const pastWrap = document.getElementById('rpt-past-wrap');
+  const currWrap = document.getElementById('rpt-curr-wrap');
 
   modal.classList.add('open');
   meta.textContent = '보고서 로딩 중...';
   content.textContent = '';
   dlBtn.style.display = 'none';
+  imgRow.classList.remove('has-images');
+  pastWrap.innerHTML = '<span class="rpt-img-loading">로딩 중...</span>';
+  currWrap.innerHTML = '<span class="rpt-img-loading">로딩 중...</span>';
 
   try {
-    const res = await fetch(`${API}/api/report/${encodeURIComponent(id)}`);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      meta.textContent = `오류: ${err.detail || res.statusText}`;
+    // 보고서 텍스트 + 이미지 병렬 로드
+    const [repRes, imgRes] = await Promise.all([
+      fetch(`${API}/api/report/${encodeURIComponent(id)}`),
+      fetch(`${API}/api/report/${encodeURIComponent(id)}/images`),
+    ]);
+
+    if (!repRes.ok) {
+      const err = await repRes.json().catch(() => ({}));
+      meta.textContent = `오류: ${err.detail || repRes.statusText}`;
       return;
     }
-    const report = await res.json();
+    const report = await repRes.json();
     meta.innerHTML =
       `파일명: <b>${fname || id}</b><br>` +
       `생성: ${report.report_time ? new Date(report.report_time).toLocaleString('ko-KR') : '—'}<br>` +
@@ -765,6 +797,49 @@ async function openReportById(id, fname) {
       });
       a.click(); URL.revokeObjectURL(a.href);
     };
+
+    // 위성사진 패널 처리
+    const imgs = imgRes.ok ? await imgRes.json() : null;
+    const hasPast = imgs?.past_images?.length > 0;
+    const hasCurr = imgs?.current_images?.length > 0;
+
+    function buildImgEl(info) {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;width:100%;';
+      if (info.image_b64) {
+        const img = document.createElement('img');
+        img.src = `data:image/png;base64,${info.image_b64}`;
+        img.alt = '위성영상';
+        wrap.appendChild(img);
+      } else {
+        wrap.innerHTML = '<span class="rpt-img-loading" style="color:#f44">이미지 없음</span>';
+      }
+      if (info.capture_time) {
+        const ts = document.createElement('div');
+        ts.className = 'rpt-img-time';
+        ts.textContent = new Date(info.capture_time).toLocaleString('ko-KR');
+        wrap.appendChild(ts);
+      }
+      return wrap;
+    }
+
+    if (hasPast || hasCurr) {
+      imgRow.classList.add('has-images');
+      pastWrap.innerHTML = '';
+      currWrap.innerHTML = '';
+      if (hasPast) {
+        imgs.past_images.forEach(info => pastWrap.appendChild(buildImgEl(info)));
+      } else {
+        pastWrap.innerHTML = '<span class="rpt-img-loading">이전 사진 없음</span>';
+      }
+      if (hasCurr) {
+        imgs.current_images.forEach(info => currWrap.appendChild(buildImgEl(info)));
+      } else {
+        currWrap.innerHTML = '<span class="rpt-img-loading">현재 사진 없음</span>';
+      }
+    } else {
+      imgRow.classList.remove('has-images');
+    }
   } catch(e) {
     meta.textContent = `네트워크 오류: ${e.message}`;
   }
