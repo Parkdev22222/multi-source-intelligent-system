@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.config import IMAGES_DIR
-from src.database.pairing_db import get_session_ids_near, get_session_location, get_pairings_by_session
+from src.database.pairing_db import get_session_ids_near, get_session_location, get_pairings_by_session, update_pairings_detection_refs
 from src.database.reports_db import (
     get_all_reports,
     get_latest_report_for_sessions,
@@ -708,7 +708,12 @@ def api_update_detections(image_id: str, body: DetectionsUpdateBody):
             lon=d.lon if d.lon != 0.0 else rec.lon_center,
             source_type="human_edit",
         ))
+    # 교체 전 구 detection_id 수집 → 교체 후 pairing 참조를 새 ID로 업데이트
+    old_det_ids = {d.id for d in get_detections_by_image(image_id)}
     count = replace_detections_for_image(image_id, new_dets)
+    new_det_list = get_detections_by_image(image_id)
+    first_new_id = new_det_list[0].id if new_det_list else None
+    update_pairings_detection_refs(old_det_ids, first_new_id)
     return {"updated": count, "image_id": image_id}
 
 

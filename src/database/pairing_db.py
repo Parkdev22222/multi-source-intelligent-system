@@ -4,7 +4,7 @@ Pairing DB operations – insert and query temporal object pairs.
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from sqlalchemy.orm import Session
 
@@ -76,6 +76,34 @@ def get_latest_pairings(session_id: Optional[str] = None, limit: int = 500) -> L
 
 def get_pairings_by_session(session_id: str) -> List[PairingRecord]:
     return get_latest_pairings(session_id=session_id)
+
+
+def update_pairings_detection_refs(old_det_ids: Set[str], new_det_id: Optional[str]) -> int:
+    """탐지 결과 교체 후, 구 detection_id를 참조하던 PairingRecord를 새 ID로 업데이트.
+
+    replace_detections_for_image() 호출 시 기존 DetectionRecord가 삭제되면
+    PairingRecord의 current/past_detection_id가 stale해져 api_report_images의
+    capture_time 폴백이 발동되고 다른 보고서 이미지가 노출되는 버그를 방지한다.
+    """
+    if not old_det_ids:
+        return 0
+    engine = get_engine()
+    updated = 0
+    with Session(engine) as session:
+        pairings = session.query(PairingRecord).filter(
+            (PairingRecord.current_detection_id.in_(old_det_ids)) |
+            (PairingRecord.past_detection_id.in_(old_det_ids))
+        ).all()
+        for p in pairings:
+            if p.current_detection_id in old_det_ids:
+                p.current_detection_id = new_det_id
+                updated += 1
+            if p.past_detection_id in old_det_ids:
+                p.past_detection_id = new_det_id
+                updated += 1
+        session.commit()
+    logger.info(f"[PairingDB] Updated {updated} pairing detection refs after image edit")
+    return updated
 
 
 def get_session_location(session_id: str):
