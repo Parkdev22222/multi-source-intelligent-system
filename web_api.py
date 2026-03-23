@@ -508,67 +508,79 @@ def api_report_images(report_id: str):
 
     pairings = get_pairings_by_session(report.session_id)
 
-    # ── 보조 함수 ─────────────────────────────────────────────────────────────
-    def _img_from_det(detection_id: str | None) -> str | None:
-        """detection_id → image_id. 실패 시 None."""
-        if not detection_id:
-            return None
-        det = get_detection_by_id(detection_id)
-        return det.image_id if (det and det.image_id) else None
-
-    def _img_from_capture(capture_time, exclude_id: str | None = None) -> str | None:
-        """capture_time → image_id (exclude_id 와 다른 첫 번째 이미지). 실패 시 None."""
-        if not capture_time:
-            return None
-        for img in get_images_by_capture_time(capture_time):
-            if img.id != exclude_id:
-                return img.id
-        return None
-
-    # ── Step 1: 동일 pairing 에서 current·past detection 이 모두 있고 ──────────
-    #            image_id 가 서로 다른 경우를 우선 사용 (가장 신뢰도 높음)
-    current_image_id: str | None = None
-    current_capture_time = None
-    past_image_id: str | None = None
-    past_capture_time = None
+    # ── Step 1: 세션의 모든 pairing 에서 참조되는 image_id 전부 수집 ───────────
+    # detection_id → image_id 경로가 1순위, capture_time 경로가 폴백.
+    # image_id 마다 ImageRecord 를 가져와 실제 파일 경로(resolved)를 키로
+    # 중복 제거한다 → 물리 파일이 같으면 capture_time 이 달라도 동일 이미지.
+    seen_ids: dict[str, datetime | None] = {}   # image_id → capture_time
 
     for p in pairings:
-        cid = _img_from_det(p.current_detection_id)
-        pid = _img_from_det(p.past_detection_id)
-        if cid and pid and cid != pid:
-            current_image_id, current_capture_time = cid, p.current_capture_time
-            past_image_id,    past_capture_time    = pid, p.past_capture_time
-            break
+        for det_id, ct in [
+            (p.current_detection_id, p.current_capture_time),
+            (p.past_detection_id,    p.past_capture_time),
+        ]:
+            if not det_id:
+                continue
+            det = get_detection_by_id(det_id)
+            if det and det.image_id and det.image_id not in seen_ids:
+                seen_ids[det.image_id] = ct
 
-    # ── Step 2: Step 1 실패 시 current / past 를 독립적으로 탐색 ─────────────
-    #            단, past 는 항상 current 와 image_id 가 달라야 함
-    if not (current_image_id and past_image_id):
-        # current 확보
-        if current_image_id is None:
-            for p in pairings:
-                cid = (_img_from_det(p.current_detection_id)
-                       or _img_from_capture(p.current_capture_time))
-                if cid:
-                    current_image_id = cid
-                    current_capture_time = p.current_capture_time
-                    break
+    # capture_time 폴백: detection 경로로 못 찾은 경우 보완
+    for p in pairings:
+        for ct in [p.current_capture_time, p.past_capture_time]:
+            if not ct:
+                continue
+            for img in get_images_by_capture_time(ct):
+                if img.id not in seen_ids:
+                    seen_ids[img.id] = ct
 
-        # past 확보 (current 와 반드시 다른 image_id)
-        if past_image_id is None:
-            for p in pairings:
-                pid = _img_from_det(p.past_detection_id)
-                if pid and pid != current_image_id:
-                    past_image_id = pid
-                    past_capture_time = p.past_capture_time
-                    break
-                pid = _img_from_capture(p.past_capture_time,
-                                        exclude_id=current_image_id)
-                if pid:
-                    past_image_id = pid
-                    past_capture_time = p.past_capture_time
-                    break
+    # ── Step 2: ImageRecord 조회 → 실제 파일 경로 기준으로 중복 제거 ───────────
+    # (같은 물리 파일이 두 개의 image_id 로 등록된 경우를 처리)
+    from datetime import datetime as _dt
+    _MIN_DT = _dt.min
 
-    def _build_info(image_id, capture_time_fallback, with_detections: bool = False):
+    path_to_entry: dict[str, tuple[str, datetime | None]] = {}
+    # path_key → (image_id, capture_time)  :  capture_time 이 빠른 것을 유지
+
+    for img_id, ct in seen_ids.items():
+        rec = get_image_record_by_id(img_id)
+        if rec is None:
+            continue
+        img_path = Path(rec.image_path)
+        if not img_path.is_absolute():
+            img_path = _images_dir / rec.image_path
+        # 파일이 존재하면 resolve() 로 canonical path, 없으면 문자열 그대로
+        path_key = str(img_path.resolve()) if img_path.exists() else rec.image_path
+
+        effective_ct = rec.capture_time or ct
+        existing = path_to_entry.get(path_key)
+        if existing is None:
+            path_to_entry[path_key] = (img_id, effective_ct)
+        else:
+            # 동일 파일이면 더 오래된 capture_time 으로 업데이트 (과거 시점 우선 보존)
+            _, prev_ct = existing
+            if (effective_ct or _MIN_DT) < (prev_ct or _MIN_DT):
+                path_to_entry[path_key] = (img_id, effective_ct)
+
+    # capture_time 오름차순 정렬 → 인덱스 0 = 가장 오래된(과거), -1 = 가장 최신(현재)
+    unique_entries = sorted(
+        path_to_entry.values(),
+        key=lambda x: x[1] or _MIN_DT,
+    )
+
+    # ── Step 3: 과거·현재 image_id 확정 ──────────────────────────────────────
+    if len(unique_entries) >= 2:
+        past_image_id,    past_capture_time    = unique_entries[0]
+        current_image_id, current_capture_time = unique_entries[-1]
+    elif len(unique_entries) == 1:
+        current_image_id, current_capture_time = unique_entries[0]
+        past_image_id,    past_capture_time    = None, None
+    else:
+        current_image_id = past_image_id = None
+        current_capture_time = past_capture_time = None
+
+    # ── _build_info: image_id → base64(탐지 박스 포함) ───────────────────────
+    def _build_info(image_id: str, capture_time_fallback, with_detections: bool = False):
         rec = get_image_record_by_id(image_id)
         if rec is None:
             return None
