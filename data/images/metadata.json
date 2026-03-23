@@ -1,12 +1,12 @@
 [
   {
     "source_type": "satellite",
-    "lat_center": 33.3739,
-    "lon_center": 24.9035,
-    "lat_min": 33.3639,
-    "lat_max": 33.3839,
-    "lon_min": 24.8935,
-    "lon_max": 24.913500000000003,
+    "lat_center": 40.6555,
+    "lon_center": -0.6399,
+    "lat_min": 40.645500000000006,
+    "lat_max": 40.6655,
+    "lon_min": -0.6499,
+    "lon_max": -0.6299,
     "resolution_m": 0.5,
     "sensor_platform": "한국군위성-2",
     "region_name": "KMS-002",
@@ -15,16 +15,16 @@
   },
   {
     "source_type": "satellite",
-    "lat_center": 33.3739,
-    "lon_center": 24.9035,
-    "lat_min": 33.3639,
-    "lat_max": 33.3839,
-    "lon_min": 24.8935,
-    "lon_max": 24.913500000000003,
+    "lat_center": 40.6555,
+    "lon_center": -0.6399,
+    "lat_min": 40.645500000000006,
+    "lat_max": 40.6655,
+    "lon_min": -0.6499,
+    "lon_max": -0.6299,
     "resolution_m": 0.5,
     "sensor_platform": "한국군위성-2",
     "region_name": "KMS-002",
-    "image_file": "sample/alpha_past_20260322T012421.tiff",
-    "capture_time": "2026-03-22T01:24:21+00:00"
+    "image_file": "sample/bravo_current_20260322T072421.tiff",
+    "capture_time": "2026-03-22T07:24:21+00:00"
   }
 ]
