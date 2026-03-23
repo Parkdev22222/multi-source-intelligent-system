@@ -15,9 +15,12 @@ MSIS Web API – FastAPI 백엔드 (위성 모의기 + 탐지 결과 대시보�
   uvicorn web_api:app --host 0.0.0.0 --port 8000 --reload
 """
 
+import asyncio
 import base64
 import io
+import json
 import logging
+import queue
 import threading
 import time as _time
 from datetime import datetime
@@ -26,7 +29,7 @@ from typing import List, Optional
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -65,6 +68,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ══════════════════════════════════════════════════════════════════════════
+# Server-Sent Events (SSE) – 실시간 DB 업데이트 브로드캐스트
+# ══════════════════════════════════════════════════════════════════════════
+
+_sse_clients: list = []   # 연결된 클라이언트 Queue 목록
+_sse_lock = threading.Lock()
+
+
+def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float = 0.0):
+    """모든 SSE 구독 클라이언트에게 DB 업데이트 이벤트를 브로드캐스트한다."""
+    payload = json.dumps({
+        "type":      "db_updated",
+        "run_count": run_count,
+        "success":   success,
+        "elapsed":   elapsed,
+        "ts":        datetime.utcnow().isoformat(),
+    })
+    with _sse_lock:
+        dead = []
+        for q in list(_sse_clients):
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            try:
+                _sse_clients.remove(q)
+            except ValueError:
+                pass
+
 
 # 위성영상 정적 파일
 _images_dir = Path(IMAGES_DIR)
@@ -150,8 +184,15 @@ def _auto_sim_worker():
                                     _auto_state["run_count"],
                                     result["elapsed_s"],
                                     result["success"])
+                        # 파이프라인 완료 → SSE 실시간 알림
+                        _notify_db_updated(
+                            run_count=_auto_state["run_count"],
+                            success=result["success"],
+                            elapsed=result["elapsed_s"],
+                        )
                     except Exception as exc:
                         logger.error("[AutoSim] 실행 오류: %s", exc)
+                        _notify_db_updated(run_count=_auto_state["run_count"], success=False)
                     finally:
                         with _auto_lock:
                             _auto_state["running"] = False
@@ -255,6 +296,13 @@ def api_simulator_step(background_tasks: BackgroundTasks):
     except Exception as exc:
         logger.error(f"[API] simulator step error: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
+
+    # 수동 실행 완료 → SSE 실시간 알림
+    _notify_db_updated(
+        run_count=_auto_state["run_count"],
+        success=result["success"],
+        elapsed=result["elapsed_s"],
+    )
 
     return {
         "success":    result["success"],
@@ -461,44 +509,49 @@ def api_report_images(report_id: str):
     pairings = get_pairings_by_session(report.session_id)
 
     # ── 이미지 수집 전략 ─────────────────────────────────────────────────────
-    # 1순위: pairing의 capture_time으로 ImageRecord를 직접 조회한다.
-    #        → detection 삭제/교체 후에도 영향을 받지 않고, current/past 이미지를
-    #          서로 다른 레코드로 올바르게 분리할 수 있다.
-    # 2순위: capture_time이 없으면 detection → image_id 경로로 폴백한다.
-    current_img_ids: dict = {}  # image_id → capture_time
-    past_img_ids: dict = {}
+    # 1순위: detection_id → DetectionRecord.image_id 경로 (가장 정확)
+    #        current_detection_id / past_detection_id 는 서로 다른 탐지이므로
+    #        반드시 서로 다른 이미지를 가리킨다.
+    # 2순위: detection이 없는 경우(새로운 객체 등) capture_time 으로 폴백.
+    #        이때 capture_time 차이가 충분히 있는 경우에만 허용.
+    current_image_id: str | None = None
+    current_capture_time = None
+    past_image_id: str | None = None
+    past_capture_time = None
 
     for p in pairings:
-        # --- current ---
-        if len(current_img_ids) < 3:
-            found = False
-            if p.current_capture_time:
-                imgs = get_images_by_capture_time(p.current_capture_time)
-                for img in imgs:
-                    if img.id not in current_img_ids:
-                        current_img_ids[img.id] = p.current_capture_time
-                        found = True
-                        break
-            if not found and p.current_detection_id:
+        # ── current 이미지 확보 ──────────────────────────────────────────────
+        if current_image_id is None:
+            if p.current_detection_id:
                 det = get_detection_by_id(p.current_detection_id)
-                if det and det.image_id not in current_img_ids:
-                    current_img_ids[det.image_id] = p.current_capture_time
+                if det and det.image_id:
+                    current_image_id = det.image_id
+                    current_capture_time = p.current_capture_time
+            # detection 경로 실패 시 capture_time 폴백
+            if current_image_id is None and p.current_capture_time:
+                imgs = get_images_by_capture_time(p.current_capture_time)
+                if imgs:
+                    current_image_id = imgs[0].id
+                    current_capture_time = p.current_capture_time
 
-        # --- past ---
-        if len(past_img_ids) < 3:
-            found = False
-            if p.past_capture_time:
+        # ── past 이미지 확보 ─────────────────────────────────────────────────
+        if past_image_id is None:
+            if p.past_detection_id:
+                det = get_detection_by_id(p.past_detection_id)
+                if det and det.image_id and det.image_id != current_image_id:
+                    past_image_id = det.image_id
+                    past_capture_time = p.past_capture_time
+            # detection 경로 실패 시 capture_time 폴백 (current와 다른 이미지만)
+            if past_image_id is None and p.past_capture_time:
                 imgs = get_images_by_capture_time(p.past_capture_time)
                 for img in imgs:
-                    # current 이미지와 동일한 ID는 past로 쓰지 않는다
-                    if img.id not in past_img_ids and img.id not in current_img_ids:
-                        past_img_ids[img.id] = p.past_capture_time
-                        found = True
+                    if img.id != current_image_id:
+                        past_image_id = img.id
+                        past_capture_time = p.past_capture_time
                         break
-            if not found and p.past_detection_id:
-                det = get_detection_by_id(p.past_detection_id)
-                if det and det.image_id not in past_img_ids and det.image_id not in current_img_ids:
-                    past_img_ids[det.image_id] = p.past_capture_time
+
+        if current_image_id and past_image_id:
+            break
 
     def _build_info(image_id, capture_time_fallback, with_detections: bool = False):
         rec = get_image_record_by_id(image_id)
@@ -524,11 +577,14 @@ def api_report_images(report_id: str):
             "image_b64":    b64,
         }
 
+    curr_info = _build_info(current_image_id, current_capture_time, with_detections=True) \
+                if current_image_id else None
+    past_info = _build_info(past_image_id,    past_capture_time,    with_detections=True) \
+                if past_image_id else None
+
     return {
-        "current_images": [i for img_id, ct in current_img_ids.items()
-                           if (i := _build_info(img_id, ct, with_detections=True))],
-        "past_images":    [i for img_id, ct in past_img_ids.items()
-                           if (i := _build_info(img_id, ct, with_detections=False))],
+        "current_images": [curr_info] if curr_info else [],
+        "past_images":    [past_info] if past_info else [],
     }
 
 
@@ -657,6 +713,56 @@ def api_all_reports(limit: int = Query(default=50, le=200)):
             "lon_center":   lon,
         })
     return {"reports": items, "count": len(items)}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# SSE 엔드포인트
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/events")
+async def api_events():
+    """
+    Server-Sent Events 스트림.
+    DB(이미지/탐지/보고서)가 갱신될 때 'db_updated' 이벤트를 즉시 전송한다.
+    25초마다 heartbeat 코멘트를 전송해 연결을 유지한다.
+    """
+    q: queue.Queue = queue.Queue()
+    with _sse_lock:
+        _sse_clients.append(q)
+
+    async def event_gen():
+        try:
+            yield "data: {\"type\":\"connected\"}\n\n"
+            last_hb = asyncio.get_event_loop().time()
+            while True:
+                try:
+                    msg = q.get_nowait()
+                    yield f"data: {msg}\n\n"
+                    last_hb = asyncio.get_event_loop().time()
+                except queue.Empty:
+                    await asyncio.sleep(0.3)
+                    now = asyncio.get_event_loop().time()
+                    if now - last_hb > 25:
+                        yield ": heartbeat\n\n"
+                        last_hb = now
+        except (asyncio.CancelledError, GeneratorExit):
+            pass
+        finally:
+            with _sse_lock:
+                try:
+                    _sse_clients.remove(q)
+                except ValueError:
+                    pass
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "Connection":       "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def _report_dict(r) -> dict:

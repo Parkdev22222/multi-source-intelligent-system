@@ -148,6 +148,17 @@
 
     #dp-hint { padding:6px 14px; border-top:1px solid var(--border); font-size:10px; color:var(--dim); text-align:center; background:#0d1520; flex-shrink:0; }
 
+    /* LIVE 실시간 연결 인디케이터 */
+    #live-indicator {
+      width:7px; height:7px; border-radius:50%; display:inline-block; flex-shrink:0;
+      background:var(--dim); transition:background .3s, box-shadow .3s;
+    }
+    #live-indicator.live-on  { background:var(--green); box-shadow:0 0 5px var(--green); animation:pulse .9s infinite alternate; }
+    #live-indicator.live-off { background:var(--red);   box-shadow:0 0 4px var(--red); }
+    #live-label { font-size:9px; color:var(--dim); letter-spacing:.4px; }
+    #live-label.live-on  { color:var(--green); }
+    #live-label.live-off { color:var(--red); }
+
     /* ── 보고서 모달 ── */
     #report-modal { display:none; position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,.75); align-items:center; justify-content:center; }
     #report-modal.open { display:flex; }
@@ -282,7 +293,11 @@
   <div id="detail-panel">
     <div id="dp-header">
       <span id="dp-title">위성 정보</span>
-      <span id="dp-close">✕</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span id="live-indicator" title="SSE 연결 대기 중..."></span>
+        <span id="live-label">LIVE</span>
+        <span id="dp-close">✕</span>
+      </div>
     </div>
     <div id="dp-sat-info">
       <div id="dp-sat-name">위성을 선택하세요</div>
@@ -1497,17 +1512,74 @@ document.getElementById('auto-toggle-btn').addEventListener('click', async () =>
   } catch(e) { console.warn('[AutoToggle]', e); }
 });
 
+/* ══════════════════════════════════════════════════
+   실시간 SSE (Server-Sent Events) – DB 자동 갱신
+   ══════════════════════════════════════════════════ */
+let _sseReconnectTimer = null;
+let _sseInstance       = null;
+
+function _setLiveIndicator(state) {
+  // state: 'connecting' | 'on' | 'off'
+  const dot   = document.getElementById('live-indicator');
+  const label = document.getElementById('live-label');
+  if (!dot || !label) return;
+  dot.className   = state === 'on' ? 'live-on' : state === 'off' ? 'live-off' : '';
+  label.className = state === 'on' ? 'live-on' : state === 'off' ? 'live-off' : '';
+  dot.title = state === 'on'  ? '실시간 연결됨 (SSE)' :
+              state === 'off' ? '연결 끊김 – 재연결 대기 중...' :
+                                'SSE 연결 중...';
+}
+
+function setupSSE() {
+  if (typeof EventSource === 'undefined') return;  // 미지원 환경
+  if (_sseInstance) { _sseInstance.close(); _sseInstance = null; }
+
+  _setLiveIndicator('connecting');
+  const es = new EventSource(`${API}/api/events`);
+  _sseInstance = es;
+
+  es.onopen = () => {
+    _setLiveIndicator('on');
+    if (_sseReconnectTimer) { clearTimeout(_sseReconnectTimer); _sseReconnectTimer = null; }
+  };
+
+  es.onmessage = async (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'db_updated') {
+        popImgCache = {}; popDetCache = {};
+        await Promise.all([loadAllImages(), loadAllDetections(), loadAllReports()]);
+        await pollSimStatus();   // 상태 표시줄도 즉시 갱신
+      }
+    } catch(err) { console.warn('[SSE msg]', err); }
+  };
+
+  es.onerror = () => {
+    _setLiveIndicator('off');
+    es.close();
+    _sseInstance = null;
+    // 5초 후 재연결
+    if (!_sseReconnectTimer) {
+      _sseReconnectTimer = setTimeout(() => {
+        _sseReconnectTimer = null;
+        setupSSE();
+      }, 5000);
+    }
+  };
+}
+
 /* ── 자동 갱신 ── */
 setInterval(loadSatellites,  10_000);
 setInterval(pollSimStatus,    5_000);   // 5초마다 자동 시뮬레이션 상태 체크
+// SSE 연결이 끊긴 경우를 대비한 폴백 폴링 (60초)
 setInterval(async () => {
-  if (!_prevRunning) {  // 실행 중이 아닐 때만 주기 갱신
+  if (!_sseInstance || _sseInstance.readyState === EventSource.CLOSED) {
     popImgCache = {}; popDetCache = {};
     await loadAllImages();
     await loadAllDetections();
     await loadAllReports();
   }
-}, 30_000);
+}, 60_000);
 
 /* ── 부트 – Leaflet 로드 완료 대기 후 초기화 ──────────────────────────────
    로컬 leaflet.min.js 가 동기 로드되면 즉시 실행.
@@ -1521,6 +1593,7 @@ setInterval(async () => {
     loadAllDetections();
     loadAllReports();
     pollSimStatus();
+    setupSSE();
   } else if (retry > 0) {
     setTimeout(function(){ boot(retry - 1); }, 100);
   } else {
@@ -1549,6 +1622,7 @@ setInterval(async () => {
     loadAllDetections();
     loadAllReports();
     pollSimStatus();
+    setupSSE();
   }
 })(50);
 </script>
