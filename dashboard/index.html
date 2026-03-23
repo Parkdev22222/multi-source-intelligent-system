@@ -7,9 +7,11 @@
   <!-- Leaflet CSS: 로컬 우선, 없으면 CDN 폴백 -->
   <link rel="stylesheet" href="/static/dashboard/leaflet.min.css"
         onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'" />
-  <!-- Leaflet JS: 로컬 파일 동기 로드 (폐쇄망) – 404 시 CDN 비동기 폴백 -->
+  <!-- Leaflet JS: 로컬 파일 동기 로드 – 실패 시 CDN 비동기 폴백 -->
+  <script>window._leafletSrc = 'none';</script>
   <script src="/static/dashboard/leaflet.min.js"
-          onerror="(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';document.head.appendChild(s);})()"></script>
+          onload="window._leafletSrc='local'"
+          onerror="window._leafletSrc='local-fail';(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';s.onload=function(){window._leafletSrc='cdn'};s.onerror=function(){window._leafletSrc='cdn-fail'};document.head.appendChild(s);})()"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -910,15 +912,24 @@ setInterval(async () => {
   } else if (retry > 0) {
     setTimeout(function(){ boot(retry - 1); }, 100);
   } else {
-    // Leaflet 로드 실패 – 지도 자리에 안내 메시지 표시
+    // Leaflet 로드 실패 – 원인별 안내 메시지 표시
+    var src = window._leafletSrc || 'none';
+    var reason =
+      src === 'local-fail' ? '로컬 파일 없음 (404) – 서버에 leaflet.min.js가 없습니다' :
+      src === 'cdn-fail'   ? '로컬 + CDN 모두 실패 (폐쇄망 + 파일 없음)' :
+      src === 'local'      ? '파일은 로드됐으나 실행 오류 – 파일이 손상됐을 수 있습니다' :
+      src === 'cdn'        ? 'CDN 로드됐으나 실행 오류' :
+                             '알 수 없는 오류 (src=' + src + ')';
     var mapEl = document.getElementById('map');
     if (mapEl) {
       mapEl.style.cssText += 'display:flex;align-items:center;justify-content:center;';
       mapEl.innerHTML =
-        '<div style="color:#f66;font-size:14px;text-align:center;padding:20px">' +
-        'Leaflet 로드 실패<br>' +
-        '<small>dashboard/static/leaflet.min.js 파일을 확인하거나<br>' +
-        'python scripts/download_map_assets.py 를 실행하세요</small></div>';
+        '<div style="color:#f66;font-size:13px;text-align:center;padding:20px;line-height:1.8">' +
+        '<b>Leaflet 지도 로드 실패</b><br>' +
+        '<span style="color:#fc9">' + reason + '</span><br><br>' +
+        '<span style="color:#aaa">해결: python scripts/download_map_assets.py 실행 후<br>' +
+        'dashboard/static/ 에 leaflet.min.js 가 있는지 확인하세요<br>' +
+        '또는 브라우저 콘솔(F12)에서 Network 탭 확인</span></div>';
     }
     // 지도 없이 API 데이터는 계속 로드
     loadSatellites();
