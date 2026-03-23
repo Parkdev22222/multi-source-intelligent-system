@@ -130,6 +130,13 @@
     .rpt-item-meta { font-size:9px; color:var(--dim); margin-top:2px; }
     .rpt-item-badge { float:right; background:#1a1a0a; color:var(--amber); font-size:9px; padding:1px 5px; border-radius:2px; border:1px solid var(--amber); opacity:.7; }
     .rpt-item-region { float:left; font-size:8px; color:var(--dim); background:#141a24; border:1px solid var(--border); border-radius:2px; padding:0 4px; margin-right:5px; margin-top:1px; }
+    .rpt-item.alert { border-color:#c0392b55; }
+    .rpt-item.alert:hover { border-color:#ff4444; background:#1e0808; }
+    .rpt-item.alert .rpt-item-name { color:#ff4444; }
+    .rpt-item.alert .rpt-item-meta { color:#cc3333; }
+    .rpt-item.alert .rpt-item-badge { color:#ff4444; border-color:#c0392b; background:#2a0808; }
+    .rpt-item.alert .rpt-item-region { color:#cc3333; border-color:#c0392b55; }
+    .rpt-item-country { float:right; font-size:8px; color:#ff4444; background:#2a0808; border:1px solid #c0392b; border-radius:2px; padding:0 4px; margin-left:4px; margin-top:1px; letter-spacing:.3px; }
 
     /* hover 팝업 (이미지/탐지 정보) */
     #db-popup {
@@ -823,6 +830,22 @@ function getRegion(lat, lon) {
 }
 
 /* ══════════════════════════════════════════════════
+   경계 국가 판별 (중국·북한·일본)
+   ══════════════════════════════════════════════════ */
+function getAlertCountry(lat, lon) {
+  if (isNaN(lat) || isNaN(lon)) return null;
+  // 북한 (우선 체크 – 중국·일본 박스와 겹침)
+  if (lat >= 37.5 && lat <= 43.0 && lon >= 124.0 && lon <= 131.0) return '북한';
+  // 일본 본토 (규슈~홋카이도)
+  if (lat >= 30.0 && lat <= 46.5 && lon >= 129.0 && lon <= 146.0) return '일본';
+  // 류큐 제도 (오키나와 등)
+  if (lat >= 24.0 && lat <= 31.0 && lon >= 123.0 && lon <= 132.0) return '일본';
+  // 중국
+  if (lat >= 18.0 && lat <= 53.5 && lon >= 73.0 && lon <= 135.5) return '중국';
+  return null;
+}
+
+/* ══════════════════════════════════════════════════
    판독 보고서 목록 로드 (DB)
    ══════════════════════════════════════════════════ */
 let _rptData = [];       // 전체 보고서 캐시
@@ -847,13 +870,21 @@ function renderRptList(region) {
   }
 
   list.innerHTML = filtered.map(r => {
-    const dt    = r.report_time ? new Date(r.report_time) : null;
-    const ts    = dt ? dt.toLocaleString('ko-KR') : '—';
-    const model = (r.llm_model || '').split('/').pop() || '—';
-    return `<div class="rpt-item" data-id="${r.id}" data-fname="${r._fname}"
+    const dt      = r.report_time ? new Date(r.report_time) : null;
+    const ts      = dt ? dt.toLocaleString('ko-KR') : '—';
+    const model   = (r.llm_model || '').split('/').pop() || '—';
+    const lat     = parseFloat(r.lat_center);
+    const lon     = parseFloat(r.lon_center);
+    const country = getAlertCountry(lat, lon);
+    const alertClass   = country ? ' alert' : '';
+    const countryBadge = country
+      ? `<span class="rpt-item-country">⚠ ${country}</span>`
+      : '';
+    return `<div class="rpt-item${alertClass}" data-id="${r.id}" data-fname="${r._fname}"
                data-lat="${r.lat_center ?? ''}" data-lon="${r.lon_center ?? ''}">
       <span class="rpt-item-badge">${r.pairing_count ?? 0}건</span>
       <span class="rpt-item-region">${r._region}</span>
+      ${countryBadge}
       <div class="rpt-item-name" title="${r._fname}">${r._fname}</div>
       <div class="rpt-item-meta">${ts} | ${model}</div>
     </div>`;
