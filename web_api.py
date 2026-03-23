@@ -44,6 +44,7 @@ from src.database.sensor_db import (
     get_image_record_by_id,
     get_detection_by_id,
     get_detections_by_image,
+    get_images_by_capture_time,
     get_all_images_with_count,
     replace_detections_for_image,
 )
@@ -459,18 +460,45 @@ def api_report_images(report_id: str):
 
     pairings = get_pairings_by_session(report.session_id)
 
-    # Collect unique image IDs from detection references (limit DB lookups)
-    current_img_ids: dict = {}
+    # ── 이미지 수집 전략 ─────────────────────────────────────────────────────
+    # 1순위: pairing의 capture_time으로 ImageRecord를 직접 조회한다.
+    #        → detection 삭제/교체 후에도 영향을 받지 않고, current/past 이미지를
+    #          서로 다른 레코드로 올바르게 분리할 수 있다.
+    # 2순위: capture_time이 없으면 detection → image_id 경로로 폴백한다.
+    current_img_ids: dict = {}  # image_id → capture_time
     past_img_ids: dict = {}
+
     for p in pairings:
-        if p.current_detection_id and len(current_img_ids) < 3:
-            det = get_detection_by_id(p.current_detection_id)
-            if det and det.image_id not in current_img_ids:
-                current_img_ids[det.image_id] = p.current_capture_time
-        if p.past_detection_id and len(past_img_ids) < 3:
-            det = get_detection_by_id(p.past_detection_id)
-            if det and det.image_id not in past_img_ids:
-                past_img_ids[det.image_id] = p.past_capture_time
+        # --- current ---
+        if len(current_img_ids) < 3:
+            found = False
+            if p.current_capture_time:
+                imgs = get_images_by_capture_time(p.current_capture_time)
+                for img in imgs:
+                    if img.id not in current_img_ids:
+                        current_img_ids[img.id] = p.current_capture_time
+                        found = True
+                        break
+            if not found and p.current_detection_id:
+                det = get_detection_by_id(p.current_detection_id)
+                if det and det.image_id not in current_img_ids:
+                    current_img_ids[det.image_id] = p.current_capture_time
+
+        # --- past ---
+        if len(past_img_ids) < 3:
+            found = False
+            if p.past_capture_time:
+                imgs = get_images_by_capture_time(p.past_capture_time)
+                for img in imgs:
+                    # current 이미지와 동일한 ID는 past로 쓰지 않는다
+                    if img.id not in past_img_ids and img.id not in current_img_ids:
+                        past_img_ids[img.id] = p.past_capture_time
+                        found = True
+                        break
+            if not found and p.past_detection_id:
+                det = get_detection_by_id(p.past_detection_id)
+                if det and det.image_id not in past_img_ids and det.image_id not in current_img_ids:
+                    past_img_ids[det.image_id] = p.past_capture_time
 
     def _build_info(image_id, capture_time_fallback, with_detections: bool = False):
         rec = get_image_record_by_id(image_id)

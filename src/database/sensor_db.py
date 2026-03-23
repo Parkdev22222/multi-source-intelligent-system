@@ -169,6 +169,24 @@ def get_detection_by_id(detection_id: str) -> Optional[DetectionRecord]:
         return record
 
 
+def get_images_by_capture_time(capture_time: datetime, tolerance_sec: int = 5) -> List[ImageRecord]:
+    """capture_time ± tolerance_sec 범위의 ImageRecord 목록 반환."""
+    from datetime import timedelta
+    engine = get_engine()
+    lo = capture_time - timedelta(seconds=tolerance_sec)
+    hi = capture_time + timedelta(seconds=tolerance_sec)
+    with Session(engine) as session:
+        records = (
+            session.query(ImageRecord)
+            .filter(ImageRecord.capture_time >= lo, ImageRecord.capture_time <= hi)
+            .order_by(ImageRecord.capture_time)
+            .all()
+        )
+        for r in records:
+            session.expunge(r)
+        return records
+
+
 def get_image_record_by_id(image_id: str) -> Optional[ImageRecord]:
     """Return the ImageRecord for the given id, or None if not found."""
     engine = get_engine()
