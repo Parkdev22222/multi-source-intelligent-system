@@ -555,6 +555,26 @@ def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
     }
 
 
+@app.get("/api/image/{image_id}/rendered")
+def api_image_rendered(image_id: str, t: int = Query(default=0)):
+    """현재 DB에 저장된 탐지 결과를 이미지에 그려서 반환 (캐시버스팅용 t 파라미터 지원)."""
+    rec = get_image_record_by_id(image_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="이미지 없음")
+    img_path = Path(rec.image_path)
+    if not img_path.is_absolute():
+        img_path = _images_dir / rec.image_path
+    if not img_path.exists():
+        raise HTTPException(status_code=404, detail="이미지 파일 없음")
+    dets = get_detections_by_image(image_id)
+    b64 = _image_with_detections_b64(img_path, dets, max_size=480)
+    return {
+        "id":           image_id,
+        "image_b64":    b64,
+        "capture_time": rec.capture_time.isoformat() if rec.capture_time else None,
+    }
+
+
 @app.put("/api/image/{image_id}/detections")
 def api_update_detections(image_id: str, body: DetectionsUpdateBody):
     """이미지의 탐지 결과를 사용자 수정본으로 교체."""

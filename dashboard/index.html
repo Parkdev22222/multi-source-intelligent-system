@@ -1284,12 +1284,8 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
     const result = await res.json();
     document.getElementById('det-editor-modal').classList.remove('open');
     meta_toast(`저장 완료 – 탐지 ${result.updated}건. 이미지 갱신 중...`);
-    // 탐지 결과 반영된 이미지로 모달 갱신
-    if (_currentReportId) {
-      const savedFname = document.getElementById('report-meta').querySelector('b')?.textContent;
-      await openReportById(_currentReportId, savedFname);
-      meta_toast(`이미지 갱신 완료`);
-    }
+    await refreshReportImages();
+    meta_toast(`이미지 갱신 완료`);
   } catch(e) {
     meta_toast(`오류: ${e.message}`);
   } finally {
@@ -1301,6 +1297,46 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
 document.getElementById('det-cancel-btn').addEventListener('click', () => {
   document.getElementById('det-editor-modal').classList.remove('open');
 });
+
+/* ── 탐지 저장 후 이미지 패널 직접 갱신 ──
+   openReportById 대신 이 함수를 사용한다.
+   이유: replace_detections_for_image 실행 시 기존 DetectionRecord가 삭제되면
+   pairing_records.current_detection_id가 stale해져 api_report_images 경로로
+   이미지를 조회하면 빈 배열이 반환된다.
+   캐시된 _currImageIds / _pastImageIds 로 /api/image/{id}/rendered 를 직접 호출하면
+   항상 최신 탐지 결과가 반영된 이미지를 가져올 수 있다. */
+async function refreshReportImages() {
+  const ts      = Date.now();
+  const imgRow  = document.getElementById('report-img-row');
+  const currWrap = document.getElementById('rpt-curr-wrap');
+  const pastWrap = document.getElementById('rpt-past-wrap');
+
+  if (_currImageIds.length === 0 && _pastImageIds.length === 0) return;
+
+  imgRow.classList.add('has-images');
+
+  async function fetchRendered(imageId) {
+    const res = await fetch(`${API}/api/image/${encodeURIComponent(imageId)}/rendered?t=${ts}`);
+    if (!res.ok) return null;
+    return res.json();
+  }
+
+  if (_currImageIds.length > 0) {
+    currWrap.innerHTML = '<span class="rpt-img-loading">갱신 중...</span>';
+    const data = await fetchRendered(_currImageIds[0]);
+    currWrap.innerHTML = '';
+    if (data) currWrap.appendChild(buildImgEl(data));
+    else currWrap.innerHTML = '<span class="rpt-img-loading" style="color:#f44">갱신 실패</span>';
+  }
+
+  if (_pastImageIds.length > 0) {
+    pastWrap.innerHTML = '<span class="rpt-img-loading">갱신 중...</span>';
+    const data = await fetchRendered(_pastImageIds[0]);
+    pastWrap.innerHTML = '';
+    if (data) pastWrap.appendChild(buildImgEl(data));
+    else pastWrap.innerHTML = '<span class="rpt-img-loading" style="color:#f44">갱신 실패</span>';
+  }
+}
 
 /* ── 보고서 모달 (위치 기반 더블클릭) ── */
 async function openReport(lat, lon) {
