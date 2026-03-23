@@ -15,9 +15,12 @@ MSIS Web API – FastAPI 백엔드 (위성 모의기 + 탐지 결과 대시보�
   uvicorn web_api:app --host 0.0.0.0 --port 8000 --reload
 """
 
+import asyncio
 import base64
 import io
+import json
 import logging
+import queue
 import threading
 import time as _time
 from datetime import datetime
@@ -26,7 +29,7 @@ from typing import List, Optional
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -65,6 +68,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ══════════════════════════════════════════════════════════════════════════
+# Server-Sent Events (SSE) – 실시간 DB 업데이트 브로드캐스트
+# ══════════════════════════════════════════════════════════════════════════
+
+_sse_clients: list = []   # 연결된 클라이언트 Queue 목록
+_sse_lock = threading.Lock()
+
+
+def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float = 0.0):
+    """모든 SSE 구독 클라이언트에게 DB 업데이트 이벤트를 브로드캐스트한다."""
+    payload = json.dumps({
+        "type":      "db_updated",
+        "run_count": run_count,
+        "success":   success,
+        "elapsed":   elapsed,
+        "ts":        datetime.utcnow().isoformat(),
+    })
+    with _sse_lock:
+        dead = []
+        for q in list(_sse_clients):
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            try:
+                _sse_clients.remove(q)
+            except ValueError:
+                pass
+
 
 # 위성영상 정적 파일
 _images_dir = Path(IMAGES_DIR)
@@ -150,8 +184,15 @@ def _auto_sim_worker():
                                     _auto_state["run_count"],
                                     result["elapsed_s"],
                                     result["success"])
+                        # 파이프라인 완료 → SSE 실시간 알림
+                        _notify_db_updated(
+                            run_count=_auto_state["run_count"],
+                            success=result["success"],
+                            elapsed=result["elapsed_s"],
+                        )
                     except Exception as exc:
                         logger.error("[AutoSim] 실행 오류: %s", exc)
+                        _notify_db_updated(run_count=_auto_state["run_count"], success=False)
                     finally:
                         with _auto_lock:
                             _auto_state["running"] = False
@@ -255,6 +296,13 @@ def api_simulator_step(background_tasks: BackgroundTasks):
     except Exception as exc:
         logger.error(f"[API] simulator step error: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
+
+    # 수동 실행 완료 → SSE 실시간 알림
+    _notify_db_updated(
+        run_count=_auto_state["run_count"],
+        success=result["success"],
+        elapsed=result["elapsed_s"],
+    )
 
     return {
         "success":    result["success"],
@@ -657,6 +705,56 @@ def api_all_reports(limit: int = Query(default=50, le=200)):
             "lon_center":   lon,
         })
     return {"reports": items, "count": len(items)}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# SSE 엔드포인트
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/events")
+async def api_events():
+    """
+    Server-Sent Events 스트림.
+    DB(이미지/탐지/보고서)가 갱신될 때 'db_updated' 이벤트를 즉시 전송한다.
+    25초마다 heartbeat 코멘트를 전송해 연결을 유지한다.
+    """
+    q: queue.Queue = queue.Queue()
+    with _sse_lock:
+        _sse_clients.append(q)
+
+    async def event_gen():
+        try:
+            yield "data: {\"type\":\"connected\"}\n\n"
+            last_hb = asyncio.get_event_loop().time()
+            while True:
+                try:
+                    msg = q.get_nowait()
+                    yield f"data: {msg}\n\n"
+                    last_hb = asyncio.get_event_loop().time()
+                except queue.Empty:
+                    await asyncio.sleep(0.3)
+                    now = asyncio.get_event_loop().time()
+                    if now - last_hb > 25:
+                        yield ": heartbeat\n\n"
+                        last_hb = now
+        except (asyncio.CancelledError, GeneratorExit):
+            pass
+        finally:
+            with _sse_lock:
+                try:
+                    _sse_clients.remove(q)
+                except ValueError:
+                    pass
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "Connection":       "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def _report_dict(r) -> dict:
