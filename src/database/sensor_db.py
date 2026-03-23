@@ -192,6 +192,18 @@ def get_detections_by_image(image_id: str) -> List[DetectionRecord]:
         return records
 
 
+def replace_detections_for_image(image_id: str, new_detections: List[DetectionRecord]) -> int:
+    """이미지의 모든 탐지 결과를 삭제하고 새 목록으로 교체. 교체된 건수 반환."""
+    engine = get_engine()
+    with Session(engine) as session:
+        session.query(DetectionRecord).filter(DetectionRecord.image_id == image_id).delete()
+        for d in new_detections:
+            session.add(d)
+        session.commit()
+        logger.info(f"[SensorDB] replace_detections image_id={image_id} count={len(new_detections)}")
+        return len(new_detections)
+
+
 def get_latest_image_near(
     lat: float,
     lon: float,

@@ -24,10 +24,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from src.config import IMAGES_DIR
 from src.database.pairing_db import get_session_ids_near, get_session_location, get_pairings_by_session
@@ -35,6 +36,7 @@ from src.database.reports_db import (
     get_all_reports,
     get_latest_report_for_sessions,
     get_report_by_id,
+    update_report_content,
 )
 from src.database.sensor_db import (
     get_latest_detections_near,
@@ -43,6 +45,7 @@ from src.database.sensor_db import (
     get_detection_by_id,
     get_detections_by_image,
     get_all_images_with_count,
+    replace_detections_for_image,
 )
 from src.satellite.simulator import get_positions
 
@@ -499,6 +502,92 @@ def api_report_images(report_id: str):
         "past_images":    [i for img_id, ct in past_img_ids.items()
                            if (i := _build_info(img_id, ct, with_detections=False))],
     }
+
+
+# ── 사용자 수정용 엔드포인트 ──────────────────────────────────────────────────
+
+class BboxIn(BaseModel):
+    x1: float; y1: float; x2: float; y2: float
+
+class DetectionIn(BaseModel):
+    object_class: str
+    confidence: float
+    bbox: BboxIn
+    lat: float = 0.0
+    lon: float = 0.0
+
+class DetectionsUpdateBody(BaseModel):
+    detections: list[DetectionIn]
+
+class ReportContentBody(BaseModel):
+    report_content: str
+
+
+@app.get("/api/image/{image_id}/raw")
+def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
+    """원본 이미지(탐지 박스 없음) + 실제 출력 크기 반환."""
+    from PIL import Image as PilImage
+    rec = get_image_record_by_id(image_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="이미지 없음")
+    img_path = Path(rec.image_path)
+    if not img_path.is_absolute():
+        img_path = _images_dir / rec.image_path
+    if not img_path.exists():
+        raise HTTPException(status_code=404, detail="이미지 파일 없음")
+    with PilImage.open(img_path) as img:
+        orig_w, orig_h = img.size
+        img.thumbnail((max_size, max_size))
+        if img.mode not in ("RGB", "RGBA", "L"):
+            img = img.convert("RGB")
+        out_w, out_h = img.size
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+    return {
+        "id":           image_id,
+        "image_b64":    b64,
+        "width":        out_w,
+        "height":       out_h,
+        "orig_width":   orig_w,
+        "orig_height":  orig_h,
+        "capture_time": rec.capture_time.isoformat() if rec.capture_time else None,
+    }
+
+
+@app.put("/api/image/{image_id}/detections")
+def api_update_detections(image_id: str, body: DetectionsUpdateBody):
+    """이미지의 탐지 결과를 사용자 수정본으로 교체."""
+    from src.database.models import DetectionRecord as DetRec
+    rec = get_image_record_by_id(image_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="이미지 없음")
+    new_dets = []
+    for d in body.detections:
+        new_dets.append(DetRec(
+            image_id=image_id,
+            detection_time=rec.capture_time,
+            object_class=d.object_class,
+            confidence=max(0.0, min(1.0, d.confidence)),
+            bbox_x1=d.bbox.x1,
+            bbox_y1=d.bbox.y1,
+            bbox_x2=d.bbox.x2,
+            bbox_y2=d.bbox.y2,
+            lat=d.lat if d.lat != 0.0 else rec.lat_center,
+            lon=d.lon if d.lon != 0.0 else rec.lon_center,
+            source_type="human_edit",
+        ))
+    count = replace_detections_for_image(image_id, new_dets)
+    return {"updated": count, "image_id": image_id}
+
+
+@app.patch("/api/report/{report_id}")
+def api_update_report(report_id: str, body: ReportContentBody):
+    """보고서 텍스트를 수정한다."""
+    ok = update_report_content(report_id, body.report_content)
+    if not ok:
+        raise HTTPException(status_code=404, detail="보고서 없음")
+    return {"updated": True, "report_id": report_id}
 
 
 @app.get("/api/reports")

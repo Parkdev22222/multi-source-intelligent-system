@@ -92,6 +92,19 @@ def get_report_by_id(report_id: str) -> Optional[ReportRecord]:
         return record
 
 
+def update_report_content(report_id: str, new_content: str) -> bool:
+    """보고서 텍스트를 수정한다. 성공 시 True, 보고서 없으면 False."""
+    engine = get_engine()
+    with Session(engine) as session:
+        record = session.get(ReportRecord, report_id)
+        if record is None:
+            return False
+        record.report_content = new_content
+        session.commit()
+        logger.info(f"[ReportsDB] Updated report_content id={report_id}")
+        return True
+
+
 def get_reports_by_session(session_id: str) -> List[ReportRecord]:
     engine = get_engine()
     with Session(engine) as session:

@@ -175,9 +175,49 @@
     #report-body { flex:1; overflow-y:auto; padding:14px 16px; }
     #report-content { white-space:pre-wrap; font-size:11px; color:var(--text); line-height:1.7; }
 
-    /* 다운로드 버튼 (우하단 고정) */
-    #download-btn { position:fixed; bottom:24px; right:24px; z-index:9100; padding:10px 20px; background:var(--amber); color:#000; border:none; border-radius:4px; cursor:pointer; font-family:var(--font); font-size:12px; font-weight:bold; letter-spacing:1px; display:none; transition:background .15s; }
-    #download-btn:hover { background:#ffd040; }
+    /* 보고서 헤더 액션 버튼 */
+    #report-hdr-actions { display:flex; align-items:center; gap:6px; }
+    .rpt-act-btn { font-size:10px; padding:4px 10px; border-radius:3px; border:1px solid var(--border); background:transparent; color:var(--dim); cursor:pointer; font-family:var(--font); letter-spacing:.4px; transition:all .12s; white-space:nowrap; }
+    .rpt-act-btn:hover { border-color:var(--amber); color:var(--amber); }
+    .rpt-act-btn.curr { border-color:#00cc66; color:#00cc66; }
+    .rpt-act-btn.curr:hover { background:#00cc6622; }
+    .rpt-act-btn.past { border-color:#5599ff; color:#5599ff; }
+    .rpt-act-btn.past:hover { background:#5599ff22; }
+    .rpt-act-btn.dl { border-color:var(--amber); color:#000; background:var(--amber); font-weight:bold; }
+    .rpt-act-btn.dl:hover { background:#ffd040; }
+    .rpt-act-btn:disabled { opacity:.35; cursor:not-allowed; }
+    /* 보고서 텍스트 편집 모드 */
+    #report-content[contenteditable=true] { outline:1px solid var(--amber); border-radius:2px; padding:4px; }
+    #rpt-edit-save { display:none; position:sticky; bottom:8px; float:right; margin:4px 0 0; font-size:10px; padding:4px 12px; background:var(--amber); color:#000; border:none; border-radius:3px; cursor:pointer; font-family:var(--font); font-weight:bold; }
+
+    /* ── 탐지 편집기 모달 ── */
+    #det-editor-modal { display:none; position:fixed; inset:0; z-index:9500; background:rgba(0,0,0,.88); flex-direction:column; }
+    #det-editor-modal.open { display:flex; }
+    #det-editor-hdr { padding:10px 16px; background:#080d18; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+    #det-editor-title { font-size:13px; color:var(--amber); letter-spacing:1px; flex:1; }
+    #det-editor-info  { font-size:10px; color:var(--dim); }
+    #det-editor-hdr button { font-size:11px; padding:5px 14px; border-radius:3px; border:1px solid; cursor:pointer; font-family:var(--font); font-weight:bold; }
+    #det-save-btn   { background:var(--green); border-color:var(--green); color:#000; }
+    #det-save-btn:hover { background:#00ee77; }
+    #det-cancel-btn { background:transparent; border-color:var(--dim); color:var(--dim); }
+    #det-cancel-btn:hover { border-color:var(--red); color:var(--red); }
+    #det-editor-body { flex:1; display:flex; min-height:0; }
+    #det-canvas-wrap { flex:1; display:flex; align-items:center; justify-content:center; background:#050a10; overflow:hidden; padding:12px; }
+    #det-canvas { cursor:crosshair; max-width:100%; max-height:100%; display:block; border:1px solid var(--border); }
+    #det-sidebar { width:260px; flex-shrink:0; background:#0a1220; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+    #det-sidebar-hdr { padding:8px 12px; font-size:10px; color:var(--amber); border-bottom:1px solid var(--border); letter-spacing:.5px; }
+    #det-list { flex:1; overflow-y:auto; padding:6px; scrollbar-width:thin; }
+    .det-item { display:flex; align-items:center; gap:6px; padding:5px 7px; border:1px solid var(--border); border-radius:2px; margin-bottom:4px; cursor:pointer; transition:all .1s; }
+    .det-item.selected { border-color:var(--amber); background:#1a1400; }
+    .det-item-cls { flex:1; font-size:10px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .det-item-conf { font-size:9px; color:var(--green); width:36px; text-align:right; flex-shrink:0; }
+    .det-item-del { font-size:12px; color:var(--dim); cursor:pointer; flex-shrink:0; padding:0 2px; }
+    .det-item-del:hover { color:var(--red); }
+    #det-add-form { padding:10px 12px; border-top:1px solid var(--border); flex-shrink:0; }
+    #det-add-form label { display:block; font-size:9px; color:var(--dim); margin-bottom:3px; }
+    #det-class-input, #det-conf-input { width:100%; box-sizing:border-box; background:#080d18; border:1px solid var(--border); color:var(--text); font-family:var(--font); font-size:11px; padding:4px 7px; border-radius:2px; margin-bottom:6px; }
+    #det-class-input:focus, #det-conf-input:focus { outline:none; border-color:var(--amber); }
+    #det-add-hint { font-size:9px; color:var(--dim); text-align:center; padding:4px 0 0; }
 
     /* ── 마커 스타일 ── */
     .sat-dot { width:10px; height:10px; border-radius:50%; border:2px solid; cursor:pointer; transition:transform .1s; }
@@ -304,7 +344,13 @@
   <div id="report-box">
     <div id="report-hdr">
       <h2>◈ 위성 판독 보고서</h2>
-      <span id="report-hdr-close">✕</span>
+      <div id="report-hdr-actions">
+        <button class="rpt-act-btn" id="edit-report-btn" style="display:none" title="보고서 텍스트 직접 수정">✏ 보고서 수정</button>
+        <button class="rpt-act-btn curr" id="edit-curr-det-btn" style="display:none" title="현재 시점 객체탐지 수정">◉ 현재 탐지 수정</button>
+        <button class="rpt-act-btn past" id="edit-past-det-btn" style="display:none" title="과거 시점 객체탐지 수정">◎ 과거 탐지 수정</button>
+        <button class="rpt-act-btn dl" id="download-btn" style="display:none">⬇ 다운로드</button>
+        <span id="report-hdr-close">✕</span>
+      </div>
     </div>
     <div id="report-meta">로딩 중...</div>
     <div id="report-img-row">
@@ -317,10 +363,38 @@
         <div class="rpt-img-wrap" id="rpt-curr-wrap"><span class="rpt-img-loading">로딩 중...</span></div>
       </div>
     </div>
-    <div id="report-body"><pre id="report-content"></pre></div>
+    <div id="report-body">
+      <button id="rpt-edit-save">저장</button>
+      <pre id="report-content"></pre>
+    </div>
   </div>
 </div>
-<button id="download-btn">⬇ 보고서 다운로드</button>
+
+<!-- ── 탐지 편집기 모달 ── -->
+<div id="det-editor-modal">
+  <div id="det-editor-hdr">
+    <span id="det-editor-title">◈ 객체탐지 수정</span>
+    <span id="det-editor-info"></span>
+    <button id="det-save-btn">저장</button>
+    <button id="det-cancel-btn">취소</button>
+  </div>
+  <div id="det-editor-body">
+    <div id="det-canvas-wrap">
+      <canvas id="det-canvas"></canvas>
+    </div>
+    <div id="det-sidebar">
+      <div id="det-sidebar-hdr">탐지 목록 <span id="det-count-badge"></span></div>
+      <div id="det-list"></div>
+      <div id="det-add-form">
+        <label>객체 분류명</label>
+        <input id="det-class-input" placeholder="예: military tank" value="military vehicle">
+        <label>신뢰도 (0.00 ~ 1.00)</label>
+        <input id="det-conf-input" type="number" min="0" max="1" step="0.01" value="0.90">
+        <div id="det-add-hint">이미지 위에서 드래그하여 박스 추가<br>목록 항목 클릭 → 선택 / ✕ 클릭 → 삭제</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
@@ -834,6 +908,35 @@ async function loadAllReports() {
   } catch(e) { console.warn('[loadAllReports]', e); }
 }
 
+/* ── 현재 열린 보고서의 이미지 ID 캐시 ── */
+let _currentReportId  = null;
+let _currImageIds     = [];   // 현재 시점 이미지 ID 배열
+let _pastImageIds     = [];   // 과거 시점 이미지 ID 배열
+
+function buildImgEl(info) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'width:100%;display:contents;';
+  if (info.image_b64) {
+    const img = document.createElement('img');
+    img.src = `data:image/png;base64,${info.image_b64}`;
+    img.alt = '위성영상';
+    wrap.appendChild(img);
+  } else {
+    const noImg = document.createElement('span');
+    noImg.className = 'rpt-img-loading';
+    noImg.style.color = '#f44';
+    noImg.textContent = '이미지 없음';
+    wrap.appendChild(noImg);
+  }
+  const ts = document.createElement('div');
+  ts.className = 'rpt-img-time';
+  ts.textContent = info.capture_time
+    ? '취득: ' + new Date(info.capture_time).toLocaleString('ko-KR')
+    : '취득 시간 정보 없음';
+  wrap.appendChild(ts);
+  return wrap;
+}
+
 /* ── 보고서 ID 직접 열기 ── */
 async function openReportById(id, fname) {
   const modal    = document.getElementById('report-modal');
@@ -843,18 +946,25 @@ async function openReportById(id, fname) {
   const imgRow   = document.getElementById('report-img-row');
   const pastWrap = document.getElementById('rpt-past-wrap');
   const currWrap = document.getElementById('rpt-curr-wrap');
+  const editRpt  = document.getElementById('edit-report-btn');
+  const editCurr = document.getElementById('edit-curr-det-btn');
+  const editPast = document.getElementById('edit-past-det-btn');
+
+  _currentReportId = id;
+  _currImageIds = [];
+  _pastImageIds = [];
 
   modal.classList.add('open');
   document.getElementById('report-box').classList.add('img-only');
   meta.textContent = '이미지 로딩 중...';
   content.textContent = '';
-  dlBtn.style.display = 'none';
+  dlBtn.style.display  = 'none';
+  editRpt.style.display = editCurr.style.display = editPast.style.display = 'none';
   imgRow.classList.remove('has-images');
   pastWrap.innerHTML = '<span class="rpt-img-loading">로딩 중...</span>';
   currWrap.innerHTML = '<span class="rpt-img-loading">로딩 중...</span>';
 
   try {
-    // 보고서 텍스트 + 이미지 병렬 로드
     const [repRes, imgRes] = await Promise.all([
       fetch(`${API}/api/report/${encodeURIComponent(id)}`),
       fetch(`${API}/api/report/${encodeURIComponent(id)}/images`),
@@ -870,57 +980,46 @@ async function openReportById(id, fname) {
     meta.innerHTML =
       `<b>${fname || id}</b> &nbsp;|&nbsp; 생성: ${rptTime} &nbsp;|&nbsp; 페어링: ${report.pairing_count}건`;
     content.textContent = report.report_content || '';
-    dlBtn.style.display = 'block';
+
+    // 다운로드 + 보고서 수정 버튼
+    dlBtn.style.display = 'inline-block';
     dlBtn.onclick = () => {
-      const blob = new Blob([report.report_content || ''], { type: 'text/plain;charset=utf-8' });
+      const blob = new Blob([content.textContent || ''], { type: 'text/plain;charset=utf-8' });
       const a = Object.assign(document.createElement('a'), {
         href: URL.createObjectURL(blob), download: fname || `MSIS_report_${id}.txt`
       });
       a.click(); URL.revokeObjectURL(a.href);
     };
+    editRpt.style.display = 'inline-block';
 
     // 위성사진 패널 처리
     const imgs = imgRes.ok ? await imgRes.json() : null;
     const hasPast = imgs?.past_images?.length > 0;
     const hasCurr = imgs?.current_images?.length > 0;
 
-    function buildImgEl(info) {
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'width:100%;display:contents;';
-      if (info.image_b64) {
-        const img = document.createElement('img');
-        img.src = `data:image/png;base64,${info.image_b64}`;
-        img.alt = '위성영상';
-        wrap.appendChild(img);
-      } else {
-        const noImg = document.createElement('span');
-        noImg.className = 'rpt-img-loading';
-        noImg.style.color = '#f44';
-        noImg.textContent = '이미지 없음';
-        wrap.appendChild(noImg);
-      }
-      const ts = document.createElement('div');
-      ts.className = 'rpt-img-time';
-      ts.textContent = info.capture_time
-        ? '취득: ' + new Date(info.capture_time).toLocaleString('ko-KR')
-        : '취득 시간 정보 없음';
-      wrap.appendChild(ts);
-      return wrap;
-    }
-
     if (hasPast || hasCurr) {
       imgRow.classList.add('has-images');
       pastWrap.innerHTML = '';
       currWrap.innerHTML = '';
-      if (hasPast) {
-        imgs.past_images.forEach(info => pastWrap.appendChild(buildImgEl(info)));
-      } else {
-        pastWrap.innerHTML = '<span class="rpt-img-loading">이전 사진 없음</span>';
-      }
       if (hasCurr) {
-        imgs.current_images.forEach(info => currWrap.appendChild(buildImgEl(info)));
+        imgs.current_images.forEach(info => {
+          currWrap.appendChild(buildImgEl(info));
+          if (info.id) _currImageIds.push(info.id);
+        });
+        editCurr.style.display = 'inline-block';
+        editCurr.disabled = false;
       } else {
         currWrap.innerHTML = '<span class="rpt-img-loading">현재 사진 없음</span>';
+      }
+      if (hasPast) {
+        imgs.past_images.forEach(info => {
+          pastWrap.appendChild(buildImgEl(info));
+          if (info.id) _pastImageIds.push(info.id);
+        });
+        editPast.style.display = 'inline-block';
+        editPast.disabled = false;
+      } else {
+        pastWrap.innerHTML = '<span class="rpt-img-loading">이전 사진 없음</span>';
       }
     } else {
       imgRow.classList.remove('has-images');
@@ -929,6 +1028,280 @@ async function openReportById(id, fname) {
     meta.textContent = `네트워크 오류: ${e.message}`;
   }
 }
+
+/* ══════════════════════════════════════════════════
+   보고서 텍스트 수정
+   ══════════════════════════════════════════════════ */
+const _editRptSaveBtn = document.getElementById('rpt-edit-save');
+document.getElementById('edit-report-btn').addEventListener('click', () => {
+  const content = document.getElementById('report-content');
+  const isEditing = content.isContentEditable;
+  if (!isEditing) {
+    content.contentEditable = 'true';
+    content.focus();
+    _editRptSaveBtn.style.display = 'inline-block';
+    document.getElementById('edit-report-btn').textContent = '✏ 편집 중...';
+  }
+});
+
+_editRptSaveBtn.addEventListener('click', async () => {
+  if (!_currentReportId) return;
+  const content = document.getElementById('report-content');
+  const newText = content.textContent;
+  const res = await fetch(`${API}/api/report/${encodeURIComponent(_currentReportId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report_content: newText }),
+  });
+  if (res.ok) {
+    content.contentEditable = 'false';
+    _editRptSaveBtn.style.display = 'none';
+    document.getElementById('edit-report-btn').textContent = '✏ 보고서 수정';
+    meta_toast('보고서 저장 완료');
+  } else {
+    meta_toast('저장 실패');
+  }
+});
+
+function meta_toast(msg) {
+  const t = Object.assign(document.createElement('div'), {
+    textContent: msg,
+    style: 'position:fixed;bottom:32px;left:50%;transform:translateX(-50%);' +
+           'background:#00cc66;color:#000;font-size:11px;font-weight:bold;' +
+           'padding:6px 18px;border-radius:4px;z-index:99999;pointer-events:none;',
+  });
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+}
+
+/* ══════════════════════════════════════════════════
+   탐지 편집기 (캔버스 바운딩박스 수정)
+   ══════════════════════════════════════════════════ */
+let _edImgId   = null;   // 편집 중인 image_id
+let _edOrig    = {w:1, h:1};  // 원본 이미지 크기
+let _edDets    = [];     // [{object_class, confidence, bbox:{x1,y1,x2,y2}}]
+let _edSelIdx  = -1;
+let _edDrag    = null;   // {sx,sy,ex,ey} (canvas pixel 좌표)
+let _edImgEl   = new Image();
+
+const _edCanvas = document.getElementById('det-canvas');
+const _edCtx    = _edCanvas.getContext('2d');
+
+function _edScale() {
+  // canvas 내부 좌표(=out 이미지 px) → 표시 CSS px
+  const r = _edCanvas.getBoundingClientRect();
+  return { sx: r.width / _edCanvas.width, sy: r.height / _edCanvas.height };
+}
+
+function _canvasCoords(e) {
+  const r = _edCanvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (_edCanvas.width  / r.width),
+    y: (e.clientY - r.top)  * (_edCanvas.height / r.height),
+  };
+}
+
+// DB 원본 좌표 → 캔버스(out이미지) 좌표
+function _toCanvas(v, axis) {
+  return axis === 'x' ? v * (_edCanvas.width  / _edOrig.w)
+                      : v * (_edCanvas.height / _edOrig.h);
+}
+// 캔버스 좌표 → DB 원본 좌표
+function _toOrig(v, axis) {
+  return axis === 'x' ? v * (_edOrig.w / _edCanvas.width)
+                      : v * (_edOrig.h / _edCanvas.height);
+}
+
+function _edDraw() {
+  _edCtx.clearRect(0, 0, _edCanvas.width, _edCanvas.height);
+  _edCtx.drawImage(_edImgEl, 0, 0, _edCanvas.width, _edCanvas.height);
+
+  _edDets.forEach((det, i) => {
+    const x1 = _toCanvas(det.bbox.x1, 'x'), y1 = _toCanvas(det.bbox.y1, 'y');
+    const x2 = _toCanvas(det.bbox.x2, 'x'), y2 = _toCanvas(det.bbox.y2, 'y');
+    const sel = i === _edSelIdx;
+    _edCtx.strokeStyle = sel ? '#ff4444' : '#00ff88';
+    _edCtx.lineWidth   = sel ? 3 : 2;
+    _edCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    // label background
+    const label = `${det.object_class} ${(det.confidence * 100).toFixed(0)}%`;
+    const lw = label.length * 6 + 6;
+    _edCtx.fillStyle = sel ? 'rgba(255,68,68,.75)' : 'rgba(0,255,136,.75)';
+    _edCtx.fillRect(x1, y1 - 16, lw, 16);
+    _edCtx.fillStyle = '#000';
+    _edCtx.font = 'bold 11px monospace';
+    _edCtx.fillText(label, x1 + 3, y1 - 3);
+  });
+
+  if (_edDrag) {
+    const {sx, sy, ex, ey} = _edDrag;
+    _edCtx.strokeStyle = '#ffcc00';
+    _edCtx.lineWidth   = 2;
+    _edCtx.setLineDash([5, 3]);
+    _edCtx.strokeRect(Math.min(sx,ex), Math.min(sy,ey), Math.abs(ex-sx), Math.abs(ey-sy));
+    _edCtx.setLineDash([]);
+  }
+}
+
+function _edRenderList() {
+  const list  = document.getElementById('det-list');
+  const badge = document.getElementById('det-count-badge');
+  badge.textContent = `(${_edDets.length})`;
+  list.innerHTML = '';
+  _edDets.forEach((det, i) => {
+    const item = document.createElement('div');
+    item.className = 'det-item' + (i === _edSelIdx ? ' selected' : '');
+    item.innerHTML = `<span class="det-item-cls">${det.object_class}</span>
+      <span class="det-item-conf">${(det.confidence*100).toFixed(0)}%</span>
+      <span class="det-item-del" data-idx="${i}">✕</span>`;
+    item.addEventListener('click', e => {
+      if (e.target.classList.contains('det-item-del')) return;
+      _edSelIdx = _edSelIdx === i ? -1 : i;
+      _edRenderList(); _edDraw();
+    });
+    item.querySelector('.det-item-del').addEventListener('click', () => {
+      _edDets.splice(i, 1);
+      if (_edSelIdx >= _edDets.length) _edSelIdx = -1;
+      _edRenderList(); _edDraw();
+    });
+    list.appendChild(item);
+  });
+}
+
+_edCanvas.addEventListener('mousedown', e => {
+  const {x, y} = _canvasCoords(e);
+  // 기존 박스 선택 시도
+  let hit = -1;
+  for (let i = _edDets.length - 1; i >= 0; i--) {
+    const cx1 = _toCanvas(_edDets[i].bbox.x1,'x'), cy1 = _toCanvas(_edDets[i].bbox.y1,'y');
+    const cx2 = _toCanvas(_edDets[i].bbox.x2,'x'), cy2 = _toCanvas(_edDets[i].bbox.y2,'y');
+    if (x >= cx1 && x <= cx2 && y >= cy1 && y <= cy2) { hit = i; break; }
+  }
+  if (hit >= 0) {
+    _edSelIdx = hit; _edRenderList(); _edDraw(); return;
+  }
+  _edSelIdx = -1;
+  _edDrag = {sx: x, sy: y, ex: x, ey: y};
+  _edDraw();
+});
+
+_edCanvas.addEventListener('mousemove', e => {
+  if (!_edDrag) return;
+  const {x, y} = _canvasCoords(e);
+  _edDrag.ex = x; _edDrag.ey = y;
+  _edDraw();
+});
+
+_edCanvas.addEventListener('mouseup', e => {
+  if (!_edDrag) return;
+  const {sx, sy, ex, ey} = _edDrag;
+  _edDrag = null;
+  const minDim = 8;
+  if (Math.abs(ex - sx) < minDim || Math.abs(ey - sy) < minDim) { _edDraw(); return; }
+  const cls  = document.getElementById('det-class-input').value.trim() || 'unknown';
+  const conf = Math.max(0, Math.min(1, parseFloat(document.getElementById('det-conf-input').value) || 0.9));
+  _edDets.push({
+    object_class: cls,
+    confidence:   conf,
+    bbox: {
+      x1: _toOrig(Math.min(sx, ex), 'x'), y1: _toOrig(Math.min(sy, ey), 'y'),
+      x2: _toOrig(Math.max(sx, ex), 'x'), y2: _toOrig(Math.max(sy, ey), 'y'),
+    },
+  });
+  _edSelIdx = _edDets.length - 1;
+  _edRenderList(); _edDraw();
+});
+
+_edCanvas.addEventListener('mouseleave', () => {
+  if (_edDrag) { _edDrag = null; _edDraw(); }
+});
+
+async function openDetEditor(imageId, label) {
+  _edImgId  = imageId;
+  _edDets   = [];
+  _edSelIdx = -1;
+  _edDrag   = null;
+
+  const modal = document.getElementById('det-editor-modal');
+  document.getElementById('det-editor-title').textContent = `◈ 객체탐지 수정 – ${label}`;
+  document.getElementById('det-editor-info').textContent  = '로딩 중...';
+  document.getElementById('det-list').innerHTML = '';
+  _edCtx.clearRect(0, 0, _edCanvas.width, _edCanvas.height);
+  modal.classList.add('open');
+
+  try {
+    const [rawRes, detRes] = await Promise.all([
+      fetch(`${API}/api/image/${encodeURIComponent(imageId)}/raw?max_size=1024`),
+      fetch(`${API}/api/detections/by-image/${encodeURIComponent(imageId)}`),
+    ]);
+    if (!rawRes.ok) throw new Error('이미지 로드 실패');
+    const rawData = await rawRes.json();
+
+    _edOrig = { w: rawData.orig_width, h: rawData.orig_height };
+    _edCanvas.width  = rawData.width;
+    _edCanvas.height = rawData.height;
+
+    await new Promise((resolve, reject) => {
+      _edImgEl.onload  = resolve;
+      _edImgEl.onerror = reject;
+      _edImgEl.src     = `data:image/png;base64,${rawData.image_b64}`;
+    });
+
+    const detData = detRes.ok ? await detRes.json() : { detections: [] };
+    _edDets = (detData.detections || []).map(d => ({
+      object_class: d.object_class,
+      confidence:   d.confidence,
+      bbox:         { ...d.bbox },
+    }));
+
+    const capTime = rawData.capture_time
+      ? new Date(rawData.capture_time).toLocaleString('ko-KR')
+      : '—';
+    document.getElementById('det-editor-info').textContent =
+      `취득: ${capTime} | 탐지: ${_edDets.length}건 | 원본 ${_edOrig.w}×${_edOrig.h}px`;
+
+    _edRenderList(); _edDraw();
+  } catch(e) {
+    document.getElementById('det-editor-info').textContent = `오류: ${e.message}`;
+  }
+}
+
+document.getElementById('edit-curr-det-btn').addEventListener('click', () => {
+  if (_currImageIds.length > 0) openDetEditor(_currImageIds[0], '현재 시점');
+});
+document.getElementById('edit-past-det-btn').addEventListener('click', () => {
+  if (_pastImageIds.length > 0) openDetEditor(_pastImageIds[0], '과거 시점');
+});
+
+document.getElementById('det-save-btn').addEventListener('click', async () => {
+  if (!_edImgId) return;
+  const saveBtn = document.getElementById('det-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '저장 중...';
+  try {
+    const res = await fetch(`${API}/api/image/${encodeURIComponent(_edImgId)}/detections`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ detections: _edDets }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '저장 실패');
+    const result = await res.json();
+    meta_toast(`저장 완료 – 탐지 ${result.updated}건`);
+    document.getElementById('det-editor-modal').classList.remove('open');
+    // 모달 이미지 갱신
+    if (_currentReportId) openReportById(_currentReportId,
+      document.getElementById('report-meta').querySelector('b')?.textContent);
+  } catch(e) {
+    meta_toast(`오류: ${e.message}`);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '저장';
+  }
+});
+
+document.getElementById('det-cancel-btn').addEventListener('click', () => {
+  document.getElementById('det-editor-modal').classList.remove('open');
+});
 
 /* ── 보고서 모달 (위치 기반 더블클릭) ── */
 async function openReport(lat, lon) {
@@ -939,6 +1312,8 @@ async function openReport(lat, lon) {
 
   modal.classList.add('open');
   document.getElementById('report-box').classList.remove('img-only');
+  ['edit-report-btn','edit-curr-det-btn','edit-past-det-btn'].forEach(bid =>
+    document.getElementById(bid).style.display = 'none');
   meta.textContent = '보고서 로딩 중...';
   content.textContent = '';
   dlBtn.style.display = 'none';
@@ -956,7 +1331,7 @@ async function openReport(lat, lon) {
       `생성: ${report.report_time ? new Date(report.report_time).toLocaleString('ko-KR') : '—'}<br>` +
       `LLM: ${report.llm_model || '—'} (${report.llm_backend || '—'})  |  페어링: ${report.pairing_count}건`;
     content.textContent = report.report_content || '(내용 없음)';
-    dlBtn.style.display = 'block';
+    dlBtn.style.display = 'inline-block';
     dlBtn.onclick = () => {
       const ts = report.report_time
         ? new Date(report.report_time).toISOString().replace(/[:.]/g,'-') : 'report';
@@ -976,6 +1351,14 @@ function closeReportModal() {
   document.getElementById('report-modal').classList.remove('open');
   document.getElementById('report-box').classList.remove('img-only');
   document.getElementById('download-btn').style.display = 'none';
+  ['edit-report-btn','edit-curr-det-btn','edit-past-det-btn'].forEach(bid =>
+    document.getElementById(bid).style.display = 'none');
+  // 보고서 편집 모드 초기화
+  const content = document.getElementById('report-content');
+  content.contentEditable = 'false';
+  document.getElementById('rpt-edit-save').style.display = 'none';
+  document.getElementById('edit-report-btn').textContent = '✏ 보고서 수정';
+  _currentReportId = null;
 }
 document.getElementById('report-hdr-close').addEventListener('click', closeReportModal);
 document.getElementById('report-modal').addEventListener('click', e => {
