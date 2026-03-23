@@ -508,50 +508,65 @@ def api_report_images(report_id: str):
 
     pairings = get_pairings_by_session(report.session_id)
 
-    # ── 이미지 수집 전략 ─────────────────────────────────────────────────────
-    # 1순위: detection_id → DetectionRecord.image_id 경로 (가장 정확)
-    #        current_detection_id / past_detection_id 는 서로 다른 탐지이므로
-    #        반드시 서로 다른 이미지를 가리킨다.
-    # 2순위: detection이 없는 경우(새로운 객체 등) capture_time 으로 폴백.
-    #        이때 capture_time 차이가 충분히 있는 경우에만 허용.
+    # ── 보조 함수 ─────────────────────────────────────────────────────────────
+    def _img_from_det(detection_id: str | None) -> str | None:
+        """detection_id → image_id. 실패 시 None."""
+        if not detection_id:
+            return None
+        det = get_detection_by_id(detection_id)
+        return det.image_id if (det and det.image_id) else None
+
+    def _img_from_capture(capture_time, exclude_id: str | None = None) -> str | None:
+        """capture_time → image_id (exclude_id 와 다른 첫 번째 이미지). 실패 시 None."""
+        if not capture_time:
+            return None
+        for img in get_images_by_capture_time(capture_time):
+            if img.id != exclude_id:
+                return img.id
+        return None
+
+    # ── Step 1: 동일 pairing 에서 current·past detection 이 모두 있고 ──────────
+    #            image_id 가 서로 다른 경우를 우선 사용 (가장 신뢰도 높음)
     current_image_id: str | None = None
     current_capture_time = None
     past_image_id: str | None = None
     past_capture_time = None
 
     for p in pairings:
-        # ── current 이미지 확보 ──────────────────────────────────────────────
-        if current_image_id is None:
-            if p.current_detection_id:
-                det = get_detection_by_id(p.current_detection_id)
-                if det and det.image_id:
-                    current_image_id = det.image_id
-                    current_capture_time = p.current_capture_time
-            # detection 경로 실패 시 capture_time 폴백
-            if current_image_id is None and p.current_capture_time:
-                imgs = get_images_by_capture_time(p.current_capture_time)
-                if imgs:
-                    current_image_id = imgs[0].id
-                    current_capture_time = p.current_capture_time
-
-        # ── past 이미지 확보 ─────────────────────────────────────────────────
-        if past_image_id is None:
-            if p.past_detection_id:
-                det = get_detection_by_id(p.past_detection_id)
-                if det and det.image_id and det.image_id != current_image_id:
-                    past_image_id = det.image_id
-                    past_capture_time = p.past_capture_time
-            # detection 경로 실패 시 capture_time 폴백 (current와 다른 이미지만)
-            if past_image_id is None and p.past_capture_time:
-                imgs = get_images_by_capture_time(p.past_capture_time)
-                for img in imgs:
-                    if img.id != current_image_id:
-                        past_image_id = img.id
-                        past_capture_time = p.past_capture_time
-                        break
-
-        if current_image_id and past_image_id:
+        cid = _img_from_det(p.current_detection_id)
+        pid = _img_from_det(p.past_detection_id)
+        if cid and pid and cid != pid:
+            current_image_id, current_capture_time = cid, p.current_capture_time
+            past_image_id,    past_capture_time    = pid, p.past_capture_time
             break
+
+    # ── Step 2: Step 1 실패 시 current / past 를 독립적으로 탐색 ─────────────
+    #            단, past 는 항상 current 와 image_id 가 달라야 함
+    if not (current_image_id and past_image_id):
+        # current 확보
+        if current_image_id is None:
+            for p in pairings:
+                cid = (_img_from_det(p.current_detection_id)
+                       or _img_from_capture(p.current_capture_time))
+                if cid:
+                    current_image_id = cid
+                    current_capture_time = p.current_capture_time
+                    break
+
+        # past 확보 (current 와 반드시 다른 image_id)
+        if past_image_id is None:
+            for p in pairings:
+                pid = _img_from_det(p.past_detection_id)
+                if pid and pid != current_image_id:
+                    past_image_id = pid
+                    past_capture_time = p.past_capture_time
+                    break
+                pid = _img_from_capture(p.past_capture_time,
+                                        exclude_id=current_image_id)
+                if pid:
+                    past_image_id = pid
+                    past_capture_time = p.past_capture_time
+                    break
 
     def _build_info(image_id, capture_time_fallback, with_detections: bool = False):
         rec = get_image_record_by_id(image_id)
