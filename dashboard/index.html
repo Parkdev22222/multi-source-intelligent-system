@@ -165,6 +165,13 @@
     .sat-dot.military { background:rgba(255,64,64,.5); border-color:#ff4040; }
     .sat-dot.active-sat { background:rgba(0,255,136,.6); border-color:#00ff88; box-shadow:0 0 8px #00ff88; }
 
+    /* ── 호버 핀 마커 (목록 hover → 지도 위치 표시) ── */
+    @keyframes pin-pulse { from { transform:scale(1); opacity:1; } to { transform:scale(1.7); opacity:.3; } }
+    .map-hover-pin { width:14px; height:14px; border-radius:50%; border:2px solid; box-sizing:border-box; animation:pin-pulse 1s infinite alternate; }
+    .map-hover-pin.img-pin { border-color:#40aaff; background:rgba(64,170,255,.25); box-shadow:0 0 8px #40aaff; }
+    .map-hover-pin.det-pin { border-color:#00ff88; background:rgba(0,255,136,.25); box-shadow:0 0 8px #00ff88; }
+    .map-hover-pin.rpt-pin { border-color:#ffb300; background:rgba(255,179,0,.25); box-shadow:0 0 8px #ffb300; }
+
     /* 스피너 */
     #spinner { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:var(--green); font-size:13px; z-index:999; background:rgba(10,14,20,.85); padding:10px 20px; border:1px solid var(--border); border-radius:4px; }
   </style>
@@ -294,6 +301,23 @@
 const API = window.location.pathname.replace(/\/dashboard\/?.*$/, '');
 let map, satMarkers = [], activeSatId = null, hoverTimer = null;
 let satellites = [];
+let _hoverMarker = null;
+
+/* ── 호버 핀 마커 – 목록 항목 hover 시 지도 위에 위치 표시 ── */
+function showHoverMarker(lat, lon, pinClass) {
+  if (!map || lat == null || lon == null || isNaN(lat) || isNaN(lon)) return;
+  removeHoverMarker();
+  const el = document.createElement('div');
+  el.className = 'map-hover-pin ' + (pinClass || 'rpt-pin');
+  _hoverMarker = L.marker([lat, lon], {
+    icon: L.divIcon({ html: el, className: '', iconSize: [14, 14], iconAnchor: [7, 7] }),
+    interactive: false,
+    zIndexOffset: 600,
+  }).addTo(map);
+}
+function removeHoverMarker() {
+  if (_hoverMarker) { _hoverMarker.remove(); _hoverMarker = null; }
+}
 
 /* ── 지도 초기화 ── */
 function initMap() {
@@ -444,9 +468,13 @@ async function loadAllImages() {
         <span class="db-item-badge">${img.detection_count}개 탐지</span>
         <div class="db-item-time">${fmtTime(img.capture_time)}</div>
         <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>`;
-      item.addEventListener('mouseenter', e => { flyToLocation(img.lat_center, img.lon_center); showImagePopup(img, e); });
+      item.addEventListener('mouseenter', e => {
+        flyToLocation(img.lat_center, img.lon_center);
+        showHoverMarker(img.lat_center, img.lon_center, 'img-pin');
+        showImagePopup(img, e);
+      });
       item.addEventListener('mousemove', e => movePopup(e));
-      item.addEventListener('mouseleave', hidePopup);
+      item.addEventListener('mouseleave', () => { hidePopup(); removeHoverMarker(); });
       list.appendChild(item);
     });
   } catch(e) { console.warn('[AllImages]', e); }
@@ -476,9 +504,13 @@ async function loadAllDetections() {
         <span class="db-item-badge">${img.detection_count}개</span>
         <div class="db-item-time">${fmtTime(img.capture_time)}</div>
         <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>`;
-      item.addEventListener('mouseenter', e => { flyToLocation(img.lat_center, img.lon_center); showDetectionPopup(img.id, img, e); });
+      item.addEventListener('mouseenter', e => {
+        flyToLocation(img.lat_center, img.lon_center);
+        showHoverMarker(img.lat_center, img.lon_center, 'det-pin');
+        showDetectionPopup(img.id, img, e);
+      });
       item.addEventListener('mousemove', e => movePopup(e));
-      item.addEventListener('mouseleave', hidePopup);
+      item.addEventListener('mouseleave', () => { hidePopup(); removeHoverMarker(); });
       list.appendChild(item);
     });
   } catch(e) { console.warn('[AllDetections]', e); }
@@ -692,7 +724,9 @@ async function loadAllReports() {
         const lat = parseFloat(el.dataset.lat);
         const lon = parseFloat(el.dataset.lon);
         flyToLocation(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon);
+        showHoverMarker(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon, 'rpt-pin');
       });
+      el.addEventListener('mouseleave', removeHoverMarker);
       el.addEventListener('dblclick', () => openReportById(el.dataset.id, el.dataset.fname));
     });
   } catch(e) { console.warn('[loadAllReports]', e); }
