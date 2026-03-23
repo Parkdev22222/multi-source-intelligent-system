@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MSIS – 위성 감시 대시보드</title>
   <!-- Leaflet CSS: 로컬 우선, 없으면 CDN 폴백 -->
-  <link rel="stylesheet" href="/lib/leaflet.min.css"
+  <link rel="stylesheet" href="lib/leaflet.min.css"
         onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'" />
   <!-- Leaflet JS: 로컬 파일 동기 로드 – 실패 시 CDN 비동기 폴백 -->
   <script>window._leafletSrc = 'none';</script>
-  <script src="/lib/leaflet.min.js"
+  <script src="lib/leaflet.min.js"
           onload="window._leafletSrc='local'"
           onerror="window._leafletSrc='local-fail';(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';s.onload=function(){window._leafletSrc='cdn'};s.onerror=function(){window._leafletSrc='cdn-fail'};document.head.appendChild(s);})()"></script>
   <style>
@@ -289,7 +289,9 @@
    MSIS Dashboard – 위성 모의기 + SAM3 탐지 결과 + 판독보고서 UI
    ═══════════════════════════════════════════════════════════════════════ */
 
-const API = '';
+// 프록시(/proxy/8000/dashboard) 경유 시에도 API 경로가 올바르게 동작하도록
+// 현재 페이지 경로에서 /dashboard 이후를 제거해 기반 경로를 추출
+const API = window.location.pathname.replace(/\/dashboard\/?.*$/, '');
 let map, satMarkers = [], activeSatId = null, hoverTimer = null;
 let satellites = [];
 
@@ -299,7 +301,7 @@ function initMap() {
 
   // 로컬 GeoJSON 세계지도 (폐쇄망 대응) ─────────────────────────────────────
   // CartoDB 타일 대신 로컬 세계 국경 GeoJSON 폴리곤 레이어 사용
-  fetch('/lib/world.geojson')
+  fetch(API + '/lib/world.geojson')
     .then(r => {
       if (!r.ok) throw new Error(`world.geojson not found (${r.status})`);
       return r.json();
