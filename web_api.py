@@ -27,6 +27,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+import pycountry
+import reverse_geocoder as _rg
+
+
+def _get_country_name(lat: float, lon: float) -> Optional[str]:
+    """위경도로 국가명(영문) 반환. 좌표 없으면 None."""
+    try:
+        cc = _rg.search((lat, lon))[0]["cc"]
+        country = pycountry.countries.get(alpha_2=cc)
+        return country.name if country else cc
+    except Exception:
+        return None
+
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -734,6 +747,7 @@ def api_all_reports(limit: int = Query(default=50, le=200)):
         lat, lon = (None, None)
         if r.session_id:
             lat, lon = get_session_location(r.session_id)
+        country = _get_country_name(lat, lon) if lat is not None and lon is not None else None
         items.append({
             "id":           r.id,
             "report_time":  r.report_time.isoformat() if r.report_time else None,
@@ -743,6 +757,7 @@ def api_all_reports(limit: int = Query(default=50, le=200)):
             "session_id":   r.session_id,
             "lat_center":   lat,
             "lon_center":   lon,
+            "country_name": country,
         })
     return {"reports": items, "count": len(items)}
 

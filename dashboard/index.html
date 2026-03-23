@@ -830,34 +830,18 @@ function getRegion(lat, lon) {
 }
 
 /* ══════════════════════════════════════════════════
-   경계 국가 판별 (중국·북한·일본·러시아)
+   경보 국가 판별 (백엔드 reverse_geocoder 기반)
    ══════════════════════════════════════════════════ */
-function getAlertCountry(lat, lon) {
-  if (isNaN(lat) || isNaN(lon)) return null;
-  // 북한 (최우선 – 중국·일본 박스와 겹치므로 먼저 체크)
-  if (lat >= 37.5 && lat <= 43.0 && lon >= 124.0 && lon <= 131.0) return '북한';
-  // 일본 본토 (혼슈·규슈·시코쿠): lat 42° 미만으로 제한
-  //   → lat 42° 이상은 중국 동북부(지린·헤이룽장)와 경도가 겹쳐 오탐 발생
-  if (lat >= 30.0 && lat < 42.0 && lon >= 129.5 && lon <= 146.0) return '일본';
-  // 홋카이도: lat 42–46.5° 구간은 경도를 139° 이상으로 제한
-  //   → 만주(지린·헤이룽장)는 lon 129–135 수준이므로 139° 기준으로 분리
-  if (lat >= 42.0 && lat <= 46.5 && lon >= 139.0 && lon <= 146.0) return '일본';
-  // 류큐 제도 (오키나와 등)
-  if (lat >= 24.0 && lat <= 31.0 && lon >= 123.0 && lon <= 132.0) return '일본';
-  // 러시아 (3구역 분할, 중국 체크보다 먼저 수행)
-  // ① 서러시아·서시베리아 (우랄 서쪽 + 카자흐스탄 북방, 경도 19–73°)
-  //   → 중국과 경도가 겹치지 않아 안전
-  if (lat >= 41.0 && lat <= 82.0 && lon >= 19.0 && lon < 73.0) return '러시아';
-  // ② 동시베리아 (중국 위도 상한 53.5° 초과 구역)
-  //   → 중국은 위도 53.5° 이하이므로 겹치지 않음
-  if (lat > 53.5 && lat <= 82.0 && lon >= 73.0 && lon <= 180.0) return '러시아';
-  // ③ 러시아 극동 (연해주·하바롭스크·사할린·캄차카, 경도 131° 이상)
-  //   → 중국 동북부는 경도 130–135° 수준이나, 연해주 블라디보스토크(131.9°)부터
-  //     러시아 영토이므로 131°를 기준으로 중국보다 먼저 체크
-  if (lat >= 42.0 && lat <= 54.0 && lon >= 131.0 && lon <= 180.0) return '러시아';
-  // 중국
-  if (lat >= 18.0 && lat <= 53.5 && lon >= 73.0 && lon <= 135.5) return '중국';
-  return null;
+// pycountry 영문 국가명 → 표시용 한글명
+const _ALERT_COUNTRIES = {
+  'China':                                       '중국',
+  'Korea, Democratic People\'s Republic of':     '북한',
+  'Japan':                                       '일본',
+  'Russian Federation':                          '러시아',
+};
+
+function getAlertLabel(countryName) {
+  return countryName ? (_ALERT_COUNTRIES[countryName] ?? null) : null;
 }
 
 /* ══════════════════════════════════════════════════
@@ -888,9 +872,7 @@ function renderRptList(region) {
     const dt      = r.report_time ? new Date(r.report_time) : null;
     const ts      = dt ? dt.toLocaleString('ko-KR') : '—';
     const model   = (r.llm_model || '').split('/').pop() || '—';
-    const lat     = parseFloat(r.lat_center);
-    const lon     = parseFloat(r.lon_center);
-    const country = getAlertCountry(lat, lon);
+    const country = getAlertLabel(r.country_name);
     const alertClass   = country ? ' alert' : '';
     const countryBadge = country
       ? `<span class="rpt-item-country">⚠ ${country}</span>`
