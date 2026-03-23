@@ -30,7 +30,7 @@ else:
             "프로젝트 루트 또는 scripts/ 디렉터리에서 실행하세요."
         )
 
-STATIC_DIR = _base / "dashboard" / "static"
+STATIC_DIR = _base / "dashboard" / "lib"
 
 ASSETS = [
     {

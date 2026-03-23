@@ -68,7 +68,7 @@ if _images_dir.exists():
 
 # 대시보드 정적 파일 (Leaflet CSS/JS, GeoJSON 등 – 폐쇄망 로컬 서빙)
 # 경로를 /lib 으로 분리 – /static/images 와 prefix 충돌 방지
-_dashboard_static = Path(__file__).parent / "dashboard" / "static"
+_dashboard_static = Path(__file__).parent / "dashboard" / "lib"
 _dashboard_static.mkdir(parents=True, exist_ok=True)
 app.mount("/lib", StaticFiles(directory=str(_dashboard_static)), name="dashboard_static")
 
