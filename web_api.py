@@ -509,47 +509,48 @@ def api_report_images(report_id: str):
     pairings = get_pairings_by_session(report.session_id)
 
     # ── 이미지 수집 전략 ─────────────────────────────────────────────────────
-    # 1순위: pairing의 capture_time으로 ImageRecord를 직접 조회한다.
-    #        → detection 삭제/교체 후에도 영향을 받지 않고, current/past 이미지를
-    #          서로 다른 레코드로 올바르게 분리할 수 있다.
-    # 2순위: capture_time이 없으면 detection → image_id 경로로 폴백한다.
-    current_img_ids: dict = {}  # image_id → capture_time
-    past_img_ids: dict = {}
+    # 1순위: detection_id → DetectionRecord.image_id 경로 (가장 정확)
+    #        current_detection_id / past_detection_id 는 서로 다른 탐지이므로
+    #        반드시 서로 다른 이미지를 가리킨다.
+    # 2순위: detection이 없는 경우(새로운 객체 등) capture_time 으로 폴백.
+    #        이때 capture_time 차이가 충분히 있는 경우에만 허용.
+    current_image_id: str | None = None
+    current_capture_time = None
+    past_image_id: str | None = None
+    past_capture_time = None
 
     for p in pairings:
-        # --- current (1장만) ---
-        if len(current_img_ids) < 1:
-            found = False
-            if p.current_capture_time:
-                imgs = get_images_by_capture_time(p.current_capture_time)
-                for img in imgs:
-                    if img.id not in current_img_ids:
-                        current_img_ids[img.id] = p.current_capture_time
-                        found = True
-                        break
-            if not found and p.current_detection_id:
+        # ── current 이미지 확보 ──────────────────────────────────────────────
+        if current_image_id is None:
+            if p.current_detection_id:
                 det = get_detection_by_id(p.current_detection_id)
-                if det and det.image_id not in current_img_ids:
-                    current_img_ids[det.image_id] = p.current_capture_time
+                if det and det.image_id:
+                    current_image_id = det.image_id
+                    current_capture_time = p.current_capture_time
+            # detection 경로 실패 시 capture_time 폴백
+            if current_image_id is None and p.current_capture_time:
+                imgs = get_images_by_capture_time(p.current_capture_time)
+                if imgs:
+                    current_image_id = imgs[0].id
+                    current_capture_time = p.current_capture_time
 
-        # --- past (1장만) ---
-        if len(past_img_ids) < 1:
-            found = False
-            if p.past_capture_time:
+        # ── past 이미지 확보 ─────────────────────────────────────────────────
+        if past_image_id is None:
+            if p.past_detection_id:
+                det = get_detection_by_id(p.past_detection_id)
+                if det and det.image_id and det.image_id != current_image_id:
+                    past_image_id = det.image_id
+                    past_capture_time = p.past_capture_time
+            # detection 경로 실패 시 capture_time 폴백 (current와 다른 이미지만)
+            if past_image_id is None and p.past_capture_time:
                 imgs = get_images_by_capture_time(p.past_capture_time)
                 for img in imgs:
-                    # current 이미지와 동일한 ID는 past로 쓰지 않는다
-                    if img.id not in past_img_ids and img.id not in current_img_ids:
-                        past_img_ids[img.id] = p.past_capture_time
-                        found = True
+                    if img.id != current_image_id:
+                        past_image_id = img.id
+                        past_capture_time = p.past_capture_time
                         break
-            if not found and p.past_detection_id:
-                det = get_detection_by_id(p.past_detection_id)
-                if det and det.image_id not in past_img_ids and det.image_id not in current_img_ids:
-                    past_img_ids[det.image_id] = p.past_capture_time
 
-        # 두 장 모두 확보되면 조기 종료
-        if len(current_img_ids) >= 1 and len(past_img_ids) >= 1:
+        if current_image_id and past_image_id:
             break
 
     def _build_info(image_id, capture_time_fallback, with_detections: bool = False):
@@ -576,11 +577,14 @@ def api_report_images(report_id: str):
             "image_b64":    b64,
         }
 
+    curr_info = _build_info(current_image_id, current_capture_time, with_detections=True) \
+                if current_image_id else None
+    past_info = _build_info(past_image_id,    past_capture_time,    with_detections=True) \
+                if past_image_id else None
+
     return {
-        "current_images": [i for img_id, ct in current_img_ids.items()
-                           if (i := _build_info(img_id, ct, with_detections=True))],
-        "past_images":    [i for img_id, ct in past_img_ids.items()
-                           if (i := _build_info(img_id, ct, with_detections=True))],
+        "current_images": [curr_info] if curr_info else [],
+        "past_images":    [past_info] if past_info else [],
     }
 
 
