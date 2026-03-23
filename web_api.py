@@ -517,8 +517,8 @@ def api_report_images(report_id: str):
     past_img_ids: dict = {}
 
     for p in pairings:
-        # --- current ---
-        if len(current_img_ids) < 3:
+        # --- current (1장만) ---
+        if len(current_img_ids) < 1:
             found = False
             if p.current_capture_time:
                 imgs = get_images_by_capture_time(p.current_capture_time)
@@ -532,8 +532,8 @@ def api_report_images(report_id: str):
                 if det and det.image_id not in current_img_ids:
                     current_img_ids[det.image_id] = p.current_capture_time
 
-        # --- past ---
-        if len(past_img_ids) < 3:
+        # --- past (1장만) ---
+        if len(past_img_ids) < 1:
             found = False
             if p.past_capture_time:
                 imgs = get_images_by_capture_time(p.past_capture_time)
@@ -547,6 +547,10 @@ def api_report_images(report_id: str):
                 det = get_detection_by_id(p.past_detection_id)
                 if det and det.image_id not in past_img_ids and det.image_id not in current_img_ids:
                     past_img_ids[det.image_id] = p.past_capture_time
+
+        # 두 장 모두 확보되면 조기 종료
+        if len(current_img_ids) >= 1 and len(past_img_ids) >= 1:
+            break
 
     def _build_info(image_id, capture_time_fallback, with_detections: bool = False):
         rec = get_image_record_by_id(image_id)
@@ -576,7 +580,7 @@ def api_report_images(report_id: str):
         "current_images": [i for img_id, ct in current_img_ids.items()
                            if (i := _build_info(img_id, ct, with_detections=True))],
         "past_images":    [i for img_id, ct in past_img_ids.items()
-                           if (i := _build_info(img_id, ct, with_detections=False))],
+                           if (i := _build_info(img_id, ct, with_detections=True))],
     }
 
 
