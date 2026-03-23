@@ -35,33 +35,54 @@ STATIC_DIR = _base / "dashboard" / "static"
 ASSETS = [
     {
         "filename": "leaflet.min.css",
-        "url": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.css",
         "desc": "Leaflet CSS (지도 라이브러리 스타일)",
+        "urls": [
+            # unpkg.com – 실제 파일명은 leaflet.css (min 없음)
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+            # jsDelivr 대체
+            "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css",
+        ],
     },
     {
         "filename": "leaflet.min.js",
-        "url": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.min.js",
         "desc": "Leaflet JS (지도 라이브러리)",
+        "urls": [
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+            "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
+        ],
     },
     {
         "filename": "world.geojson",
-        "url": (
-            "https://raw.githubusercontent.com/nvkelso/natural-earth-vector"
-            "/master/geojson/ne_110m_admin_0_countries.geojson"
-        ),
         "desc": "세계 국경 GeoJSON (Natural Earth 110m – 타일 서버 대체)",
+        "urls": [
+            # Natural Earth 공식 GitHub raw (GeoJSON 형식)
+            (
+                "https://raw.githubusercontent.com/nvkelso/natural-earth-vector"
+                "/master/geojson/ne_110m_admin_0_countries.geojson"
+            ),
+            # 대체: D3 gallery 미러 (GeoJSON 형식)
+            "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson",
+        ],
     },
 ]
 
 
-def download(url: str, dest: Path, desc: str) -> None:
+def try_download(urls: list, dest: Path, desc: str) -> bool:
+    """URL 목록을 순서대로 시도. 성공하면 True 반환."""
     print(f"  ↓ {desc}")
-    print(f"    {url}")
-    req = urllib.request.Request(url, headers={"User-Agent": "MSIS/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = resp.read()
-    dest.write_bytes(data)
-    print(f"    ✓ 저장 완료 → {dest}  ({len(data):,} bytes)\n")
+    for url in urls:
+        print(f"    시도: {url}")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "MSIS/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = resp.read()
+            dest.write_bytes(data)
+            print(f"    ✓ 저장 완료 → {dest}  ({len(data):,} bytes)\n")
+            return True
+        except Exception as exc:
+            print(f"    ✗ 실패: {exc}")
+    print()
+    return False
 
 
 def main() -> None:
@@ -74,15 +95,19 @@ def main() -> None:
         if dest.exists():
             print(f"  ✓ 이미 존재: {asset['filename']} ({dest.stat().st_size:,} bytes) – 건너뜀\n")
             continue
-        try:
-            download(asset["url"], dest, asset["desc"])
-        except Exception as exc:
-            print(f"  ✗ 실패: {asset['filename']} – {exc}\n")
+        ok = try_download(asset["urls"], dest, asset["desc"])
+        if not ok:
             errors.append(asset["filename"])
 
     if errors:
         print(f"[경고] 다음 파일 다운로드 실패: {errors}")
-        print("       수동으로 다운로드해 dashboard/static/ 에 저장하세요.")
+        print("       아래 '수동 다운로드 방법'을 참고해 dashboard/static/ 에 직접 저장하세요.")
+        print()
+        print("  수동 다운로드 방법:")
+        print("  1) leaflet.min.css → https://unpkg.com/leaflet@1.9.4/dist/leaflet.css 를 브라우저에서 저장")
+        print("  2) leaflet.min.js  → https://unpkg.com/leaflet@1.9.4/dist/leaflet.js 를 브라우저에서 저장")
+        print("  3) world.geojson   → https://raw.githubusercontent.com/nvkelso/natural-earth-vector")
+        print("                       /master/geojson/ne_110m_admin_0_countries.geojson 를 브라우저에서 저장")
         sys.exit(1)
     else:
         print("모든 파일 준비 완료. 이제 폐쇄망에서도 대시보드가 동작합니다.")
