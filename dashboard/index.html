@@ -119,12 +119,17 @@
     .dp-empty { padding:6px 14px; font-size:11px; color:var(--dim); }
 
     /* 판독보고서 목록 */
+    .rpt-filter { display:flex; flex-wrap:wrap; gap:3px; padding:5px 8px 4px; border-bottom:1px solid var(--border); background:#080d14; }
+    .rpt-filter-btn { font-size:9px; padding:2px 7px; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--dim); cursor:pointer; font-family:var(--font); letter-spacing:.4px; transition:all .12s; white-space:nowrap; }
+    .rpt-filter-btn:hover { border-color:var(--amber); color:var(--amber); }
+    .rpt-filter-btn.active { background:var(--amber); border-color:var(--amber); color:#000; font-weight:bold; }
     .rpt-list { overflow-y:auto; max-height:160px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; padding:0 8px 6px; }
     .rpt-item { padding:5px 8px; border:1px solid var(--border); border-radius:2px; margin-top:4px; cursor:pointer; transition:background .12s, border-color .12s; }
     .rpt-item:hover { background:#152030; border-color:var(--amber); }
     .rpt-item-name { font-size:10px; color:var(--amber); letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .rpt-item-meta { font-size:9px; color:var(--dim); margin-top:2px; }
     .rpt-item-badge { float:right; background:#1a1a0a; color:var(--amber); font-size:9px; padding:1px 5px; border-radius:2px; border:1px solid var(--amber); opacity:.7; }
+    .rpt-item-region { float:left; font-size:8px; color:var(--dim); background:#141a24; border:1px solid var(--border); border-radius:2px; padding:0 4px; margin-right:5px; margin-top:1px; }
 
     /* hover 팝업 (이미지/탐지 정보) */
     #db-popup {
@@ -272,6 +277,7 @@
         <span class="dp-sec">◈ 판독 보고서 (DB)</span>
         <span class="dp-sec-count" id="rpt-count">—</span>
       </div>
+      <div class="rpt-filter" id="rpt-filter" style="display:none;"></div>
       <div class="rpt-list" id="rpt-list">
         <div class="dp-empty">보고서 없음 – 시뮬레이션을 먼저 실행하세요</div>
       </div>
@@ -705,12 +711,81 @@ document.getElementById('run-btn').addEventListener('click', async () => {
 /* ── 위치 갱신 버튼 ── */
 document.getElementById('refresh-btn').addEventListener('click', loadSatellites);
 
+/* ── 위경도 → 지역명 분류 ── */
+function getRegion(lat, lon) {
+  if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return '기타';
+  // 북미
+  if (lat >= 15 && lat <= 75 && lon >= -170 && lon <= -50) return '북미';
+  // 남미
+  if (lat >= -56 && lat < 15 && lon >= -85 && lon <= -30) return '남미';
+  // 유럽 (서경 15 ~ 동경 45, 위도 35~72)
+  if (lat >= 35 && lat <= 72 && lon >= -15 && lon <= 45) return '유럽';
+  // 중동 (동경 25~65, 위도 12~42)
+  if (lat >= 12 && lat <= 42 && lon >= 25 && lon <= 65) return '중동';
+  // 아프리카
+  if (lat >= -35 && lat <= 38 && lon >= -20 && lon <= 55) return '아프리카';
+  // 오세아니아
+  if (lat >= -50 && lat < 5 && lon >= 100 && lon <= 180) return '오세아니아';
+  // 아시아 (동경 60~180, 위도 0~75)
+  if (lat >= 0 && lat <= 75 && lon >= 60 && lon <= 180) return '아시아';
+  // 러시아/중앙아시아 고위도
+  if (lat > 42 && lat <= 80 && lon >= 45 && lon <= 180) return '아시아';
+  return '기타';
+}
+
 /* ══════════════════════════════════════════════════
    판독 보고서 목록 로드 (DB)
    ══════════════════════════════════════════════════ */
+let _rptData = [];       // 전체 보고서 캐시
+let _rptRegion = '전체'; // 현재 선택 지역
+
+function renderRptList(region) {
+  _rptRegion = region;
+  const list = document.getElementById('rpt-list');
+
+  // 필터 버튼 활성화 상태 갱신
+  document.querySelectorAll('.rpt-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.region === region);
+  });
+
+  const filtered = region === '전체'
+    ? _rptData
+    : _rptData.filter(r => r._region === region);
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="dp-empty">${region} 지역 보고서 없음</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(r => {
+    const dt    = r.report_time ? new Date(r.report_time) : null;
+    const ts    = dt ? dt.toLocaleString('ko-KR') : '—';
+    const model = (r.llm_model || '').split('/').pop() || '—';
+    return `<div class="rpt-item" data-id="${r.id}" data-fname="${r._fname}"
+               data-lat="${r.lat_center ?? ''}" data-lon="${r.lon_center ?? ''}">
+      <span class="rpt-item-badge">${r.pairing_count ?? 0}건</span>
+      <span class="rpt-item-region">${r._region}</span>
+      <div class="rpt-item-name" title="${r._fname}">${r._fname}</div>
+      <div class="rpt-item-meta">${ts} | ${model}</div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.rpt-item').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      const lat = parseFloat(el.dataset.lat);
+      const lon = parseFloat(el.dataset.lon);
+      flyToLocation(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon);
+      showHoverMarker(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon, 'rpt-pin');
+    });
+    el.addEventListener('mouseleave', removeHoverMarker);
+    el.addEventListener('dblclick', () => openReportById(el.dataset.id, el.dataset.fname));
+  });
+}
+
 async function loadAllReports() {
-  const list  = document.getElementById('rpt-list');
-  const count = document.getElementById('rpt-count');
+  const list      = document.getElementById('rpt-list');
+  const count     = document.getElementById('rpt-count');
+  const filterBar = document.getElementById('rpt-filter');
   try {
     const res = await fetch(`${API}/api/reports?limit=50`);
     if (!res.ok) return;
@@ -720,36 +795,38 @@ async function loadAllReports() {
 
     if (reports.length === 0) {
       list.innerHTML = '<div class="dp-empty">보고서 없음 – 시뮬레이션을 먼저 실행하세요</div>';
+      filterBar.style.display = 'none';
       return;
     }
 
-    list.innerHTML = reports.map(r => {
-      const dt  = r.report_time ? new Date(r.report_time) : null;
-      const ts  = dt ? dt.toLocaleString('ko-KR') : '—';
-      const fname = dt
-        ? `MSIS_report_${dt.toISOString().replace(/[:.]/g,'-').slice(0,19)}.txt`
-        : `MSIS_report_${r.id}.txt`;
-      const model = (r.llm_model || '').split('/').pop() || '—';
-      const lat = r.lat_center ?? '';
-      const lon = r.lon_center ?? '';
-      return `<div class="rpt-item" data-id="${r.id}" data-fname="${fname}" data-lat="${lat}" data-lon="${lon}">
-        <span class="rpt-item-badge">${r.pairing_count ?? 0}건</span>
-        <div class="rpt-item-name" title="${fname}">${fname}</div>
-        <div class="rpt-item-meta">${ts} | ${model}</div>
-      </div>`;
-    }).join('');
-
-    // 마우스 호버 → 지도 이동  /  더블클릭 → 보고서 열기
-    list.querySelectorAll('.rpt-item').forEach(el => {
-      el.addEventListener('mouseenter', () => {
-        const lat = parseFloat(el.dataset.lat);
-        const lon = parseFloat(el.dataset.lon);
-        flyToLocation(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon);
-        showHoverMarker(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon, 'rpt-pin');
-      });
-      el.addEventListener('mouseleave', removeHoverMarker);
-      el.addEventListener('dblclick', () => openReportById(el.dataset.id, el.dataset.fname));
+    // 각 보고서에 지역·파일명 메타 캐시
+    _rptData = reports.map(r => {
+      const dt = r.report_time ? new Date(r.report_time) : null;
+      return {
+        ...r,
+        _fname:  dt
+          ? `MSIS_report_${dt.toISOString().replace(/[:.]/g,'-').slice(0,19)}.txt`
+          : `MSIS_report_${r.id}.txt`,
+        _region: getRegion(r.lat_center, r.lon_center),
+      };
     });
+
+    // 지역 필터 탭 생성 (실제 데이터에 있는 지역만 표시)
+    const REGION_ORDER = ['전체','아시아','유럽','중동','아프리카','북미','남미','오세아니아','기타'];
+    const presentRegions = new Set(_rptData.map(r => r._region));
+    const tabs = REGION_ORDER.filter(r => r === '전체' || presentRegions.has(r));
+    filterBar.style.display = 'flex';
+    filterBar.innerHTML = tabs.map(r => {
+      const cnt = r === '전체' ? _rptData.length : _rptData.filter(d => d._region === r).length;
+      return `<button class="rpt-filter-btn${r === _rptRegion ? ' active' : ''}" data-region="${r}">${r} <span style="opacity:.6">${cnt}</span></button>`;
+    }).join('');
+    filterBar.querySelectorAll('.rpt-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => renderRptList(btn.dataset.region));
+    });
+
+    // 현재 선택 지역으로 렌더링 (없으면 전체로 리셋)
+    if (!tabs.includes(_rptRegion)) _rptRegion = '전체';
+    renderRptList(_rptRegion);
   } catch(e) { console.warn('[loadAllReports]', e); }
 }
 
