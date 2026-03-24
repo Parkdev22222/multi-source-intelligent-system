@@ -1243,20 +1243,29 @@ document.getElementById('edit-report-btn').addEventListener('click', () => {
 
 _editRptSaveBtn.addEventListener('click', async () => {
   if (!_currentReportId) return;
-  const content = document.getElementById('report-content');
-  const newText = content.textContent;
-  const res = await fetch(`${API}/api/report/${encodeURIComponent(_currentReportId)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ report_content: newText }),
-  });
-  if (res.ok) {
-    content.contentEditable = 'false';
-    _editRptSaveBtn.style.display = 'none';
-    document.getElementById('edit-report-btn').textContent = '✏ 보고서 수정';
-    meta_toast('보고서 저장 완료');
-  } else {
-    meta_toast('저장 실패');
+  _editRptSaveBtn.disabled = true;
+  _editRptSaveBtn.textContent = '저장 중...';
+  try {
+    const content = document.getElementById('report-content');
+    // innerText 로 개행(\n) 보존, textContent 는 <br> 를 무시할 수 있음
+    const newText = content.innerText;
+    const res = await fetch(`${API}/api/report/${encodeURIComponent(_currentReportId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report_content: newText }),
+    });
+    if (res.ok) {
+      content.contentEditable = 'false';
+      _editRptSaveBtn.style.display = 'none';
+      document.getElementById('edit-report-btn').textContent = '✏ 보고서 수정';
+      meta_toast('ReportDB 저장 완료');
+    } else {
+      const err = await res.json().catch(() => ({}));
+      meta_toast(`저장 실패: ${err.detail || res.statusText}`);
+    }
+  } finally {
+    _editRptSaveBtn.disabled = false;
+    _editRptSaveBtn.textContent = '저장';
   }
 });
 
@@ -1616,12 +1625,14 @@ async function openReport(lat, lon) {
       return;
     }
     const report = await res.json();
+    _currentReportId = report.id;
     meta.innerHTML =
       `ID: ${report.id}<br>` +
       `생성: ${report.report_time ? new Date(report.report_time).toLocaleString('ko-KR') : '—'}<br>` +
       `LLM: ${report.llm_model || '—'} (${report.llm_backend || '—'})  |  페어링: ${report.pairing_count}건`;
     content.textContent = report.report_content || '(내용 없음)';
     dlBtn.style.display = 'inline-block';
+    document.getElementById('edit-report-btn').style.display = 'inline-block';
     dlBtn.onclick = () => {
       const ts = report.report_time
         ? new Date(report.report_time).toISOString().replace(/[:.]/g,'-') : 'report';
