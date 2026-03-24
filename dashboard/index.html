@@ -1158,6 +1158,7 @@ async function openReportById(id, fname) {
   meta.textContent = '로딩 중...';
   content.textContent = '';
   dlBtn.style.display  = 'none';
+  document.getElementById('rpt-regen-btn').style.display = 'none';
   editRpt.style.display = editCurr.style.display = editPast.style.display = 'none';
   imgRow.classList.remove('has-images');
   pastWrap.innerHTML = '<span class="rpt-img-loading">로딩 중...</span>';
@@ -1195,6 +1196,7 @@ async function openReportById(id, fname) {
       a.click(); URL.revokeObjectURL(a.href);
     };
     editRpt.style.display = 'inline-block';
+    document.getElementById('rpt-regen-btn').style.display = 'inline-block';
 
     // 위성사진 패널 처리
     const imgs = imgRes.ok ? await imgRes.json() : null;
@@ -1690,6 +1692,7 @@ async function openReport(lat, lon) {
 function closeReportModal() {
   document.getElementById('report-modal').classList.remove('open');
   document.getElementById('download-btn').style.display = 'none';
+  document.getElementById('rpt-regen-btn').style.display = 'none';
   ['edit-report-btn','edit-curr-det-btn','edit-past-det-btn'].forEach(bid =>
     document.getElementById(bid).style.display = 'none');
   // 보고서 편집 모드 초기화
