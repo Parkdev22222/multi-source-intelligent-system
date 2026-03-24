@@ -88,6 +88,20 @@
     #map-wrap { flex:1; position:relative; }
     #map { width:100%; height:100%; }
 
+    /* 국가명 레이블 */
+    .country-label {
+      color: #4a6a80;
+      font-size: 9px;
+      font-family: 'Courier New', Courier, monospace;
+      font-weight: bold;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      pointer-events: none;
+      text-shadow: 0 0 3px #000, 0 0 6px #000;
+      user-select: none;
+    }
+
     /* ── 우측 상세 패널 ── */
     #detail-panel { width:330px; min-width:330px; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
     #dp-header { padding:10px 14px; background:#0d1520; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
@@ -473,6 +487,72 @@ function initMap() {
           fillOpacity: 1,
         },
       }).addTo(map);
+
+      // ── 국가명 레이블 마커 ─────────────────────────────────────────────
+      // 각 국가 폴리곤의 중심점에 이름 레이블 배치 (줌 3 이상에서 표시)
+      const LABEL_MIN_ZOOM = 3;
+      const _labelMarkers = [];
+
+      function _polygonCentroid(coords) {
+        // 가장 큰 링의 무게중심 계산
+        let areaMax = 0, cx = 0, cy = 0;
+        function ringCentroid(ring) {
+          let a = 0, x = 0, y = 0;
+          for (let i = 0, n = ring.length - 1; i < n; i++) {
+            const x0 = ring[i][0], y0 = ring[i][1];
+            const x1 = ring[i+1][0], y1 = ring[i+1][1];
+            const cross = x0 * y1 - x1 * y0;
+            a += cross;
+            x += (x0 + x1) * cross;
+            y += (y0 + y1) * cross;
+          }
+          a /= 2;
+          return { area: Math.abs(a), x: x / (6 * a), y: y / (6 * a) };
+        }
+        function flatten(geom) {
+          if (geom.type === 'Polygon') return [geom.coordinates[0]];
+          if (geom.type === 'MultiPolygon') return geom.coordinates.map(p => p[0]);
+          return [];
+        }
+        for (const ring of flatten(coords)) {
+          const r = ringCentroid(ring);
+          if (r.area > areaMax) { areaMax = r.area; cx = r.x; cy = r.y; }
+        }
+        return [cy, cx]; // [lat, lon]
+      }
+
+      for (const feature of geo.features) {
+        const name = (feature.properties && (feature.properties.NAME || feature.properties.name)) || '';
+        if (!name) continue;
+        const center = _polygonCentroid(feature.geometry);
+        if (!center || isNaN(center[0]) || isNaN(center[1])) continue;
+
+        const div = document.createElement('div');
+        div.className = 'country-label';
+        div.textContent = name;
+
+        const m = L.marker(center, {
+          icon: L.divIcon({ html: div, className: '', iconSize: null, iconAnchor: [0, 0] }),
+          interactive: false,
+          zIndexOffset: -500,
+        });
+        _labelMarkers.push(m);
+      }
+
+      function _updateLabels() {
+        const z = map.getZoom();
+        const bounds = map.getBounds();
+        for (const m of _labelMarkers) {
+          const ll = m.getLatLng();
+          if (z >= LABEL_MIN_ZOOM && bounds.contains(ll)) {
+            if (!map.hasLayer(m)) m.addTo(map);
+          } else {
+            if (map.hasLayer(m)) map.removeLayer(m);
+          }
+        }
+      }
+      map.on('zoomend moveend', _updateLabels);
+      _updateLabels();
     })
     .catch(err => {
       // world.geojson 없을 때: 외부 CDN 타일 폴백 + 콘솔 경고
