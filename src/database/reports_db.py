@@ -68,16 +68,17 @@ def insert_report(
         return record
 
 
-def get_all_reports(limit: int = 100) -> List[ReportRecord]:
+def get_all_reports(limit: int = None) -> List[ReportRecord]:
     """Return all reports ordered by saved_time descending."""
     engine = get_engine()
     with Session(engine) as session:
-        records = (
+        q = (
             session.query(ReportRecord)
             .order_by(ReportRecord.saved_time.desc())
-            .limit(limit)
-            .all()
         )
+        if limit is not None:
+            q = q.limit(limit)
+        records = q.all()
         for r in records:
             session.expunge(r)
         return records

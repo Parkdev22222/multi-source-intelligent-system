@@ -409,7 +409,7 @@ def api_latest_image(
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/images")
-def api_all_images(limit: int = Query(default=30, le=100)):
+def api_all_images(limit: int = Query(default=None)):
     """DB에 저장된 모든 위성영상 메타데이터 + 탐지 건수 목록 (capture_time DESC)."""
     rows = get_all_images_with_count(limit=limit)
     result = []
@@ -740,7 +740,7 @@ def api_update_report(report_id: str, body: ReportContentBody):
 
 
 @app.get("/api/reports")
-def api_all_reports(limit: int = Query(default=50, le=200)):
+def api_all_reports(limit: int = Query(default=None)):
     reports = get_all_reports(limit=limit)
     items = []
     for r in reports:

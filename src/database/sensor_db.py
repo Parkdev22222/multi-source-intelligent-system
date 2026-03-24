@@ -245,19 +245,20 @@ def get_latest_image_near(
         return record
 
 
-def get_all_images_with_count(limit: int = 50):
+def get_all_images_with_count(limit: int = None):
     """Return (ImageRecord, detection_count) tuples ordered by capture_time desc."""
     engine = get_engine()
     from sqlalchemy import func
     with Session(engine) as session:
-        rows = (
+        q = (
             session.query(ImageRecord, func.count(DetectionRecord.id).label("det_count"))
             .outerjoin(DetectionRecord, DetectionRecord.image_id == ImageRecord.id)
             .group_by(ImageRecord.id)
             .order_by(ImageRecord.capture_time.desc())
-            .limit(limit)
-            .all()
         )
+        if limit is not None:
+            q = q.limit(limit)
+        rows = q.all()
         result = []
         for img, count in rows:
             session.expunge(img)

@@ -633,7 +633,7 @@ function fmtTime(iso) {
 /* ── 위성 영상 목록 로드 ── */
 async function loadAllImages() {
   try {
-    const res = await fetch(`${API}/api/images?limit=50`);
+    const res = await fetch(`${API}/api/images`);
     if (!res.ok) return;
     const data = await res.json();
     const list = document.getElementById('img-list');
@@ -667,7 +667,7 @@ async function loadAllImages() {
 /* ── SAM3 탐지 결과 목록 로드 ── */
 async function loadAllDetections() {
   try {
-    const res = await fetch(`${API}/api/images?limit=50`);
+    const res = await fetch(`${API}/api/images`);
     if (!res.ok) return;
     const data = await res.json();
     const list = document.getElementById('det-list');
@@ -966,7 +966,7 @@ async function loadAllReports() {
   const filterBar = document.getElementById('rpt-filter');
   list.innerHTML = '<div class="dp-empty">로딩 중...</div>';
   try {
-    const res = await fetch(`${API}/api/reports?limit=50`);
+    const res = await fetch(`${API}/api/reports`);
     if (!res.ok) return;
     const data = await res.json();
     const reports = data.reports || [];
