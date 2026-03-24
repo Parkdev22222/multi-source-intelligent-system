@@ -1289,6 +1289,7 @@ let _edImgId   = null;   // 편집 중인 image_id
 let _edOrig    = {w:1, h:1};  // 원본 이미지 크기
 let _edDets    = [];     // [{object_class, confidence, bbox:{x1,y1,x2,y2}}]
 let _edSelIdx  = -1;
+let _edHoverIdx = -1;    // 사이드바 마우스오버 인덱스
 let _edDrag    = null;   // {sx,sy,ex,ey} (canvas pixel 좌표)
 let _edImgEl   = new Image();
 
@@ -1327,14 +1328,16 @@ function _edDraw() {
   _edDets.forEach((det, i) => {
     const x1 = _toCanvas(det.bbox.x1, 'x'), y1 = _toCanvas(det.bbox.y1, 'y');
     const x2 = _toCanvas(det.bbox.x2, 'x'), y2 = _toCanvas(det.bbox.y2, 'y');
-    const sel = i === _edSelIdx;
-    _edCtx.strokeStyle = sel ? '#ff4444' : '#00ff88';
-    _edCtx.lineWidth   = sel ? 3 : 2;
+    const sel   = i === _edSelIdx;
+    const hover = i === _edHoverIdx && !sel;
+    const color = sel ? '#ff4444' : hover ? '#ff4444' : '#00ff88';
+    _edCtx.strokeStyle = color;
+    _edCtx.lineWidth   = (sel || hover) ? 3 : 2;
     _edCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
     // label background
     const label = `${det.object_class} ${(det.confidence * 100).toFixed(0)}%`;
     const lw = label.length * 6 + 6;
-    _edCtx.fillStyle = sel ? 'rgba(255,68,68,.75)' : 'rgba(0,255,136,.75)';
+    _edCtx.fillStyle = (sel || hover) ? 'rgba(255,68,68,.75)' : 'rgba(0,255,136,.75)';
     _edCtx.fillRect(x1, y1 - 16, lw, 16);
     _edCtx.fillStyle = '#000';
     _edCtx.font = 'bold 11px monospace';
@@ -1384,6 +1387,8 @@ function _edRenderList() {
     item.innerHTML = `<span class="det-item-cls">${det.object_class}</span>
       <span class="det-item-conf">${(det.confidence*100).toFixed(0)}%</span>
       <span class="det-item-del" data-idx="${i}" title="이 박스 삭제 (Del키)">✕</span>`;
+    item.addEventListener('mouseenter', () => { _edHoverIdx = i; _edDraw(); });
+    item.addEventListener('mouseleave', () => { _edHoverIdx = -1; _edDraw(); });
     item.addEventListener('click', e => {
       if (e.target.classList.contains('det-item-del')) return;
       _edSelIdx = _edSelIdx === i ? -1 : i;
@@ -1462,10 +1467,11 @@ document.addEventListener('keydown', e => {
 });
 
 async function openDetEditor(imageId, label) {
-  _edImgId  = imageId;
-  _edDets   = [];
-  _edSelIdx = -1;
-  _edDrag   = null;
+  _edImgId    = imageId;
+  _edDets     = [];
+  _edSelIdx   = -1;
+  _edHoverIdx = -1;
+  _edDrag     = null;
 
   const modal = document.getElementById('det-editor-modal');
   document.getElementById('det-editor-title').textContent = `◈ 객체탐지 수정 – ${label}`;
