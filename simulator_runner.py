@@ -192,7 +192,7 @@ def run_step() -> dict:
         PIPELINE_CMD,
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=1800,   # 30분 (SR 8000×6000 + SAM3 + LLM 처리 시간 고려)
         cwd=str(BASE_DIR),
     )
     elapsed = time.time() - t0
