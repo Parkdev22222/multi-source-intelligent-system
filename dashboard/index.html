@@ -1515,10 +1515,18 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
   saveBtn.disabled = true;
   saveBtn.textContent = '저장 중...';
   try {
+    // _delBtn 등 내부 렌더링 속성 제외하고 필요한 필드만 전송
+    const payload = _edDets.map(d => ({
+      object_class: d.object_class,
+      confidence:   d.confidence,
+      bbox:         d.bbox,
+      lat:          d.lat  ?? 0,
+      lon:          d.lon  ?? 0,
+    }));
     const res = await fetch(`${API}/api/image/${encodeURIComponent(_edImgId)}/detections`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ detections: _edDets }),
+      body: JSON.stringify({ detections: payload }),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '저장 실패');
     const result = await res.json();

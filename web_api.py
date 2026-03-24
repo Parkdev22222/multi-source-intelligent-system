@@ -745,6 +745,7 @@ def api_update_detections(image_id: str, body: DetectionsUpdateBody):
             lat=d.lat if d.lat != 0.0 else rec.lat_center,
             lon=d.lon if d.lon != 0.0 else rec.lon_center,
             source_type="human_edit",
+            session_id=rec.session_id,   # 원본 이미지의 세션 ID 유지
         ))
     # 교체 전 구 detection_id 수집 → 교체 후 pairing 참조를 새 ID로 업데이트
     old_det_ids = {d.id for d in get_detections_by_image(image_id)}
