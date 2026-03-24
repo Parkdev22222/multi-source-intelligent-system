@@ -232,19 +232,32 @@ def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
         return base64.b64encode(buf.getvalue()).decode()
 
 
-def _image_with_detections_b64(image_path: Path, detections: list, max_size: int = 480) -> str:
+def _det_space(file_w: int, file_h: int,
+               det_width: int | None, det_height: int | None) -> tuple[int, int]:
+    """bbox 좌표 기준 공간 크기 반환.
+    ImageRecord.det_width/det_height 가 있으면 그대로 사용;
+    없으면 (구버전 데이터) SR 설정값으로 역산.
+    """
+    if det_width and det_height:
+        return det_width, det_height
+    sr_scale = min(SR_TARGET_W / file_w, SR_TARGET_H / file_h)
+    if sr_scale > 1.0:
+        return int(file_w * sr_scale), int(file_h * sr_scale)
+    return file_w, file_h
+
+
+def _image_with_detections_b64(
+    image_path: Path,
+    detections: list,
+    max_size: int = 480,
+    det_width: int | None = None,
+    det_height: int | None = None,
+) -> str:
     """이미지에 탐지 결과 바운딩박스를 그린 뒤 base64 PNG 반환."""
     from PIL import Image, ImageDraw, ImageFont
     with Image.open(image_path) as img:
         file_w, file_h = img.size
-        # bbox 좌표는 detection 전 super_resolve()로 업스케일된 공간 기준으로 저장됨.
-        # 원본 파일 크기에서 SR 출력 크기(= detection 공간)를 역산한다.
-        sr_scale = min(SR_TARGET_W / file_w, SR_TARGET_H / file_h)
-        if sr_scale > 1.0:
-            det_w = int(file_w * sr_scale)
-            det_h = int(file_h * sr_scale)
-        else:
-            det_w, det_h = file_w, file_h
+        det_w, det_h = _det_space(file_w, file_h, det_width, det_height)
         img.thumbnail((max_size, max_size))
         if img.mode not in ("RGB", "RGBA"):
             img = img.convert("RGB")
@@ -613,7 +626,10 @@ def api_report_images(report_id: str):
             try:
                 if with_detections:
                     dets = get_detections_by_image(image_id)
-                    b64 = _image_with_detections_b64(img_path, dets, max_size=480)
+                    b64 = _image_with_detections_b64(
+                        img_path, dets, max_size=480,
+                        det_width=rec.det_width, det_height=rec.det_height,
+                    )
                 else:
                     b64 = _image_to_png_b64(img_path, max_size=480)
             except Exception:
@@ -669,14 +685,10 @@ def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
         raise HTTPException(status_code=404, detail="이미지 파일 없음")
     with PilImage.open(img_path) as img:
         file_w, file_h = img.size
-        # bbox 좌표는 SR(super_resolve) 후 공간 기준으로 저장됨.
-        # orig_width/orig_height를 SR 출력 크기로 반환해야 _toCanvas() 스케일이 맞음.
-        sr_scale = min(SR_TARGET_W / file_w, SR_TARGET_H / file_h)
-        if sr_scale > 1.0:
-            orig_w = int(file_w * sr_scale)
-            orig_h = int(file_h * sr_scale)
-        else:
-            orig_w, orig_h = file_w, file_h
+        # orig_width/orig_height = bbox 좌표 기준 공간.
+        # ImageRecord.det_width/det_height 가 있으면 직접 사용 (정확),
+        # 없으면 SR 설정값으로 역산 (구버전 데이터 폴백).
+        orig_w, orig_h = _det_space(file_w, file_h, rec.det_width, rec.det_height)
         img.thumbnail((max_size, max_size))
         if img.mode not in ("RGB", "RGBA", "L"):
             img = img.convert("RGB")
@@ -707,7 +719,10 @@ def api_image_rendered(image_id: str, t: int = Query(default=0)):
     if not img_path.exists():
         raise HTTPException(status_code=404, detail="이미지 파일 없음")
     dets = get_detections_by_image(image_id)
-    b64 = _image_with_detections_b64(img_path, dets, max_size=480)
+    b64 = _image_with_detections_b64(
+        img_path, dets, max_size=480,
+        det_width=rec.det_width, det_height=rec.det_height,
+    )
     return {
         "id":           image_id,
         "image_b64":    b64,

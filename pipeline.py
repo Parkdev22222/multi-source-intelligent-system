@@ -109,6 +109,8 @@ class MavenPipeline:
             meta = loaded.meta
 
             # Insert image record into Sensor DB
+            # det_width/det_height: bbox 좌표 기준 공간 (SR 적용 후 실제 배열 크기)
+            det_h, det_w = loaded.array.shape[:2]
             img_record = insert_image_record(
                 capture_time=meta.capture_time,
                 source_type=meta.source_type,
@@ -121,6 +123,8 @@ class MavenPipeline:
                 lon_max=meta.lon_max,
                 resolution_m=meta.resolution_m,
                 sensor_platform=meta.sensor_platform,
+                det_width=det_w,
+                det_height=det_h,
             )
             image_id = img_record.id
             image_ids.append(image_id)

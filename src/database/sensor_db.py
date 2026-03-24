@@ -20,6 +20,18 @@ def get_engine():
     global _engine
     if _engine is None:
         _engine = create_sensor_engine(SENSOR_DB_PATH)
+        # 기존 DB에 det_width/det_height 컬럼이 없을 수 있으므로 마이그레이션 실행
+        with _engine.connect() as conn:
+            for col in ("det_width INTEGER", "det_height INTEGER"):
+                try:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            f"ALTER TABLE image_records ADD COLUMN {col}"
+                        )
+                    )
+                    conn.commit()
+                except Exception:
+                    pass  # 이미 존재하면 무시
     return _engine
 
 
@@ -39,6 +51,8 @@ def insert_image_record(
     lon_max: Optional[float] = None,
     resolution_m: Optional[float] = None,
     sensor_platform: Optional[str] = None,
+    det_width: Optional[int] = None,
+    det_height: Optional[int] = None,
 ) -> ImageRecord:
     engine = get_engine()
     with Session(engine) as session:
@@ -54,6 +68,8 @@ def insert_image_record(
             lon_max=lon_max,
             resolution_m=resolution_m,
             sensor_platform=sensor_platform,
+            det_width=det_width,
+            det_height=det_height,
         )
         session.add(record)
         session.commit()

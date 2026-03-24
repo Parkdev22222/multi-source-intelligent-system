@@ -51,6 +51,11 @@ class ImageRecord(Base):
     resolution_m = Column(Float, nullable=True)        # GSD in metres/pixel
     sensor_platform = Column(String(64), nullable=True)  # e.g. "WorldView-3", "MQ-9"
 
+    # Dimensions of the image array actually used during detection (after SR preprocessing).
+    # bbox coordinates in DetectionRecord are in this pixel space.
+    det_width  = Column(Integer, nullable=True)
+    det_height = Column(Integer, nullable=True)
+
     detections = relationship("DetectionRecord", back_populates="image", cascade="all, delete-orphan")
 
 
