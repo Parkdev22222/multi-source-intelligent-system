@@ -1328,6 +1328,21 @@ function _edDraw() {
     _edCtx.fillStyle = '#000';
     _edCtx.font = 'bold 11px monospace';
     _edCtx.fillText(label, x1 + 3, y1 - 3);
+
+    // 선택된 박스: 우상단에 ✕ 삭제 버튼
+    if (sel) {
+      const btnSize = 18;
+      const bx = x2 - btnSize, by = y1;
+      _edCtx.fillStyle = 'rgba(220,30,30,.9)';
+      _edCtx.fillRect(bx, by, btnSize, btnSize);
+      _edCtx.fillStyle = '#fff';
+      _edCtx.font = 'bold 13px monospace';
+      _edCtx.fillText('✕', bx + 3, by + 13);
+      // 삭제 버튼 위치 기억 (클릭 판정용)
+      det._delBtn = {bx, by, bw: btnSize, bh: btnSize};
+    } else {
+      det._delBtn = null;
+    }
   });
 
   if (_edDrag) {
@@ -1367,6 +1382,16 @@ function _edRenderList() {
 
 _edCanvas.addEventListener('mousedown', e => {
   const {x, y} = _canvasCoords(e);
+  // ✕ 삭제 버튼 클릭 판정 (선택된 박스에만 렌더링됨)
+  if (_edSelIdx >= 0) {
+    const btn = _edDets[_edSelIdx]?._delBtn;
+    if (btn && x >= btn.bx && x <= btn.bx + btn.bw && y >= btn.by && y <= btn.by + btn.bh) {
+      _edDets.splice(_edSelIdx, 1);
+      _edSelIdx = -1;
+      _edRenderList(); _edDraw(); return;
+    }
+  }
+
   // 기존 박스 선택 시도
   let hit = -1;
   for (let i = _edDets.length - 1; i >= 0; i--) {
@@ -1411,6 +1436,20 @@ _edCanvas.addEventListener('mouseup', e => {
 
 _edCanvas.addEventListener('mouseleave', () => {
   if (_edDrag) { _edDrag = null; _edDraw(); }
+});
+
+// Delete / Backspace: 선택된 박스 삭제
+document.addEventListener('keydown', e => {
+  const modal = document.getElementById('det-editor-modal');
+  if (!modal.classList.contains('open')) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && _edSelIdx >= 0) {
+    e.preventDefault();
+    _edDets.splice(_edSelIdx, 1);
+    _edSelIdx = Math.min(_edSelIdx, _edDets.length - 1);
+    if (_edDets.length === 0) _edSelIdx = -1;
+    _edRenderList(); _edDraw();
+  }
 });
 
 async function openDetEditor(imageId, label) {
