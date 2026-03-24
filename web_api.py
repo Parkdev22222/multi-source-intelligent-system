@@ -64,6 +64,7 @@ from src.database.sensor_db import (
     get_images_by_session,
     get_all_images_with_count,
     replace_detections_for_image,
+    delete_detection_by_id,
 )
 from src.satellite.simulator import get_positions
 
@@ -754,6 +755,18 @@ def api_update_detections(image_id: str, body: DetectionsUpdateBody):
     first_new_id = new_det_list[0].id if new_det_list else None
     update_pairings_detection_refs(old_det_ids, first_new_id)
     return {"updated": count, "image_id": image_id}
+
+
+@app.delete("/api/detection/{detection_id}")
+def api_delete_detection(detection_id: str):
+    """탐지 결과 단건 삭제 → SensorDB에서 제거하고 pairing 참조도 정리."""
+    det = get_detection_by_id(detection_id)
+    if det is None:
+        raise HTTPException(status_code=404, detail="탐지 결과 없음")
+    delete_detection_by_id(detection_id)
+    # pairing이 이 detection을 참조하고 있으면 null로 초기화
+    update_pairings_detection_refs({detection_id}, None)
+    return {"deleted": True, "detection_id": detection_id}
 
 
 @app.patch("/api/report/{report_id}")

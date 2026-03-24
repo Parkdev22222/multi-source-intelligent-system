@@ -1364,6 +1364,20 @@ function _edDraw() {
   }
 }
 
+async function _edDeleteDet(idx) {
+  const det = _edDets[idx];
+  if (!det) return;
+  // SensorDB에서 즉시 삭제 (기존 탐지 결과인 경우)
+  if (det._id) {
+    try {
+      await fetch(`${API}/api/detection/${encodeURIComponent(det._id)}`, { method: 'DELETE' });
+    } catch(e) { /* 네트워크 오류는 무시하고 로컬 목록에서만 제거 */ }
+  }
+  _edDets.splice(idx, 1);
+  if (_edSelIdx >= _edDets.length) _edSelIdx = -1;
+  _edRenderList(); _edDraw();
+}
+
 function _edRenderList() {
   const list  = document.getElementById('det-list');
   const badge = document.getElementById('det-count-badge');
@@ -1380,11 +1394,7 @@ function _edRenderList() {
       _edSelIdx = _edSelIdx === i ? -1 : i;
       _edRenderList(); _edDraw();
     });
-    item.querySelector('.det-item-del').addEventListener('click', () => {
-      _edDets.splice(i, 1);
-      if (_edSelIdx >= _edDets.length) _edSelIdx = -1;
-      _edRenderList(); _edDraw();
-    });
+    item.querySelector('.det-item-del').addEventListener('click', () => _edDeleteDet(i));
     list.appendChild(item);
   });
 }
@@ -1395,9 +1405,7 @@ _edCanvas.addEventListener('mousedown', e => {
   if (_edSelIdx >= 0) {
     const btn = _edDets[_edSelIdx]?._delBtn;
     if (btn && x >= btn.bx && x <= btn.bx + btn.bw && y >= btn.by && y <= btn.by + btn.bh) {
-      _edDets.splice(_edSelIdx, 1);
-      _edSelIdx = -1;
-      _edRenderList(); _edDraw(); return;
+      _edDeleteDet(_edSelIdx); return;
     }
   }
 
@@ -1454,10 +1462,7 @@ document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if ((e.key === 'Delete' || e.key === 'Backspace') && _edSelIdx >= 0) {
     e.preventDefault();
-    _edDets.splice(_edSelIdx, 1);
-    _edSelIdx = Math.min(_edSelIdx, _edDets.length - 1);
-    if (_edDets.length === 0) _edSelIdx = -1;
-    _edRenderList(); _edDraw();
+    _edDeleteDet(_edSelIdx);
   }
 });
 
@@ -1494,9 +1499,12 @@ async function openDetEditor(imageId, label) {
 
     const detData = detRes.ok ? await detRes.json() : { detections: [] };
     _edDets = (detData.detections || []).map(d => ({
+      _id:          d.id,          // SensorDB detection id (단건 삭제에 사용)
       object_class: d.object_class,
       confidence:   d.confidence,
       bbox:         { ...d.bbox },
+      lat:          d.lat,         // 원본 좌표 보존
+      lon:          d.lon,
     }));
 
     const capTime = rawData.capture_time
@@ -1529,13 +1537,14 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
     const prevCount = prevCountRes.ok ? ((await prevCountRes.json()).count ?? 0) : 0;
     const newCount  = _edDets.length;
 
-    // _delBtn 등 내부 렌더링 속성 제외하고 필요한 필드만 전송
+    // 내부 속성(_id, _delBtn 등) 제외하고 필요한 필드만 전송
+    // lat/lon: 원본 로드 시 보존된 값 사용 (새로 추가된 박스는 0 → 백엔드가 이미지 중심 사용)
     const payload = _edDets.map(d => ({
       object_class: d.object_class,
       confidence:   d.confidence,
       bbox:         d.bbox,
-      lat:          d.lat ?? 0,
-      lon:          d.lon ?? 0,
+      lat:          d.lat  ?? 0,
+      lon:          d.lon  ?? 0,
     }));
     const res = await fetch(`${API}/api/image/${encodeURIComponent(_edImgId)}/detections`, {
       method: 'PUT',

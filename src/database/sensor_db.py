@@ -193,6 +193,19 @@ def get_detection_by_id(detection_id: str) -> Optional[DetectionRecord]:
         return record
 
 
+def delete_detection_by_id(detection_id: str) -> bool:
+    """Delete a single DetectionRecord. Returns True if deleted, False if not found."""
+    engine = get_engine()
+    with Session(engine) as session:
+        record = session.query(DetectionRecord).filter(DetectionRecord.id == detection_id).first()
+        if record is None:
+            return False
+        session.delete(record)
+        session.commit()
+        logger.info(f"[SensorDB] Deleted DetectionRecord id={detection_id}")
+        return True
+
+
 def get_images_by_capture_time(capture_time: datetime, tolerance_sec: int = 5) -> List[ImageRecord]:
     """capture_time ± tolerance_sec 범위의 ImageRecord 목록 반환."""
     from datetime import timedelta
