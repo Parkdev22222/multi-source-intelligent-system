@@ -235,13 +235,14 @@
     #det-canvas { cursor:crosshair; max-width:100%; max-height:100%; display:block; border:1px solid var(--border); }
     #det-sidebar { width:260px; flex-shrink:0; background:#0a1220; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
     #det-sidebar-hdr { padding:8px 12px; font-size:10px; color:var(--amber); border-bottom:1px solid var(--border); letter-spacing:.5px; }
+    #det-sidebar-hint { padding:5px 12px; font-size:9px; color:var(--dim); border-bottom:1px solid var(--border); background:#060c18; line-height:1.5; }
     #det-list { flex:1; overflow-y:auto; padding:6px; scrollbar-width:thin; }
     .det-item { display:flex; align-items:center; gap:6px; padding:5px 7px; border:1px solid var(--border); border-radius:2px; margin-bottom:4px; cursor:pointer; transition:all .1s; }
     .det-item.selected { border-color:var(--amber); background:#1a1400; }
     .det-item-cls { flex:1; font-size:10px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .det-item-conf { font-size:9px; color:var(--green); width:36px; text-align:right; flex-shrink:0; }
-    .det-item-del { font-size:12px; color:var(--dim); cursor:pointer; flex-shrink:0; padding:0 2px; }
-    .det-item-del:hover { color:var(--red); }
+    .det-item-del { font-size:13px; color:#c04040; cursor:pointer; flex-shrink:0; padding:2px 5px; border-radius:2px; line-height:1; border:1px solid transparent; }
+    .det-item-del:hover { color:#fff; background:var(--red); border-color:var(--red); }
     #det-add-form { padding:10px 12px; border-top:1px solid var(--border); flex-shrink:0; }
     #det-add-form label { display:block; font-size:9px; color:var(--dim); margin-bottom:3px; }
     #det-class-input, #det-conf-input { width:100%; box-sizing:border-box; background:#080d18; border:1px solid var(--border); color:var(--text); font-family:var(--font); font-size:11px; padding:4px 7px; border-radius:2px; margin-bottom:6px; }
@@ -426,6 +427,7 @@
     </div>
     <div id="det-sidebar">
       <div id="det-sidebar-hdr">탐지 목록 <span id="det-count-badge"></span></div>
+      <div id="det-sidebar-hint">🗑 우측 ✕ 버튼으로 삭제<br>박스 클릭 후 캔버스 ✕ 또는 Del키도 가능</div>
       <div id="det-list"></div>
       <div id="det-add-form">
         <label>객체 분류명</label>
@@ -1381,7 +1383,7 @@ function _edRenderList() {
     item.className = 'det-item' + (i === _edSelIdx ? ' selected' : '');
     item.innerHTML = `<span class="det-item-cls">${det.object_class}</span>
       <span class="det-item-conf">${(det.confidence*100).toFixed(0)}%</span>
-      <span class="det-item-del" data-idx="${i}">✕</span>`;
+      <span class="det-item-del" data-idx="${i}" title="이 박스 삭제 (Del키)">✕</span>`;
     item.addEventListener('click', e => {
       if (e.target.classList.contains('det-item-del')) return;
       _edSelIdx = _edSelIdx === i ? -1 : i;
