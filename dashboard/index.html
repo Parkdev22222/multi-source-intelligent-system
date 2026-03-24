@@ -226,10 +226,13 @@
     #det-editor-title { font-size:13px; color:var(--amber); letter-spacing:1px; flex:1; }
     #det-editor-info  { font-size:10px; color:var(--dim); }
     #det-editor-hdr button { font-size:11px; padding:5px 14px; border-radius:3px; border:1px solid; cursor:pointer; font-family:var(--font); font-weight:bold; }
-    #det-save-btn   { background:var(--green); border-color:var(--green); color:#000; }
+    #det-save-btn       { background:var(--green); border-color:var(--green); color:#000; }
     #det-save-btn:hover { background:#00ee77; }
     #det-cancel-btn { background:transparent; border-color:var(--dim); color:var(--dim); }
     #det-cancel-btn:hover { border-color:var(--red); color:var(--red); }
+    #det-regen-btn { background:transparent; border-color:#ff9900; color:#ff9900; }
+    #det-regen-btn:hover { background:#ff990022; }
+    #det-regen-btn:disabled { opacity:.4; cursor:not-allowed; }
     #det-editor-body { flex:1; display:flex; min-height:0; }
     #det-canvas-wrap { flex:1; display:flex; align-items:center; justify-content:center; background:#050a10; overflow:hidden; padding:12px; }
     #det-canvas { cursor:crosshair; max-width:100%; max-height:100%; display:block; border:1px solid var(--border); }
@@ -418,6 +421,7 @@
   <div id="det-editor-hdr">
     <span id="det-editor-title">◈ 객체탐지 수정</span>
     <span id="det-editor-info"></span>
+    <button id="det-regen-btn" title="수정된 탐지 결과로 페어링·보고서 재생성">⟳ 보고서 재생성</button>
     <button id="det-save-btn">저장</button>
     <button id="det-cancel-btn">취소</button>
   </div>
@@ -1571,6 +1575,55 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
 
 document.getElementById('det-cancel-btn').addEventListener('click', () => {
   document.getElementById('det-editor-modal').classList.remove('open');
+});
+
+document.getElementById('det-regen-btn').addEventListener('click', async () => {
+  if (!_edImgId) return;
+  const regenBtn = document.getElementById('det-regen-btn');
+  const saveBtn  = document.getElementById('det-save-btn');
+
+  // 먼저 현재 편집 내용을 SensorDB에 저장
+  regenBtn.disabled = true;
+  regenBtn.textContent = '저장 중...';
+  saveBtn.disabled = true;
+  try {
+    const payload = _edDets.map(d => ({
+      object_class: d.object_class,
+      confidence:   d.confidence,
+      bbox:         d.bbox,
+      lat:          d.lat  ?? 0,
+      lon:          d.lon  ?? 0,
+    }));
+    const saveRes = await fetch(`${API}/api/image/${encodeURIComponent(_edImgId)}/detections`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ detections: payload }),
+    });
+    if (!saveRes.ok) throw new Error((await saveRes.json().catch(() => ({}))).detail || '저장 실패');
+
+    // 페어링 + 보고서 재생성 (시간이 걸릴 수 있음)
+    regenBtn.textContent = '재생성 중...';
+    const regenRes = await fetch(
+      `${API}/api/image/${encodeURIComponent(_edImgId)}/regenerate-report`,
+      { method: 'POST' }
+    );
+    if (!regenRes.ok) throw new Error((await regenRes.json().catch(() => ({}))).detail || '재생성 실패');
+    const regenData = await regenRes.json();
+
+    document.getElementById('det-editor-modal').classList.remove('open');
+    meta_toast(`보고서 재생성 완료 – 보고서 ID: ${regenData.report_id?.slice(0,8) ?? '?'}`);
+
+    // 보고서 패널 갱신 (새 report_id로 열기)
+    if (regenData.report_id && typeof openReportById === 'function') {
+      await openReportById(regenData.report_id);
+    }
+  } catch(e) {
+    meta_toast(`오류: ${e.message}`);
+  } finally {
+    regenBtn.disabled = false;
+    regenBtn.textContent = '⟳ 보고서 재생성';
+    saveBtn.disabled = false;
+  }
 });
 
 /* ── 탐지 저장 후 이미지 패널 직접 갱신 ──

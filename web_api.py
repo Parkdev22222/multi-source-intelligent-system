@@ -757,6 +757,47 @@ def api_update_detections(image_id: str, body: DetectionsUpdateBody):
     return {"updated": count, "image_id": image_id}
 
 
+@app.post("/api/image/{image_id}/regenerate-report")
+def api_regenerate_report(image_id: str, background_tasks: BackgroundTasks):
+    """
+    수정된 탐지 결과를 바탕으로 Temporal Pairing + 보고서 재생성.
+
+    - SensorDB의 현재 탐지 결과(사용자 수정 포함)를 읽어 pairing 재실행
+    - 동일 session_id의 기존 pairing_records / report_records를 교체
+    - 새 보고서 내용과 report_id 반환
+    """
+    rec = get_image_record_by_id(image_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="이미지 없음")
+    if not rec.session_id:
+        raise HTTPException(status_code=400, detail="이미지에 session_id 없음")
+
+    try:
+        from pipeline import MavenPipeline
+        pipeline = MavenPipeline()
+        report_text = pipeline.rerun_from_detections(image_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"[API] regenerate-report error: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # 새로 삽입된 보고서 레코드 조회
+    from src.database.reports_db import get_reports_by_session
+    reports = get_reports_by_session(rec.session_id)
+    new_report = reports[0] if reports else None
+
+    _notify_db_updated(run_count=_auto_state["run_count"], success=True, elapsed=0.0)
+
+    return {
+        "success":    True,
+        "image_id":   image_id,
+        "session_id": rec.session_id,
+        "report_id":  new_report.id if new_report else None,
+        "report_content": report_text,
+    }
+
+
 @app.delete("/api/detection/{detection_id}")
 def api_delete_detection(detection_id: str):
     """탐지 결과 단건 삭제 → SensorDB에서 제거하고 pairing 참조도 정리."""

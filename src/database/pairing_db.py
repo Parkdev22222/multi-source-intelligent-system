@@ -106,6 +106,20 @@ def update_pairings_detection_refs(old_det_ids: Set[str], new_det_id: Optional[s
     return updated
 
 
+def delete_pairings_by_session(session_id: str) -> int:
+    """세션의 모든 pairing_records를 삭제한다. 보고서 재생성 전 호출."""
+    engine = get_engine()
+    with Session(engine) as session:
+        deleted = (
+            session.query(PairingRecord)
+            .filter(PairingRecord.session_id == session_id)
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+    logger.info(f"[PairingDB] Deleted {deleted} pairings for session {session_id}")
+    return deleted
+
+
 def get_session_location(session_id: str):
     """Return (lat_center, lon_center) for the first pairing of a session, or (None, None)."""
     engine = get_engine()

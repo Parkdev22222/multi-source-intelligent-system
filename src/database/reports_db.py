@@ -106,6 +106,20 @@ def update_report_content(report_id: str, new_content: str) -> bool:
         return True
 
 
+def delete_reports_by_session(session_id: str) -> int:
+    """세션의 모든 report_records를 삭제한다. 보고서 재생성 전 호출."""
+    engine = get_engine()
+    with Session(engine) as session:
+        deleted = (
+            session.query(ReportRecord)
+            .filter(ReportRecord.session_id == session_id)
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+    logger.info(f"[ReportsDB] Deleted {deleted} reports for session {session_id}")
+    return deleted
+
+
 def get_reports_by_session(session_id: str) -> List[ReportRecord]:
     engine = get_engine()
     with Session(engine) as session:

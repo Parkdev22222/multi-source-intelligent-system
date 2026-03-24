@@ -60,7 +60,9 @@ from src.database.pairing_db import (
     insert_pairings_bulk,
     get_latest_pairings,
     get_pairings_by_session,
+    delete_pairings_by_session,
 )
+from src.database.reports_db import delete_reports_by_session
 from src.detection.image_loader import load_metadata_index, iter_images
 from src.detection.sam2_detector import SAM3Detector, DetectionResult
 from src.pairing.temporal_pairing import pair_by_tracking, pair_by_similarity
@@ -317,6 +319,134 @@ class MavenPipeline:
         report = self.reporter.generate_report(
             pairings, output_path=output_path, session_id=session_id
         )
+        return report
+
+    # ------------------------------------------------------------------
+    # Re-run from existing detections (사용자 편집 후 재처리)
+    # ------------------------------------------------------------------
+
+    def rerun_from_detections(self, image_id: str) -> str:
+        """
+        이미지 1장에 대해 SensorDB에 저장된 탐지 결과(사용자 수정 포함)를 기반으로
+        Temporal Pairing → Report Generation을 재실행한다.
+
+        - session_id는 원본 파이프라인 세션을 그대로 재사용한다.
+        - 기존 pairing_records / report_records(동일 session)는 삭제 후 재삽입된다.
+
+        Returns:
+            새로 생성된 보고서 텍스트.
+        """
+        import numpy as np
+        from pathlib import Path
+        from PIL import Image as PILImage
+
+        from src.config import IMAGES_DIR
+        from src.database.sensor_db import (
+            get_image_record_by_id,
+            get_detections_by_image,
+            get_most_recent_past_detections,
+        )
+        from src.database.pairing_db import delete_pairings_by_session
+        from src.database.reports_db import delete_reports_by_session
+        from src.detection.super_resolution import super_resolve
+
+        # ── 1. 이미지 레코드 조회 ────────────────────────────────────────────
+        img_rec = get_image_record_by_id(image_id)
+        if img_rec is None:
+            raise ValueError(f"Image not found: {image_id}")
+
+        session_id   = img_rec.session_id
+        capture_time = img_rec.capture_time
+
+        logger.info(
+            f"[Rerun] image={image_id[:8]}  session={session_id}  "
+            f"capture={capture_time}"
+        )
+
+        # ── 2. 이미지 파일 로드 + SR ─────────────────────────────────────────
+        img_path = Path(img_rec.image_path)
+        if not img_path.is_absolute():
+            img_path = Path(IMAGES_DIR) / img_rec.image_path
+        if not img_path.exists():
+            raise FileNotFoundError(f"Image file not found: {img_path}")
+
+        pil_raw  = PILImage.open(img_path).convert("RGB")
+        arr      = np.array(pil_raw, dtype=np.uint8)
+        arr      = super_resolve(arr)
+        orig_h, orig_w = arr.shape[:2]
+        pil_image = PILImage.fromarray(arr)
+
+        # ── 3. 현재 탐지 결과 (SensorDB) ────────────────────────────────────
+        orm_dets     = get_detections_by_image(image_id)
+        current_dets = [
+            DetectionResult(
+                detection_id=d.id,
+                detection_time=d.detection_time,
+                image_id=d.image_id,
+                object_class=d.object_class,
+                object_class_index=d.object_class_index or 0,
+                confidence=d.confidence,
+                bbox_x1=d.bbox_x1, bbox_y1=d.bbox_y1,
+                bbox_x2=d.bbox_x2, bbox_y2=d.bbox_y2,
+                lat=d.lat, lon=d.lon,
+                source_type=d.source_type or img_rec.source_type,
+            )
+            for d in orm_dets
+        ]
+        logger.info(f"[Rerun] current detections: {len(current_dets)}")
+
+        # ── 4. 과거 탐지 결과 ────────────────────────────────────────────────
+        past_records, past_capture_time = get_most_recent_past_detections(
+            lat_center=img_rec.lat_center,
+            lon_center=img_rec.lon_center,
+            radius_deg=COORDINATE_MATCH_RADIUS_DEG,
+            before_time=capture_time,
+        )
+        logger.info(f"[Rerun] past detections: {len(past_records)}")
+
+        # ── 5. 기존 pairing 삭제 ─────────────────────────────────────────────
+        delete_pairings_by_session(session_id)
+
+        # ── 6. Temporal Pairing ──────────────────────────────────────────────
+        if TRACKING_MODE == "similarity":
+            pairing_records = pair_by_similarity(
+                current_detections=current_dets,
+                past_detections=past_records,
+                current_image=pil_image,
+                current_capture_time=capture_time,
+                past_capture_time=past_capture_time,
+                region_lat=img_rec.lat_center,
+                region_lon=img_rec.lon_center,
+                session_id=session_id,
+                source_type=img_rec.source_type,
+            )
+        else:
+            tracked_objects = (
+                self.detector.track_objects(pil_image, past_records, orig_w, orig_h)
+                if past_records else []
+            )
+            pairing_records = pair_by_tracking(
+                tracked_objects=tracked_objects,
+                current_detections=current_dets,
+                past_detections=past_records,
+                current_capture_time=capture_time,
+                past_capture_time=past_capture_time,
+                region_lat=img_rec.lat_center,
+                region_lon=img_rec.lon_center,
+                session_id=session_id,
+                source_type=img_rec.source_type,
+            )
+
+        if pairing_records:
+            insert_pairings_bulk(pairing_records)
+            logger.info(f"[Rerun] Inserted {len(pairing_records)} pairing records.")
+
+        # ── 7. 기존 보고서 삭제 ──────────────────────────────────────────────
+        delete_reports_by_session(session_id)
+
+        # ── 8. 보고서 재생성 ─────────────────────────────────────────────────
+        report = self._generate_report(session_id)
+        logger.info(f"[Rerun] Report regenerated for session={session_id}")
         return report
 
     # ------------------------------------------------------------------
