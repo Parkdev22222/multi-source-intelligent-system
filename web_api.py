@@ -542,6 +542,12 @@ def api_report_images(report_id: str):
 
     pairings = get_pairings_by_session(report.session_id)
 
+    # 보고서 텍스트는 pipeline.py 와 동일하게 가장 최근 pairing_time 배치만 사용.
+    # 전체 세션 pairing 을 그대로 쓰면 이전 비교 시점 이미지가 섞여 내용 불일치 발생.
+    if pairings:
+        latest_pt = max(p.pairing_time for p in pairings)
+        pairings = [p for p in pairings if p.pairing_time == latest_pt]
+
     # ── Step 1: 세션의 모든 pairing 에서 참조되는 image_id 전부 수집 ───────────
     # detection_id → image_id 경로가 1순위, capture_time 경로가 폴백.
     # image_id 마다 ImageRecord 를 가져와 실제 파일 경로(resolved)를 키로
