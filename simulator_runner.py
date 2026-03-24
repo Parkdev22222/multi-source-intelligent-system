@@ -49,23 +49,20 @@ PIPELINE_CMD = [
 
 def _pick_images(n: int = 2) -> list:
     """
-    SAMPLE_DIR 에서 TIFF 파일 n 장을 중복 없이 랜덤 선택.
+    SAMPLE_DIR 에서 tif/tiff/JPG/jpg 파일을 한 풀에 섞어 n 장을 중복 없이 랜덤 선택.
     반환값은 metadata.json 에 쓰이는 상대 경로 'sample/<파일명>' 형식.
-    PNG 파일로 폴백.
     """
-    tiffs = sorted(SAMPLE_DIR.glob("*.tiff")) + sorted(SAMPLE_DIR.glob("*.tif"))
-    if len(tiffs) >= n:
-        chosen = random.sample(tiffs, n)
+    tifs  = sorted(SAMPLE_DIR.glob("*.tiff")) + sorted(SAMPLE_DIR.glob("*.tif"))
+    jpgs  = sorted(SAMPLE_DIR.glob("*.JPG"))  + sorted(SAMPLE_DIR.glob("*.jpg"))
+    pool  = tifs + jpgs
+
+    if len(pool) >= n:
+        chosen = random.sample(pool, n)
         return [f"sample/{p.name}" for p in chosen]
 
-    pngs = sorted(SAMPLE_DIR.glob("*.png"))
-    if len(pngs) >= n:
-        chosen = random.sample(pngs, n)
-        return [f"sample/{p.name}" for p in chosen]
-
-    total = len(tiffs) + len(pngs)
     raise RuntimeError(
-        f"data/images/sample/ 에 이미지가 {total}장뿐입니다 (최소 {n}장 필요)."
+        f"data/images/sample/ 에 이미지가 {len(pool)}장뿐입니다 (최소 {n}장 필요). "
+        f"tif/tiff: {len(tifs)}장, JPG/jpg: {len(jpgs)}장"
     )
 
 
