@@ -236,7 +236,7 @@
     #det-sidebar { width:260px; flex-shrink:0; background:#0a1220; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
     #det-sidebar-hdr { padding:8px 12px; font-size:10px; color:var(--amber); border-bottom:1px solid var(--border); letter-spacing:.5px; }
     #det-sidebar-hint { padding:5px 12px; font-size:9px; color:var(--dim); border-bottom:1px solid var(--border); background:#060c18; line-height:1.5; }
-    #det-list { flex:1; overflow-y:auto; padding:6px; scrollbar-width:thin; }
+    #ed-det-list { flex:1; overflow-y:auto; padding:6px; scrollbar-width:thin; }
     .det-item { display:flex; align-items:center; gap:6px; padding:5px 7px; border:1px solid var(--border); border-radius:2px; margin-bottom:4px; cursor:pointer; transition:all .1s; }
     .det-item.selected { border-color:var(--amber); background:#1a1400; }
     .det-item-cls { flex:1; font-size:10px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -428,7 +428,7 @@
     <div id="det-sidebar">
       <div id="det-sidebar-hdr">탐지 목록 <span id="det-count-badge"></span></div>
       <div id="det-sidebar-hint">🗑 우측 ✕ 버튼으로 삭제<br>박스 클릭 후 캔버스 ✕ 또는 Del키도 가능</div>
-      <div id="det-list"></div>
+      <div id="ed-det-list"></div>
       <div id="det-add-form">
         <label>객체 분류명</label>
         <input id="det-class-input" placeholder="예: military tank" value="military vehicle">
@@ -1374,7 +1374,7 @@ function _edDeleteDet(idx) {
 }
 
 function _edRenderList() {
-  const list  = document.getElementById('det-list');
+  const list  = document.getElementById('ed-det-list');
   const badge = document.getElementById('det-count-badge');
   badge.textContent = `(${_edDets.length})`;
   list.innerHTML = '';
@@ -1470,7 +1470,7 @@ async function openDetEditor(imageId, label) {
   const modal = document.getElementById('det-editor-modal');
   document.getElementById('det-editor-title').textContent = `◈ 객체탐지 수정 – ${label}`;
   document.getElementById('det-editor-info').textContent  = '로딩 중...';
-  document.getElementById('det-list').innerHTML = '';
+  document.getElementById('ed-det-list').innerHTML = '';
   _edCtx.clearRect(0, 0, _edCanvas.width, _edCanvas.height);
   modal.classList.add('open');
 
