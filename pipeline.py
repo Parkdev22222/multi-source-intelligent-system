@@ -125,6 +125,7 @@ class MavenPipeline:
                 sensor_platform=meta.sensor_platform,
                 det_width=det_w,
                 det_height=det_h,
+                session_id=session_id,
             )
             image_id = img_record.id
             image_ids.append(image_id)
@@ -154,6 +155,7 @@ class MavenPipeline:
                     mask_rle=det.mask_rle,
                     mask_area_px=det.mask_area_px,
                     source_type=det.source_type,
+                    session_id=session_id,
                 )
                 for det in det_results
             ]

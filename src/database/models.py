@@ -56,6 +56,10 @@ class ImageRecord(Base):
     det_width  = Column(Integer, nullable=True)
     det_height = Column(Integer, nullable=True)
 
+    # Pipeline session that produced the detections on this image.
+    # Links image records back to the report generation session.
+    session_id = Column(String(36), nullable=True)
+
     detections = relationship("DetectionRecord", back_populates="image", cascade="all, delete-orphan")
 
 
@@ -93,6 +97,9 @@ class DetectionRecord(Base):
     # Extra attributes
     source_type = Column(String(32), nullable=True)  # "satellite" | "drone"
     extra = Column(JSON, nullable=True)
+
+    # Pipeline session that generated this detection (same as parent ImageRecord.session_id)
+    session_id = Column(String(36), nullable=True)
 
     image = relationship("ImageRecord", back_populates="detections")
 

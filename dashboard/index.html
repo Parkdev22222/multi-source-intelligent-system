@@ -130,6 +130,7 @@
     .db-item-time { color:var(--blue); font-size:10px; }
     .db-item-sub  { color:var(--dim); font-size:9px; margin-top:1px; }
     .db-item-badge { float:right; background:#1a2d1a; color:var(--green); font-size:9px; padding:1px 5px; border-radius:2px; border:1px solid var(--green); }
+    .db-item-session { font-size:8px; color:#3a5a70; letter-spacing:.3px; margin-top:2px; }
     .dp-empty { padding:6px 14px; font-size:11px; color:var(--dim); }
 
     /* 판독보고서 목록 */
@@ -728,10 +729,14 @@ async function loadAllImages() {
     data.images.forEach(img => {
       const item = document.createElement('div');
       item.className = 'db-item';
+      const sessTag = img.session_id
+        ? `<div class="db-item-session">SESSION ${img.session_id.slice(0, 8).toUpperCase()}</div>`
+        : '';
       item.innerHTML = `
         <span class="db-item-badge">${img.detection_count}개 탐지</span>
         <div class="db-item-time">${fmtTime(img.capture_time)}</div>
-        <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>`;
+        <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>
+        ${sessTag}`;
       item.addEventListener('mouseenter', e => {
         flyToLocation(img.lat_center, img.lon_center);
         showHoverMarker(img.lat_center, img.lon_center, 'img-pin');
@@ -764,10 +769,14 @@ async function loadAllDetections() {
     imgs.forEach(img => {
       const item = document.createElement('div');
       item.className = 'db-item';
+      const sessTag = img.session_id
+        ? `<div class="db-item-session">SESSION ${img.session_id.slice(0, 8).toUpperCase()}</div>`
+        : '';
       item.innerHTML = `
         <span class="db-item-badge">${img.detection_count}개</span>
         <div class="db-item-time">${fmtTime(img.capture_time)}</div>
-        <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>`;
+        <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>
+        ${sessTag}`;
       item.addEventListener('mouseenter', e => {
         flyToLocation(img.lat_center, img.lon_center);
         showHoverMarker(img.lat_center, img.lon_center, 'det-pin');
@@ -1161,8 +1170,12 @@ async function openReportById(id, fname) {
     }
     const report = await repRes.json();
     const rptTime = report.report_time ? new Date(report.report_time).toLocaleString('ko-KR') : '—';
+    const sessShort = report.session_id ? report.session_id.slice(0, 8).toUpperCase() : null;
+    const sessLabel = sessShort
+      ? ` &nbsp;|&nbsp; <span style="color:#3a6a8a;font-size:10px;letter-spacing:.4px;">SESSION ${sessShort}</span>`
+      : '';
     meta.innerHTML =
-      `<b>${fname || id}</b> &nbsp;|&nbsp; 생성: ${rptTime} &nbsp;|&nbsp; 페어링: ${report.pairing_count}건`;
+      `<b>${fname || id}</b> &nbsp;|&nbsp; 생성: ${rptTime} &nbsp;|&nbsp; 페어링: ${report.pairing_count}건${sessLabel}`;
     content.textContent = report.report_content || '';
 
     // 다운로드 + 보고서 수정 버튼

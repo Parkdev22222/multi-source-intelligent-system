@@ -20,13 +20,19 @@ def get_engine():
     global _engine
     if _engine is None:
         _engine = create_sensor_engine(SENSOR_DB_PATH)
-        # 기존 DB에 det_width/det_height 컬럼이 없을 수 있으므로 마이그레이션 실행
+        # 기존 DB에 없는 컬럼을 마이그레이션으로 추가 (이미 존재하면 무시)
+        _migrations = [
+            ("image_records",     "det_width INTEGER"),
+            ("image_records",     "det_height INTEGER"),
+            ("image_records",     "session_id VARCHAR(36)"),
+            ("detection_records", "session_id VARCHAR(36)"),
+        ]
         with _engine.connect() as conn:
-            for col in ("det_width INTEGER", "det_height INTEGER"):
+            for table, col_def in _migrations:
                 try:
                     conn.execute(
                         __import__("sqlalchemy").text(
-                            f"ALTER TABLE image_records ADD COLUMN {col}"
+                            f"ALTER TABLE {table} ADD COLUMN {col_def}"
                         )
                     )
                     conn.commit()
@@ -53,6 +59,7 @@ def insert_image_record(
     sensor_platform: Optional[str] = None,
     det_width: Optional[int] = None,
     det_height: Optional[int] = None,
+    session_id: Optional[str] = None,
 ) -> ImageRecord:
     engine = get_engine()
     with Session(engine) as session:
@@ -70,6 +77,7 @@ def insert_image_record(
             sensor_platform=sensor_platform,
             det_width=det_width,
             det_height=det_height,
+            session_id=session_id,
         )
         session.add(record)
         session.commit()
@@ -280,6 +288,21 @@ def get_all_images_with_count(limit: int = None):
             session.expunge(img)
             result.append((img, count))
         return result
+
+
+def get_images_by_session(session_id: str) -> List[ImageRecord]:
+    """Return all ImageRecords tagged with the given pipeline session_id."""
+    engine = get_engine()
+    with Session(engine) as session:
+        records = (
+            session.query(ImageRecord)
+            .filter(ImageRecord.session_id == session_id)
+            .order_by(ImageRecord.capture_time)
+            .all()
+        )
+        for r in records:
+            session.expunge(r)
+        return records
 
 
 def get_latest_detections_near(
