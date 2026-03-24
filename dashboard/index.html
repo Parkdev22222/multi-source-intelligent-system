@@ -350,7 +350,7 @@
       </div>
       <div class="rpt-filter" id="rpt-filter" style="display:none;"></div>
       <div class="rpt-list" id="rpt-list">
-        <div class="dp-empty">보고서 없음 – 시뮬레이션을 먼저 실행하세요</div>
+        <div class="dp-empty">로딩 중...</div>
       </div>
     </div>
 
@@ -964,6 +964,7 @@ async function loadAllReports() {
   const list      = document.getElementById('rpt-list');
   const count     = document.getElementById('rpt-count');
   const filterBar = document.getElementById('rpt-filter');
+  list.innerHTML = '<div class="dp-empty">로딩 중...</div>';
   try {
     const res = await fetch(`${API}/api/reports?limit=50`);
     if (!res.ok) return;
@@ -1667,9 +1668,7 @@ setInterval(pollSimStatus,    5_000);   // 5초마다 자동 시뮬레이션 상
 setInterval(async () => {
   if (!_sseInstance || _sseInstance.readyState === EventSource.CLOSED) {
     popImgCache = {}; popDetCache = {};
-    await loadAllImages();
-    await loadAllDetections();
-    await loadAllReports();
+    await Promise.all([loadAllImages(), loadAllDetections(), loadAllReports()]);
   }
 }, 60_000);
 
