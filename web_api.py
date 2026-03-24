@@ -668,7 +668,15 @@ def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
     if not img_path.exists():
         raise HTTPException(status_code=404, detail="이미지 파일 없음")
     with PilImage.open(img_path) as img:
-        orig_w, orig_h = img.size
+        file_w, file_h = img.size
+        # bbox 좌표는 SR(super_resolve) 후 공간 기준으로 저장됨.
+        # orig_width/orig_height를 SR 출력 크기로 반환해야 _toCanvas() 스케일이 맞음.
+        sr_scale = min(SR_TARGET_W / file_w, SR_TARGET_H / file_h)
+        if sr_scale > 1.0:
+            orig_w = int(file_w * sr_scale)
+            orig_h = int(file_h * sr_scale)
+        else:
+            orig_w, orig_h = file_w, file_h
         img.thumbnail((max_size, max_size))
         if img.mode not in ("RGB", "RGBA", "L"):
             img = img.convert("RGB")
