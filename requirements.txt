@@ -29,6 +29,11 @@ vllm>=0.18.0
 # --- Ollama Python client (optional, for ollama LLM backend) ---
 # ollama>=0.2.0
 
+# --- Super-Resolution (SAM3 전처리) ---
+# Real-ESRGAN: AI 기반 위성 이미지 업스케일 (미설치 시 PIL LANCZOS 폴백)
+basicsr>=1.4.2
+realesrgan>=0.3.0
+
 # --- Utilities ---
 tqdm>=4.65.0
 

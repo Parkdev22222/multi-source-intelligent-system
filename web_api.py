@@ -46,7 +46,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from src.config import IMAGES_DIR
+from src.config import IMAGES_DIR, SR_TARGET_W, SR_TARGET_H
 from src.database.pairing_db import get_session_ids_near, get_session_location, get_pairings_by_session, update_pairings_detection_refs
 from src.database.reports_db import (
     get_all_reports,
@@ -237,14 +237,14 @@ def _image_with_detections_b64(image_path: Path, detections: list, max_size: int
     from PIL import Image, ImageDraw, ImageFont
     with Image.open(image_path) as img:
         file_w, file_h = img.size
-        # bbox 좌표는 detection 시 적용된 2048px 리사이즈 기준으로 저장됨
-        det_max = 2048
-        if max(file_w, file_h) > det_max:
-            det_scale = det_max / max(file_w, file_h)
+        # bbox 좌표는 detection 전 super_resolve()로 업스케일된 공간 기준으로 저장됨.
+        # 원본 파일 크기에서 SR 출력 크기(= detection 공간)를 역산한다.
+        sr_scale = min(SR_TARGET_W / file_w, SR_TARGET_H / file_h)
+        if sr_scale > 1.0:
+            det_w = int(file_w * sr_scale)
+            det_h = int(file_h * sr_scale)
         else:
-            det_scale = 1.0
-        det_w = file_w * det_scale
-        det_h = file_h * det_scale
+            det_w, det_h = file_w, file_h
         img.thumbnail((max_size, max_size))
         if img.mode not in ("RGB", "RGBA"):
             img = img.convert("RGB")

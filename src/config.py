@@ -18,6 +18,12 @@ SENSOR_DB_PATH = str(DB_DIR / "sensor_detections.db")
 PAIRING_DB_PATH = str(DB_DIR / "object_pairings.db")
 REPORTS_DB_PATH = str(DB_DIR / "reports.db")
 
+# --- Super-Resolution ---
+# SAM3 탐지 전 이미지를 업스케일할 목표 해상도 (픽셀).
+# 비율을 유지하며 이 크기에 맞게 확대. Real-ESRGAN 미설치 시 PIL LANCZOS로 폴백.
+SR_TARGET_W = int(os.getenv("SR_TARGET_W", "8000"))
+SR_TARGET_H = int(os.getenv("SR_TARGET_H", "6000"))
+
 # --- SAM3 Model (Segment Anything Model 3 by Meta AI) ---
 # SAM3 performs text-prompted concept segmentation in a single forward pass,
 # replacing the SAM2 + CLIP two-stage pipeline.
