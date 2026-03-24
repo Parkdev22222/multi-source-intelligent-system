@@ -1364,15 +1364,8 @@ function _edDraw() {
   }
 }
 
-async function _edDeleteDet(idx) {
-  const det = _edDets[idx];
-  if (!det) return;
-  // SensorDB에서 즉시 삭제 (기존 탐지 결과인 경우)
-  if (det._id) {
-    try {
-      await fetch(`${API}/api/detection/${encodeURIComponent(det._id)}`, { method: 'DELETE' });
-    } catch(e) { /* 네트워크 오류는 무시하고 로컬 목록에서만 제거 */ }
-  }
+function _edDeleteDet(idx) {
+  if (idx < 0 || idx >= _edDets.length) return;
   _edDets.splice(idx, 1);
   if (_edSelIdx >= _edDets.length) _edSelIdx = -1;
   _edRenderList(); _edDraw();
