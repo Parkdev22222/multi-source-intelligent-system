@@ -636,7 +636,7 @@ def api_report_images(report_id: str):
 
     curr_info = _build_info(current_image_id, current_capture_time, with_detections=True) \
                 if current_image_id else None
-    past_info = _build_info(past_image_id,    past_capture_time,    with_detections=False) \
+    past_info = _build_info(past_image_id,    past_capture_time,    with_detections=True) \
                 if past_image_id else None
 
     return {
