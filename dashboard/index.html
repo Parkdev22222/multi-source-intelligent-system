@@ -1515,13 +1515,18 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
   saveBtn.disabled = true;
   saveBtn.textContent = '저장 중...';
   try {
+    // 저장 전 원본 건수 기억 (추가/삭제 건수 계산용)
+    const prevCountRes = await fetch(`${API}/api/detections/by-image/${encodeURIComponent(_edImgId)}`);
+    const prevCount = prevCountRes.ok ? ((await prevCountRes.json()).count ?? 0) : 0;
+    const newCount  = _edDets.length;
+
     // _delBtn 등 내부 렌더링 속성 제외하고 필요한 필드만 전송
     const payload = _edDets.map(d => ({
       object_class: d.object_class,
       confidence:   d.confidence,
       bbox:         d.bbox,
-      lat:          d.lat  ?? 0,
-      lon:          d.lon  ?? 0,
+      lat:          d.lat ?? 0,
+      lon:          d.lon ?? 0,
     }));
     const res = await fetch(`${API}/api/image/${encodeURIComponent(_edImgId)}/detections`, {
       method: 'PUT',
@@ -1529,9 +1534,12 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
       body: JSON.stringify({ detections: payload }),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '저장 실패');
-    const result = await res.json();
+    await res.json();
+
+    const diff = newCount - prevCount;
+    const diffStr = diff > 0 ? ` (+${diff} 추가)` : diff < 0 ? ` (${diff} 삭제)` : '';
     document.getElementById('det-editor-modal').classList.remove('open');
-    meta_toast(`저장 완료 – 탐지 ${result.updated}건. 이미지 갱신 중...`);
+    meta_toast(`SensorDB 저장 완료 – ${newCount}건${diffStr}. 이미지 갱신 중...`);
     await refreshReportImages();
     meta_toast(`이미지 갱신 완료`);
   } catch(e) {
