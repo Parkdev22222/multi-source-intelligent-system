@@ -234,10 +234,9 @@
     #det-add-hint { font-size:9px; color:var(--dim); text-align:center; padding:4px 0 0; }
 
     /* ── 마커 스타일 ── */
-    .sat-dot { width:10px; height:10px; border-radius:50%; border:2px solid; cursor:pointer; transition:transform .1s; }
-    .sat-dot:hover { transform:scale(1.8); }
-    .sat-dot.military { background:rgba(255,64,64,.5); border-color:#ff4040; }
-    .sat-dot.active-sat { background:rgba(0,255,136,.6); border-color:#00ff88; box-shadow:0 0 8px #00ff88; }
+    .sat-dot { width:20px; height:20px; cursor:pointer; transition:transform .1s; font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 0 2px rgba(0,0,0,.8)); }
+    .sat-dot:hover { transform:scale(1.6); }
+    .sat-dot.active-sat { filter:drop-shadow(0 0 4px #00ff88); }
 
     /* ── 보고서 위치 마커 ── */
     .rpt-map-dot {
@@ -571,10 +570,11 @@ function renderMarkers() {
   satellites.forEach(sat => {
     const isActive = (sat.id === activeSatId);
     const el = document.createElement('div');
-    el.className = `sat-dot ${isActive ? 'active-sat' : 'military'}`;
+    el.className = `sat-dot ${isActive ? 'active-sat' : ''}`;
     el.title = sat.name;
+    el.textContent = '🛰️';
     const marker = L.marker([sat.lat, sat.lon], {
-      icon: L.divIcon({ html: el, className: '', iconSize: [10, 10], iconAnchor: [5, 5] }),
+      icon: L.divIcon({ html: el, className: '', iconSize: [20, 20], iconAnchor: [10, 10] }),
     }).addTo(map);
     marker._sat = sat;
     marker.on('mouseover', () => {
