@@ -239,6 +239,16 @@
     .sat-dot.military { background:rgba(255,64,64,.5); border-color:#ff4040; }
     .sat-dot.active-sat { background:rgba(0,255,136,.6); border-color:#00ff88; box-shadow:0 0 8px #00ff88; }
 
+    /* ── 보고서 위치 마커 ── */
+    .rpt-map-dot {
+      width:12px; height:12px; border-radius:50%; border:2px solid var(--amber);
+      background:rgba(255,179,0,.35); cursor:pointer; transition:transform .1s, box-shadow .1s;
+      box-sizing:border-box;
+    }
+    .rpt-map-dot:hover { transform:scale(1.7); box-shadow:0 0 8px var(--amber); }
+    .rpt-map-dot.alert-rpt { border-color:#ff4444; background:rgba(255,68,68,.35); }
+    .rpt-map-dot.alert-rpt:hover { box-shadow:0 0 8px #ff4444; }
+
     /* ── 호버 핀 마커 (목록 hover → 지도 위치 표시) ── */
     @keyframes pin-pulse { from { transform:scale(1); opacity:1; } to { transform:scale(1.7); opacity:.3; } }
     .map-hover-pin { width:14px; height:14px; border-radius:50%; border:2px solid; box-sizing:border-box; animation:pin-pulse 1s infinite alternate; }
@@ -425,6 +435,8 @@ const API = window.location.pathname.replace(/\/dashboard\/?.*$/, '');
 let map, satMarkers = [], activeSatId = null, hoverTimer = null;
 let satellites = [];
 let _hoverMarker = null;
+let _reportMapMarkers = [];       // 보고서 위치 마커 배열
+const REPORT_MARKER_MIN_ZOOM = 6; // 이 줌 이상에서 보고서 마커 표시
 
 /* ── 호버 핀 마커 – 목록 항목 hover 시 지도 위에 위치 표시 ── */
 function showHoverMarker(lat, lon, pinClass) {
@@ -470,6 +482,9 @@ function initMap() {
         attribution: '© OpenStreetMap © CARTO', maxZoom: 18, subdomains: 'abcd',
       }).addTo(map);
     });
+
+  // 줌·이동 시 보고서 마커 갱신
+  map.on('zoomend moveend', renderReportMarkers);
 }
 
 /* ══════════════════════════════════════════════════
@@ -486,6 +501,52 @@ function flyToLocation(lat, lon) {
   _flyTimer = setTimeout(() => {
     map.flyTo([lat, lon], FLY_ZOOM, { duration: FLY_DURATION, easeLinearity: 0.5 });
   }, 120);
+}
+
+/* ── 보고서 위치 마커 렌더링 ── */
+function renderReportMarkers() {
+  // 기존 마커 제거
+  _reportMapMarkers.forEach(m => m.remove());
+  _reportMapMarkers = [];
+
+  if (!map || !_rptData.length) return;
+
+  // 줌 레벨이 임계값 미만이면 표시하지 않음
+  if (map.getZoom() < REPORT_MARKER_MIN_ZOOM) return;
+
+  const bounds = map.getBounds();
+
+  _rptData.forEach(r => {
+    const lat = r.lat_center;
+    const lon = r.lon_center;
+    if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return;
+    if (!bounds.contains([lat, lon])) return;
+
+    const isAlert = !!getAlertLabel(r.country_name);
+    const el = document.createElement('div');
+    el.className = 'rpt-map-dot' + (isAlert ? ' alert-rpt' : '');
+
+    const marker = L.marker([lat, lon], {
+      icon: L.divIcon({ html: el, className: '', iconSize: [12, 12], iconAnchor: [6, 6] }),
+      zIndexOffset: 400,
+    }).addTo(map);
+
+    // 툴팁: 보고서명 + 국가
+    const countryLabel = getAlertLabel(r.country_name)
+      ? ` ⚠ ${getAlertLabel(r.country_name)}` : '';
+    marker.bindTooltip(
+      `<span style="font-family:monospace;font-size:11px;">${r._fname}${countryLabel}</span>`,
+      { direction: 'top', offset: [0, -8], opacity: 0.92 }
+    );
+
+    // 더블클릭 → 보고서 상세 모달 (목록 더블클릭과 동일)
+    marker.on('dblclick', e => {
+      L.DomEvent.stopPropagation(e);
+      openReportById(r.id, r._fname);
+    });
+
+    _reportMapMarkers.push(marker);
+  });
 }
 
 /* ── 위성 위치 로드 (모의기) ── */
@@ -944,6 +1005,9 @@ async function loadAllReports() {
     // 현재 선택 지역으로 렌더링 (없으면 전체로 리셋)
     if (!tabs.includes(_rptRegion)) _rptRegion = '전체';
     renderRptList(_rptRegion);
+
+    // 지도 마커 갱신 (줌 조건 충족 시)
+    renderReportMarkers();
   } catch(e) { console.warn('[loadAllReports]', e); }
 }
 
