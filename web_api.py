@@ -236,12 +236,20 @@ def _image_with_detections_b64(image_path: Path, detections: list, max_size: int
     """이미지에 탐지 결과 바운딩박스를 그린 뒤 base64 PNG 반환."""
     from PIL import Image, ImageDraw, ImageFont
     with Image.open(image_path) as img:
-        orig_w, orig_h = img.size
+        file_w, file_h = img.size
+        # bbox 좌표는 detection 시 적용된 2048px 리사이즈 기준으로 저장됨
+        det_max = 2048
+        if max(file_w, file_h) > det_max:
+            det_scale = det_max / max(file_w, file_h)
+        else:
+            det_scale = 1.0
+        det_w = file_w * det_scale
+        det_h = file_h * det_scale
         img.thumbnail((max_size, max_size))
         if img.mode not in ("RGB", "RGBA"):
             img = img.convert("RGB")
-        scale_x = img.width  / orig_w
-        scale_y = img.height / orig_h
+        scale_x = img.width  / det_w
+        scale_y = img.height / det_h
         draw = ImageDraw.Draw(img, "RGBA")
         for det in detections:
             x1 = det.bbox_x1 * scale_x
