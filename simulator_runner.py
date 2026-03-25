@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.satellite.simulator import get_active_satellite, get_positions
+from src.satellite.land_check import is_land
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +172,24 @@ def run_step() -> dict:
         f"[SimRunner] 활성 위성: {active['name']}  "
         f"lat={active['lat']:.4f}  lon={active['lon']:.4f}  alt={active['alt_km']}km"
     )
+
+    # ── 1-b. 육지 여부 확인 — 바다 위면 파이프라인 건너뜀 ─────────────────
+    lat, lon = active["lat"], active["lon"]
+    if not is_land(lat, lon):
+        skip_reason = f"바다 위 — lat={lat:.4f}, lon={lon:.4f}"
+        logger.info("[SimRunner] %s → 이미지 수집·탐지·보고서 생성 건너뜀", skip_reason)
+        return {
+            "success":     True,
+            "skipped":     True,
+            "skip_reason": skip_reason,
+            "elapsed_s":   round(time.time() - t0, 2),
+            "satellites":  satellites,
+            "active":      active,
+            "images":      [],
+            "stdout_tail": "",
+            "stderr_tail": "",
+        }
+    logger.info("[SimRunner] 육지 확인 (lat=%.4f, lon=%.4f) → 파이프라인 진행", lat, lon)
 
     # ── 2. 이미지 선택 ────────────────────────────────────────────────────
     imgs = _pick_images(2)

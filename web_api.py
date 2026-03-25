@@ -189,22 +189,27 @@ def _auto_sim_worker():
                     try:
                         from simulator_runner import run_step
                         result = run_step()
-                        _auto_state["run_count"]    += 1
-                        _auto_state["last_run"]      = datetime.utcnow().isoformat()
-                        _auto_state["last_success"]  = result["success"]
-                        _auto_state["last_elapsed"]  = result["elapsed_s"]
-                        _auto_state["last_images"]   = result.get("images", [])
-                        _auto_state["last_active"]   = result.get("active")
-                        logger.info("[AutoSim] 완료 (#%d, %.1fs, success=%s)",
-                                    _auto_state["run_count"],
-                                    result["elapsed_s"],
-                                    result["success"])
-                        # 파이프라인 완료 → SSE 실시간 알림
-                        _notify_db_updated(
-                            run_count=_auto_state["run_count"],
-                            success=result["success"],
-                            elapsed=result["elapsed_s"],
-                        )
+                        # 바다 위 → 파이프라인 건너뜀 (run_count 미증가, SSE 미전송)
+                        if result.get("skipped"):
+                            logger.info("[AutoSim] 건너뜀 — %s",
+                                        result.get("skip_reason", ""))
+                        else:
+                            _auto_state["run_count"]    += 1
+                            _auto_state["last_run"]      = datetime.utcnow().isoformat()
+                            _auto_state["last_success"]  = result["success"]
+                            _auto_state["last_elapsed"]  = result["elapsed_s"]
+                            _auto_state["last_images"]   = result.get("images", [])
+                            _auto_state["last_active"]   = result.get("active")
+                            logger.info("[AutoSim] 완료 (#%d, %.1fs, success=%s)",
+                                        _auto_state["run_count"],
+                                        result["elapsed_s"],
+                                        result["success"])
+                            # 파이프라인 완료 → SSE 실시간 알림
+                            _notify_db_updated(
+                                run_count=_auto_state["run_count"],
+                                success=result["success"],
+                                elapsed=result["elapsed_s"],
+                            )
                     except Exception as exc:
                         logger.error("[AutoSim] 실행 오류: %s", exc)
                         _notify_db_updated(run_count=_auto_state["run_count"], success=False)
@@ -341,12 +346,14 @@ def api_simulator_step(background_tasks: BackgroundTasks):
     )
 
     return {
-        "success":    result["success"],
-        "elapsed_s":  result["elapsed_s"],
-        "active":     result["active"],
-        "satellites": result["satellites"],
-        "images":     result["images"],
-        "pipeline_ok": result["success"],
+        "success":     result["success"],
+        "skipped":     result.get("skipped", False),
+        "skip_reason": result.get("skip_reason", ""),
+        "elapsed_s":   result["elapsed_s"],
+        "active":      result["active"],
+        "satellites":  result["satellites"],
+        "images":      result["images"],
+        "pipeline_ok": result["success"] and not result.get("skipped", False),
         "stderr_tail": result["stderr_tail"] if not result["success"] else "",
     }
 
