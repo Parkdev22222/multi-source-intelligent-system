@@ -654,6 +654,87 @@ def api_report_images(report_id: str):
     }
 
 
+@app.get("/api/report/{report_id}/pairings")
+def api_report_pairings(report_id: str):
+    """보고서 세션의 페어링 목록 (bbox·클래스 포함) 반환 – 매칭 도시용.
+
+    Returns:
+        current_image_id: 현재 이미지 ID (raw 엔드포인트에서 원본 이미지 취득용)
+        past_image_id:    과거 이미지 ID
+        pairs:            페어링 목록 (status·label·bbox·class·conf)
+    """
+    report = get_report_by_id(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="보고서 없음.")
+    if not report.session_id:
+        return {"current_image_id": None, "past_image_id": None, "pairs": []}
+
+    from datetime import datetime as _dt
+    _MIN_DT = _dt.min
+
+    pairings = get_pairings_by_session(report.session_id)
+    if pairings:
+        latest_pt = max(p.pairing_time for p in pairings)
+        pairings = [p for p in pairings if p.pairing_time == latest_pt]
+
+    # ── 현재 이미지 ID (api_report_images 와 동일 로직) ─────────────────────
+    curr_imgs = get_images_by_session(report.session_id)
+    if curr_imgs:
+        curr_imgs = sorted(curr_imgs, key=lambda x: x.capture_time or _MIN_DT)
+        current_image_id = curr_imgs[-1].id
+    else:
+        current_image_id = None
+        for p in pairings:
+            if p.current_detection_id:
+                det = get_detection_by_id(p.current_detection_id)
+                if det and det.image_id:
+                    current_image_id = det.image_id
+                    break
+
+    # ── 과거 이미지 ID ───────────────────────────────────────────────────────
+    past_image_id = None
+    for p in pairings:
+        if p.past_detection_id:
+            det = get_detection_by_id(p.past_detection_id)
+            if det and det.image_id:
+                past_image_id = det.image_id
+                break
+
+    # ── 페어링 목록 구성 ─────────────────────────────────────────────────────
+    counters: dict[str, int] = {"matched": 0, "moved": 0, "new": 0, "disappeared": 0}
+    pairs = []
+    for p in pairings:
+        st = p.status if p.status in counters else "new"
+        counters[st] += 1
+        cnt = counters[st]
+        if st == "matched":
+            label = str(cnt)
+        elif st == "moved":
+            label = f"M{cnt}"
+        elif st == "new":
+            label = f"N{cnt}"
+        else:
+            label = f"D{cnt}"
+
+        pairs.append({
+            "id":            p.id,
+            "status":        st,
+            "label":         label,
+            "current_bbox":  p.current_bbox,
+            "current_class": p.current_object_class,
+            "current_conf":  round(p.current_confidence, 3) if p.current_confidence else None,
+            "past_bbox":     p.past_bbox,
+            "past_class":    p.past_object_class,
+            "past_conf":     round(p.past_confidence, 3) if p.past_confidence else None,
+        })
+
+    return {
+        "current_image_id": current_image_id,
+        "past_image_id":    past_image_id,
+        "pairs":            pairs,
+    }
+
+
 # ── 사용자 수정용 엔드포인트 ──────────────────────────────────────────────────
 
 class BboxIn(BaseModel):

@@ -288,6 +288,27 @@
 
     /* 스피너 */
     #spinner { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:var(--green); font-size:13px; z-index:999; background:rgba(10,14,20,.85); padding:10px 20px; border:1px solid var(--border); border-radius:4px; }
+
+    /* ── 페어링 매칭 도시 패널 ── */
+    #pviz-row { display:none; border-top:1px solid var(--border); flex-direction:column; flex-shrink:0; }
+    #pviz-row.open { display:flex; }
+    #pviz-hdr { display:flex; align-items:center; gap:10px; padding:5px 16px; background:#080d14; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+    #pviz-title { font-size:10px; color:var(--amber); letter-spacing:1px; flex-shrink:0; }
+    .pviz-legend { display:flex; gap:10px; flex:1; flex-wrap:wrap; align-items:center; }
+    .pviz-leg-item { display:flex; align-items:center; gap:4px; font-size:9px; color:var(--dim); white-space:nowrap; }
+    .pviz-leg-dot { width:9px; height:9px; border-radius:2px; flex-shrink:0; }
+    #pviz-status { font-size:9px; color:var(--dim); padding:3px 16px; background:#060c14; border-bottom:1px solid var(--border); min-height:18px; }
+    #pviz-container { position:relative; display:flex; align-items:flex-start; gap:0; padding:10px 16px 12px; background:#060c14; overflow:hidden; }
+    #pviz-svg { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; overflow:visible; }
+    .pviz-panel { flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .pviz-panel-lbl { font-size:9px; letter-spacing:1px; text-transform:uppercase; text-align:center; padding:2px 0; }
+    .pviz-panel-lbl.past-lbl { color:#5599ff; }
+    .pviz-panel-lbl.curr-lbl { color:var(--green); }
+    #pviz-past-canvas, #pviz-curr-canvas { display:block; width:100%; border:1px solid var(--border); background:#000; }
+    #pviz-mid { width:56px; flex-shrink:0; }
+    .rpt-act-btn.pviz { border-color:#9050dd; color:#b070ff; }
+    .rpt-act-btn.pviz:hover { background:#9050dd22; }
+    .rpt-act-btn.pviz.active { background:#9050dd33; border-color:#c090ff; color:#d0b0ff; }
   </style>
 </head>
 <body>
@@ -407,6 +428,7 @@
         <button class="rpt-act-btn" id="edit-report-btn" style="display:none" title="보고서 텍스트 직접 수정">✏ 보고서 수정</button>
         <button class="rpt-act-btn curr" id="edit-curr-det-btn" style="display:none" title="현재 시점 객체탐지 수정">◉ 현재 탐지 수정</button>
         <button class="rpt-act-btn past" id="edit-past-det-btn" style="display:none" title="과거 시점 객체탐지 수정">◎ 과거 탐지 수정</button>
+        <button class="rpt-act-btn pviz" id="pviz-toggle-btn" style="display:none" title="이전↔현재 객체 매칭 관계 도시">◈ 매칭 도시</button>
         <button class="rpt-act-btn dl" id="download-btn" style="display:none">⬇ 다운로드</button>
         <span id="report-hdr-close">✕</span>
       </div>
@@ -420,6 +442,31 @@
       <div class="rpt-img-panel">
         <div class="rpt-img-label curr-lbl">현재 위성사진 (객체탐지)</div>
         <div class="rpt-img-wrap" id="rpt-curr-wrap"><span class="rpt-img-loading">로딩 중...</span></div>
+      </div>
+    </div>
+    <!-- ── 페어링 매칭 도시 패널 ── -->
+    <div id="pviz-row">
+      <div id="pviz-hdr">
+        <span id="pviz-title">◈ 객체 매칭 도시</span>
+        <div class="pviz-legend">
+          <div class="pviz-leg-item"><div class="pviz-leg-dot" style="background:#00ff88"></div>동일·정지</div>
+          <div class="pviz-leg-item"><div class="pviz-leg-dot" style="background:#ffb300"></div>동일·이동</div>
+          <div class="pviz-leg-item"><div class="pviz-leg-dot" style="background:#40aaff"></div>신규 출현</div>
+          <div class="pviz-leg-item"><div class="pviz-leg-dot" style="background:#ff4040"></div>소실</div>
+        </div>
+      </div>
+      <div id="pviz-status"></div>
+      <div id="pviz-container">
+        <div class="pviz-panel">
+          <div class="pviz-panel-lbl past-lbl">이전 위성사진</div>
+          <canvas id="pviz-past-canvas"></canvas>
+        </div>
+        <div id="pviz-mid"></div>
+        <div class="pviz-panel">
+          <div class="pviz-panel-lbl curr-lbl">현재 위성사진</div>
+          <canvas id="pviz-curr-canvas"></canvas>
+        </div>
+        <svg id="pviz-svg"></svg>
       </div>
     </div>
     <div id="report-body">
@@ -1173,6 +1220,7 @@ async function loadAllReports() {
 let _currentReportId  = null;
 let _currImageIds     = [];   // 현재 시점 이미지 ID 배열
 let _pastImageIds     = [];   // 과거 시점 이미지 ID 배열
+let _pvizOpen         = false;
 
 function buildImgEl(info) {
   const wrap = document.createElement('div');
@@ -1221,6 +1269,10 @@ async function openReportById(id, fname) {
   dlBtn.style.display  = 'none';
   document.getElementById('rpt-regen-btn').style.display = 'none';
   editRpt.style.display = editCurr.style.display = editPast.style.display = 'none';
+  document.getElementById('pviz-toggle-btn').style.display = 'none';
+  document.getElementById('pviz-row').classList.remove('open');
+  document.getElementById('pviz-toggle-btn').classList.remove('active');
+  _pvizOpen = false;
   imgRow.classList.remove('has-images');
   pastWrap.innerHTML = '<span class="rpt-img-loading">로딩 중...</span>';
   currWrap.innerHTML = '<span class="rpt-img-loading">로딩 중...</span>';
@@ -1288,12 +1340,231 @@ async function openReportById(id, fname) {
       } else {
         pastWrap.innerHTML = '<span class="rpt-img-loading">이전 사진 없음</span>';
       }
+      // 매칭 도시 버튼 – 이전+현재 사진이 모두 있을 때만 활성화
+      if (hasPast && hasCurr) {
+        document.getElementById('pviz-toggle-btn').style.display = 'inline-block';
+      }
     } else {
       imgRow.classList.remove('has-images');
     }
   } catch(e) {
     meta.textContent = `네트워크 오류: ${e.message}`;
   }
+}
+
+/* ══════════════════════════════════════════════════
+   페어링 매칭 도시 (Pairing Visualization)
+   ══════════════════════════════════════════════════ */
+const PVIZ_COLORS = {
+  matched:    '#00ff88',
+  moved:      '#ffb300',
+  new:        '#40aaff',
+  disappeared:'#ff4040',
+};
+
+document.getElementById('pviz-toggle-btn').addEventListener('click', () => {
+  const row = document.getElementById('pviz-row');
+  const btn = document.getElementById('pviz-toggle-btn');
+  if (_pvizOpen) {
+    row.classList.remove('open');
+    btn.classList.remove('active');
+    _pvizOpen = false;
+  } else {
+    _renderPairingViz(_currentReportId);
+  }
+});
+
+async function _renderPairingViz(reportId) {
+  const row    = document.getElementById('pviz-row');
+  const status = document.getElementById('pviz-status');
+  const btn    = document.getElementById('pviz-toggle-btn');
+  row.classList.add('open');
+  btn.classList.add('active');
+  _pvizOpen = true;
+  status.textContent = '매칭 데이터 로딩 중...';
+
+  // 이전 캔버스 초기화
+  const pastC = document.getElementById('pviz-past-canvas');
+  const currC = document.getElementById('pviz-curr-canvas');
+  const svg   = document.getElementById('pviz-svg');
+  pastC.width = pastC.height = 0;
+  currC.width = currC.height = 0;
+  svg.innerHTML = '';
+
+  try {
+    const ts = Date.now();
+    const pRes = await fetch(`${API}/api/report/${encodeURIComponent(reportId)}/pairings?t=${ts}`);
+    if (!pRes.ok) { status.textContent = '페어링 데이터를 불러올 수 없습니다.'; return; }
+    const pData = await pRes.json();
+
+    if (!pData.pairs || pData.pairs.length === 0) {
+      status.textContent = '페어링 데이터 없음';
+      return;
+    }
+
+    const MAX = 440;
+    const [currImg, pastImg] = await Promise.all([
+      pData.current_image_id
+        ? fetch(`${API}/api/image/${encodeURIComponent(pData.current_image_id)}/raw?max_size=${MAX}`).then(r => r.ok ? r.json() : null)
+        : Promise.resolve(null),
+      pData.past_image_id
+        ? fetch(`${API}/api/image/${encodeURIComponent(pData.past_image_id)}/raw?max_size=${MAX}`).then(r => r.ok ? r.json() : null)
+        : Promise.resolve(null),
+    ]);
+
+    await Promise.all([
+      pastImg ? _pvizDrawCanvas(pastC, pastImg, pData.pairs, 'past')    : null,
+      currImg ? _pvizDrawCanvas(currC, currImg, pData.pairs, 'current') : null,
+    ]);
+
+    // 레이아웃이 반영된 후 SVG 연결선 그리기
+    requestAnimationFrame(() => {
+      _pvizDrawLines(pData.pairs, pastC, currC, pastImg, currImg);
+    });
+
+    // 요약 통계
+    const cnt = { matched:0, moved:0, new:0, disappeared:0 };
+    pData.pairs.forEach(p => { if (cnt[p.status] !== undefined) cnt[p.status]++; });
+    const parts = [];
+    if (cnt.matched)    parts.push(`동일·정지 ${cnt.matched}`);
+    if (cnt.moved)      parts.push(`동일·이동 ${cnt.moved}`);
+    if (cnt.new)        parts.push(`신규 ${cnt.new}`);
+    if (cnt.disappeared)parts.push(`소실 ${cnt.disappeared}`);
+    status.textContent = `총 ${pData.pairs.length}건 | ${parts.join(' | ')}`;
+
+  } catch(e) {
+    status.textContent = `오류: ${e.message}`;
+  }
+}
+
+/** 캔버스에 원본 이미지 + 상태별 색상 바운딩박스 + 레이블 렌더링 */
+function _pvizDrawCanvas(canvas, imgData, pairs, side) {
+  return new Promise(resolve => {
+    canvas.width  = imgData.width;
+    canvas.height = imgData.height;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0);
+      const sx = imgData.width  / imgData.orig_width;
+      const sy = imgData.height / imgData.orig_height;
+
+      pairs.forEach(p => {
+        // 해당 side에 표시할 bbox 선택
+        const bbox = side === 'current' ? p.current_bbox : p.past_bbox;
+        if (!bbox) return;
+        if (side === 'current' && p.status === 'disappeared') return;
+        if (side === 'past'    && p.status === 'new')         return;
+
+        const color = PVIZ_COLORS[p.status] || '#ffffff';
+        const x1 = bbox.x1 * sx, y1 = bbox.y1 * sy;
+        const x2 = bbox.x2 * sx, y2 = bbox.y2 * sy;
+        const w = x2 - x1, h = y2 - y1;
+
+        // 박스 채우기 (반투명)
+        ctx.fillStyle = color + '28';
+        ctx.fillRect(x1, y1, w, h);
+
+        // 박스 테두리
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x1, y1, w, h);
+
+        // 레이블 배경 + 텍스트
+        const clsWord = ((side === 'current' ? p.current_class : p.past_class) || '').split(' ').pop();
+        const conf    = side === 'current' ? p.current_conf : p.past_conf;
+        const confStr = conf != null ? ` ${(conf * 100).toFixed(0)}%` : '';
+        const labelTxt = `${p.label} ${clsWord}${confStr}`;
+        const fs = 10;
+        ctx.font = `bold ${fs}px monospace`;
+        const tw = ctx.measureText(labelTxt).width;
+        const tx = x1;
+        const ty = y1 > fs + 4 ? y1 - 3 : y1 + fs + 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.72)';
+        ctx.fillRect(tx, ty - fs, tw + 6, fs + 3);
+        ctx.fillStyle = color;
+        ctx.fillText(labelTxt, tx + 3, ty);
+      });
+      resolve();
+    };
+    img.onerror = resolve;
+    img.src = `data:image/png;base64,${imgData.image_b64}`;
+  });
+}
+
+/** 이전↔현재 캔버스 사이에 matched/moved 쌍을 베지어 곡선으로 연결 */
+function _pvizDrawLines(pairs, pastC, currC, pastImg, currImg) {
+  const svg       = document.getElementById('pviz-svg');
+  const container = document.getElementById('pviz-container');
+  svg.innerHTML   = '';
+
+  if (!pastImg || !currImg) return;
+
+  const contR = container.getBoundingClientRect();
+  const pastR = pastC.getBoundingClientRect();
+  const currR = currC.getBoundingClientRect();
+
+  const W = container.offsetWidth;
+  const H = container.offsetHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  pairs.forEach(p => {
+    if (p.status !== 'matched' && p.status !== 'moved') return;
+    if (!p.past_bbox || !p.current_bbox) return;
+
+    const color = PVIZ_COLORS[p.status];
+    const isDashed = p.status === 'moved';
+
+    // 이전 이미지에서의 bbox 중심 → 컨테이너 기준 좌표
+    const pastCx = pastR.left - contR.left
+      + (p.past_bbox.x1 + p.past_bbox.x2) / 2 / pastImg.orig_width  * pastR.width;
+    const pastCy = pastR.top  - contR.top
+      + (p.past_bbox.y1 + p.past_bbox.y2) / 2 / pastImg.orig_height * pastR.height;
+
+    // 현재 이미지에서의 bbox 중심 → 컨테이너 기준 좌표
+    const currCx = currR.left - contR.left
+      + (p.current_bbox.x1 + p.current_bbox.x2) / 2 / currImg.orig_width  * currR.width;
+    const currCy = currR.top  - contR.top
+      + (p.current_bbox.y1 + p.current_bbox.y2) / 2 / currImg.orig_height * currR.height;
+
+    const mx = (pastCx + currCx) / 2;
+
+    // 베지어 연결 곡선
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d',
+      `M ${pastCx.toFixed(1)} ${pastCy.toFixed(1)} ` +
+      `C ${mx.toFixed(1)} ${pastCy.toFixed(1)}, ${mx.toFixed(1)} ${currCy.toFixed(1)}, ` +
+      `${currCx.toFixed(1)} ${currCy.toFixed(1)}`
+    );
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('opacity', '0.75');
+    if (isDashed) path.setAttribute('stroke-dasharray', '5,3');
+    svg.appendChild(path);
+
+    // 중앙 레이블
+    const lx = mx, ly = (pastCy + currCy) / 2;
+    const lblBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    lblBg.setAttribute('x', (lx - 9).toFixed(1));
+    lblBg.setAttribute('y', (ly - 7).toFixed(1));
+    lblBg.setAttribute('width', '18');
+    lblBg.setAttribute('height', '12');
+    lblBg.setAttribute('fill', '#080e18');
+    lblBg.setAttribute('rx', '2');
+    svg.appendChild(lblBg);
+
+    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    lbl.setAttribute('x', lx.toFixed(1));
+    lbl.setAttribute('y', (ly + 3).toFixed(1));
+    lbl.setAttribute('text-anchor', 'middle');
+    lbl.setAttribute('fill', color);
+    lbl.setAttribute('font-size', '8');
+    lbl.setAttribute('font-family', 'monospace');
+    lbl.setAttribute('font-weight', 'bold');
+    lbl.textContent = p.label;
+    svg.appendChild(lbl);
+  });
 }
 
 /* ══════════════════════════════════════════════════
