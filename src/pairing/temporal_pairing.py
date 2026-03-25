@@ -165,8 +165,16 @@ def pair_by_tracking(
         best_current: Optional[DetectionResult] = None
         best_iou = IOU_MATCH_THRESHOLD
 
+        # 비교 기준 클래스: past DB 레코드가 있으면 그 클래스, 없으면 tracker가 기억한 클래스
+        expected_cls = (
+            past.object_class if past else tracked.past_object_class or ""
+        ).lower()
+
         for cur in current_detections:
             if cur.detection_id in matched_current_ids:
+                continue
+            # 동일 클래스인 경우만 같은 객체 후보로 허용
+            if cur.object_class.lower() != expected_cls:
                 continue
             iou = _bbox_iou(
                 tracked.bbox_x1, tracked.bbox_y1,
@@ -582,6 +590,9 @@ def pair_by_similarity(
     candidates = []   # (score, cur_idx, past_idx)
     for ci, cur in enumerate(current_detections):
         for pi, past in enumerate(past_detections):
+            # 동일 클래스인 경우만 같은 객체 후보로 허용
+            if cur.object_class.lower() != past.object_class.lower():
+                continue
             if clip_sim_matrix is not None:
                 score = float(clip_sim_matrix[ci, pi])
             else:
