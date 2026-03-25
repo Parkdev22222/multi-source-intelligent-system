@@ -381,7 +381,7 @@
       </div>
     </div>
 
-    <div id="dp-hint">영상·탐지 더블클릭 → 해당 위치 보고서 | 보고서 목록 더블클릭 → 직접 열기</div>
+    <div id="dp-hint">영상·탐지 더블클릭 → 해당 위치 보고서 | 탐지 목록 더블클릭 → 탐지 수정 | 보고서 목록 더블클릭 → 직접 열기</div>
   </div>
 
   <!-- hover 팝업 -->
@@ -798,6 +798,11 @@ async function loadAllDetections() {
       });
       item.addEventListener('mousemove', e => movePopup(e));
       item.addEventListener('mouseleave', () => { hidePopup(); removeHoverMarker(); });
+      item.addEventListener('dblclick', () => {
+        hidePopup();
+        removeHoverMarker();
+        openDetEditor(img.id, fmtTime(img.capture_time));
+      });
       list.appendChild(item);
     });
   } catch(e) { console.warn('[AllDetections]', e); }
