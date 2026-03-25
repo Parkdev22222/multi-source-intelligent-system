@@ -601,21 +601,35 @@ def pair_by_similarity(
                 score = max(0.0, 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG)
             candidates.append((score, ci, pi))
 
-    # Greedy assignment: highest-score pairs first.
-    # A pair is accepted only when score > SIMILARITY_MATCH_THRESHOLD;
-    # because the list is sorted descending we can break early.
-    candidates.sort(key=lambda x: x[0], reverse=True)
+    # Per-ci best-pi selection:
+    # For each ci, collect all pi that exceed SIMILARITY_MATCH_THRESHOLD and
+    # keep only the one with the highest score.  Then resolve conflicts where
+    # multiple cis chose the same pi by awarding it to the ci with the higher
+    # score; the losing ci remains unmatched (status "new").
+    # ------------------------------------------------------------------
+
+    # Step 1: for each ci, find the highest-scoring pi above threshold
+    ci_best: dict[int, tuple[float, int]] = {}   # ci -> (score, pi)
+    for score, ci, pi in candidates:
+        if score <= SIMILARITY_MATCH_THRESHOLD:
+            continue
+        if ci not in ci_best or score > ci_best[ci][0]:
+            ci_best[ci] = (score, pi)
+
+    # Step 2: resolve conflicts – if multiple cis chose the same pi,
+    # award the pi to the ci with the highest score for it
+    pi_winner: dict[int, tuple[float, int]] = {}  # pi -> (score, ci)
+    for ci, (score, pi) in ci_best.items():
+        if pi not in pi_winner or score > pi_winner[pi][0]:
+            pi_winner[pi] = (score, ci)
+
+    # Step 3: build final pairs from the conflict-resolved assignments
     matched_cur_ids: set = set()
     matched_past_ids: set = set()
     pairs: list = []   # [(DetectionResult, DetectionRecord)]
-
-    for _score, ci, pi in candidates:
-        if _score <= SIMILARITY_MATCH_THRESHOLD:
-            break   # remaining candidates all have lower scores
-        cur = current_detections[ci]
+    for pi, (_, ci) in pi_winner.items():
+        cur  = current_detections[ci]
         past = past_detections[pi]
-        if cur.detection_id in matched_cur_ids or past.id in matched_past_ids:
-            continue
         matched_cur_ids.add(cur.detection_id)
         matched_past_ids.add(past.id)
         pairs.append((cur, past))
