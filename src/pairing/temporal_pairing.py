@@ -394,8 +394,13 @@ def _mask_crop(image: "PILImage", x1: float, y1: float, x2: float, y2: float,
 
 
 def _load_pil_image(image_id: str) -> Optional["PILImage"]:
-    """Load a PIL image from disk given a sensor-DB image_id."""
+    """Load a PIL image from disk given a sensor-DB image_id.
+
+    Applies super_resolve so that the returned image dimensions match the
+    resolution at which bbox coordinates were originally computed.
+    """
     from PIL import Image as PILImage
+    from src.detection.super_resolution import super_resolve
 
     record = get_image_record_by_id(image_id)
     if record is None:
@@ -405,7 +410,9 @@ def _load_pil_image(image_id: str) -> Optional["PILImage"]:
     if not path.exists():
         logger.warning(f"[CLIPSim] Image file missing: {path}")
         return None
-    return PILImage.open(path).convert("RGB")
+    img = PILImage.open(path).convert("RGB")
+    arr = super_resolve(np.array(img, dtype=np.uint8))
+    return PILImage.fromarray(arr)
 
 
 def _compute_embeddings(
