@@ -2350,8 +2350,20 @@ function setupSSE() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'db_updated') {
-        popImgCache = {}; popDetCache = {};
-        await Promise.all([loadAllImages(), loadAllDetections(), loadAllReports()]);
+        // changed 필드가 없으면 전체 갱신 (하위 호환)
+        const changed = Array.isArray(msg.changed)
+          ? msg.changed
+          : ['images', 'detections', 'reports'];
+
+        const tasks = [];
+        if (changed.includes('images') || changed.includes('detections')) {
+          popImgCache = {}; popDetCache = {};
+        }
+        if (changed.includes('images'))     tasks.push(loadAllImages());
+        if (changed.includes('detections')) tasks.push(loadAllDetections());
+        if (changed.includes('reports'))    tasks.push(loadAllReports());
+
+        await Promise.all(tasks);
         await pollSimStatus();   // 상태 표시줄도 즉시 갱신
       }
     } catch(err) { console.warn('[SSE msg]', err); }

@@ -92,13 +92,19 @@ _sse_clients: list = []   # 연결된 클라이언트 Queue 목록
 _sse_lock = threading.Lock()
 
 
-def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float = 0.0):
-    """모든 SSE 구독 클라이언트에게 DB 업데이트 이벤트를 브로드캐스트한다."""
+def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float = 0.0,
+                       changed: list | None = None):
+    """모든 SSE 구독 클라이언트에게 DB 업데이트 이벤트를 브로드캐스트한다.
+
+    changed: 갱신된 데이터 종류 목록. 예: ["detections", "reports"]
+             None이면 전체("images", "detections", "reports")로 간주.
+    """
     payload = json.dumps({
         "type":      "db_updated",
         "run_count": run_count,
         "success":   success,
         "elapsed":   elapsed,
+        "changed":   changed or ["images", "detections", "reports"],
         "ts":        datetime.utcnow().isoformat(),
     })
     with _sse_lock:
@@ -842,6 +848,7 @@ def api_update_detections(image_id: str, body: DetectionsUpdateBody):
     new_det_list = get_detections_by_image(image_id)
     first_new_id = new_det_list[0].id if new_det_list else None
     update_pairings_detection_refs(old_det_ids, first_new_id)
+    _notify_db_updated(changed=["detections", "images"])
     return {"updated": count, "image_id": image_id}
 
 
@@ -895,6 +902,7 @@ def api_delete_detection(detection_id: str):
     delete_detection_by_id(detection_id)
     # pairing이 이 detection을 참조하고 있으면 null로 초기화
     update_pairings_detection_refs({detection_id}, None)
+    _notify_db_updated(changed=["detections", "images"])
     return {"deleted": True, "detection_id": detection_id}
 
 
@@ -904,6 +912,7 @@ def api_update_report(report_id: str, body: ReportContentBody):
     ok = update_report_content(report_id, body.report_content)
     if not ok:
         raise HTTPException(status_code=404, detail="보고서 없음")
+    _notify_db_updated(changed=["reports"])
     return {"updated": True, "report_id": report_id}
 
 
