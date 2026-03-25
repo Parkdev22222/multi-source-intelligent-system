@@ -229,8 +229,62 @@ def _auto_sim_worker():
         _time.sleep(AUTO_SIM_POLL_SEC)
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# DB 폴링 스레드 – 파이프라인 실행 중 탐지 결과 즉시 알림
+# ══════════════════════════════════════════════════════════════════════════
+
+_DB_POLL_INTERVAL = 2   # 폴링 간격 (초)
+
+def _db_poll_worker():
+    """탐지/이미지 DB 행 수를 주기적으로 확인해 변화 시 SSE 알림."""
+    import sqlite3
+    from src.config import SENSOR_DB_PATH, REPORTS_DB_PATH
+
+    def _row_counts():
+        counts = {"images": 0, "detections": 0, "reports": 0}
+        for db_path, queries in [
+            (SENSOR_DB_PATH,  {"images": "SELECT COUNT(*) FROM image_records",
+                               "detections": "SELECT COUNT(*) FROM detection_records"}),
+            (REPORTS_DB_PATH, {"reports": "SELECT COUNT(*) FROM reports"}),
+        ]:
+            try:
+                con = sqlite3.connect(db_path, timeout=2)
+                for key, sql in queries.items():
+                    try:
+                        counts[key] = con.execute(sql).fetchone()[0]
+                    except Exception:
+                        pass
+                con.close()
+            except Exception:
+                pass
+        return counts
+
+    prev = {"images": -1, "detections": -1, "reports": -1}
+
+    while True:
+        _time.sleep(_DB_POLL_INTERVAL)
+        try:
+            cur = _row_counts()
+            changed = [k for k in ("images", "detections", "reports") if cur[k] != prev[k]]
+            if changed:
+                # 파이프라인이 돌고 있을 때만 중간 알림 전송
+                # (파이프라인 완료 후 _auto_sim_worker 가 이미 전체 알림을 보내므로
+                #  running=False 일 때는 중복 전송하지 않음)
+                if _auto_state.get("running"):
+                    _notify_db_updated(
+                        run_count=_auto_state.get("run_count", 0),
+                        success=True,
+                        elapsed=0.0,
+                        changed=changed,
+                    )
+                prev = cur
+        except Exception as exc:
+            logger.debug("[DBPoll] 오류: %s", exc)
+
+
 # 서버 시작 시 스레드 자동 실행
 threading.Thread(target=_auto_sim_worker, daemon=True, name="AutoSimThread").start()
+threading.Thread(target=_db_poll_worker,  daemon=True, name="DBPollThread").start()
 
 
 def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
