@@ -12,13 +12,17 @@
   <script src="lib/leaflet.min.js"
           onload="window._leafletSrc='local'"
           onerror="window._leafletSrc='local-fail';(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';s.onload=function(){window._leafletSrc='cdn'};s.onerror=function(){window._leafletSrc='cdn-fail'};document.head.appendChild(s);})()"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg:    #0a0e14; --panel: #111820; --border: #1e3040;
       --green: #00ff88; --amber: #ffb300; --red:   #ff4040;
       --blue:  #40aaff; --text:  #c8d8e8; --dim:   #5a7a90;
-      --font:  'Courier New', Courier, monospace;
+      --font:  'Noto Sans KR', sans-serif;
+      --font-mono: 'Courier New', Courier, monospace;
     }
     html, body { height:100%; background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; overflow:hidden; }
 
@@ -92,7 +96,7 @@
     .country-label {
       color: #4a6a80;
       font-size: 9px;
-      font-family: 'Courier New', Courier, monospace;
+      font-family: var(--font);
       font-weight: bold;
       letter-spacing: .5px;
       text-transform: uppercase;
@@ -629,7 +633,7 @@ function renderReportMarkers() {
     const countryLabel = getAlertLabel(r.country_name)
       ? ` ⚠ ${getAlertLabel(r.country_name)}` : '';
     marker.bindTooltip(
-      `<span style="font-family:monospace;font-size:11px;">${r._fname}${countryLabel}</span>`,
+      `<span style="font-family:'Noto Sans KR',sans-serif;font-size:11px;">${r._fname}${countryLabel}</span>`,
       { direction: 'top', offset: [0, -8], opacity: 0.92 }
     );
 
