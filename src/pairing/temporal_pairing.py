@@ -601,33 +601,51 @@ def pair_by_similarity(
                 score = max(0.0, 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG)
             candidates.append((score, ci, pi))
 
-    # Per-ci best-pi selection:
-    # For each ci, collect all pi that exceed SIMILARITY_MATCH_THRESHOLD and
-    # keep only the one with the highest score.  Then resolve conflicts where
-    # multiple cis chose the same pi by awarding it to the ci with the higher
-    # score; the losing ci remains unmatched (status "new").
+    # Iterative per-ci best-pi assignment (Gale-Shapley / deferred-acceptance):
+    #
+    #  1. ci는 threshold 초과 pi 중 최고 점수 pi에 제안한다.
+    #  2. pi가 비어 있으면 → 잠정 매칭.
+    #  3. pi에 이미 다른 ci가 매칭돼 있으면:
+    #       - 새 ci의 점수가 더 높으면  → 새 ci가 pi를 획득, 기존 ci는 차선 pi로 재시도.
+    #       - 새 ci의 점수가 낮으면     → 새 ci는 차선 pi로 재시도.
+    #  4. 시도할 pi가 더 없으면 → ci는 "new" 처리.
+    #
+    # ci_ptr 이 항상 단조 증가하므로 유한 횟수 안에 반드시 종료된다.
     # ------------------------------------------------------------------
 
-    # Step 1: for each ci, find the highest-scoring pi above threshold
-    ci_best: dict[int, tuple[float, int]] = {}   # ci -> (score, pi)
+    # 각 ci의 후보 목록 (점수 내림차순, threshold 초과만)
+    ci_candidates: dict[int, list] = {}
     for score, ci, pi in candidates:
-        if score <= SIMILARITY_MATCH_THRESHOLD:
-            continue
-        if ci not in ci_best or score > ci_best[ci][0]:
-            ci_best[ci] = (score, pi)
+        if score > SIMILARITY_MATCH_THRESHOLD:
+            ci_candidates.setdefault(ci, []).append((score, pi))
+    for ci in ci_candidates:
+        ci_candidates[ci].sort(key=lambda x: x[0], reverse=True)
 
-    # Step 2: resolve conflicts – if multiple cis chose the same pi,
-    # award the pi to the ci with the highest score for it
-    pi_winner: dict[int, tuple[float, int]] = {}  # pi -> (score, ci)
-    for ci, (score, pi) in ci_best.items():
-        if pi not in pi_winner or score > pi_winner[pi][0]:
-            pi_winner[pi] = (score, ci)
+    ci_ptr:  dict[int, int]             = {ci: 0 for ci in ci_candidates}
+    pi_match: dict[int, tuple[float, int]] = {}   # pi -> (score, ci)
 
-    # Step 3: build final pairs from the conflict-resolved assignments
+    unmatched: set = set(ci_candidates)
+    while unmatched:
+        ci    = unmatched.pop()
+        ptr   = ci_ptr[ci]
+        if ptr >= len(ci_candidates[ci]):
+            continue                              # 후보 소진 → "new"
+        score, pi  = ci_candidates[ci][ptr]
+        ci_ptr[ci] = ptr + 1
+
+        if pi not in pi_match:
+            pi_match[pi] = (score, ci)            # pi 비어있음 → 즉시 매칭
+        elif score > pi_match[pi][0]:
+            _, displaced = pi_match[pi]
+            pi_match[pi] = (score, ci)            # 더 높은 점수 → ci가 pi 획득
+            unmatched.add(displaced)              # 밀려난 ci 재시도
+        else:
+            unmatched.add(ci)                     # 낮은 점수 → ci 차선으로 재시도
+
     matched_cur_ids: set = set()
     matched_past_ids: set = set()
     pairs: list = []   # [(DetectionResult, DetectionRecord)]
-    for pi, (_, ci) in pi_winner.items():
+    for pi, (_, ci) in pi_match.items():
         cur  = current_detections[ci]
         past = past_detections[pi]
         matched_cur_ids.add(cur.detection_id)
