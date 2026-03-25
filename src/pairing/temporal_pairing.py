@@ -360,13 +360,14 @@ def _decode_rle(mask_rle_json: str) -> Optional[np.ndarray]:
 
 
 def _mask_crop(image: "PILImage", x1: float, y1: float, x2: float, y2: float,
-               mask_rle: Optional[str], padding: int = 4) -> "PILImage":
+               mask_rle: Optional[str], padding: int = 4) -> Optional["PILImage"]:
     """
     Crop the object region from *image* using the SAM segmentation mask.
 
     If mask_rle is available the background is zeroed out before cropping,
     so CLIP sees only the object pixels.  Falls back to a plain bbox crop
     when mask_rle is absent or cannot be decoded.
+    Returns None when the bounding box is degenerate (zero or negative area).
     """
     from PIL import Image as PILImage
 
@@ -377,7 +378,8 @@ def _mask_crop(image: "PILImage", x1: float, y1: float, x2: float, y2: float,
     by2 = min(ih, int(y2) + padding)
 
     if bx2 <= bx1 or by2 <= by1:
-        return image.crop((0, 0, iw, ih))
+        logger.warning(f"[MaskCrop] Degenerate bbox ({x1},{y1},{x2},{y2}); skipping crop.")
+        return None
 
     if mask_rle:
         mask = _decode_rle(mask_rle)
@@ -442,12 +444,13 @@ def _compute_embeddings(
             det.bbox_x1, det.bbox_y1, det.bbox_x2, det.bbox_y2,
             det.mask_rle,
         )
+        if crop is None:
+            continue
         crops.append(crop)
         valid_indices.append(i)
 
     if not crops:
-        # Return zero matrix – no valid crops
-        return np.zeros((len(detections), 1), dtype=np.float32)
+        raise ValueError(f"No valid crops for any of the {len(detections)} detections; cannot compute embeddings.")
 
     embeds_valid = _clip_embedder.embed(crops)          # (len(valid), D)
     D = embeds_valid.shape[1]
