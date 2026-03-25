@@ -137,6 +137,43 @@ def get_session_location(session_id: str):
         return None, None
 
 
+def get_pairings_near_time(dt: datetime, window_seconds: int = 120) -> List[PairingRecord]:
+    """시각 dt 기준으로 가장 가까운 pairing_time 배치를 반환한다.
+
+    session_id가 없거나 session 기반 조회가 실패할 때의 폴백으로 사용.
+    dt 이전 window_seconds 이내의 배치 중 가장 최신 pairing_time을 찾아 해당 배치 전체를 반환.
+    """
+    from datetime import timedelta
+    engine = get_engine()
+    from sqlalchemy import func
+    with Session(engine) as session:
+        lower = dt - timedelta(seconds=window_seconds)
+        latest_pt = (
+            session.query(func.max(PairingRecord.pairing_time))
+            .filter(PairingRecord.pairing_time <= dt,
+                    PairingRecord.pairing_time >= lower)
+            .scalar()
+        )
+        if latest_pt is None:
+            # 범위 내 없으면 dt 이전의 가장 최근 배치
+            latest_pt = (
+                session.query(func.max(PairingRecord.pairing_time))
+                .filter(PairingRecord.pairing_time <= dt)
+                .scalar()
+            )
+        if latest_pt is None:
+            return []
+        records = (
+            session.query(PairingRecord)
+            .filter(PairingRecord.pairing_time == latest_pt)
+            .limit(500)
+            .all()
+        )
+        for r in records:
+            session.expunge(r)
+        return records
+
+
 def get_session_ids_near(
     lat: float,
     lon: float,

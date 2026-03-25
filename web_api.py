@@ -47,7 +47,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.config import IMAGES_DIR, SR_TARGET_W, SR_TARGET_H
-from src.database.pairing_db import get_session_ids_near, get_session_location, get_pairings_by_session, update_pairings_detection_refs
+from src.database.pairing_db import get_session_ids_near, get_session_location, get_pairings_by_session, update_pairings_detection_refs, get_pairings_near_time
 from src.database.reports_db import (
     get_all_reports,
     get_latest_report_for_sessions,
@@ -614,20 +614,20 @@ def api_report_images(report_id: str):
     if report is None:
         raise HTTPException(status_code=404, detail="보고서 없음.")
 
-    if not report.session_id:
-        return {"current_images": [], "past_images": []}
-
     from datetime import datetime as _dt
     _MIN_DT = _dt.min
 
-    pairings = get_pairings_by_session(report.session_id)
+    # session_id 기반 pairing 조회 → 없으면 report_time 기반 폴백
+    pairings = get_pairings_by_session(report.session_id) if report.session_id else []
+    if not pairings and report.report_time:
+        pairings = get_pairings_near_time(report.report_time)
     # 보고서 텍스트와 동일하게 가장 최근 pairing_time 배치만 사용
     if pairings:
         latest_pt = max(p.pairing_time for p in pairings)
         pairings = [p for p in pairings if p.pairing_time == latest_pt]
 
     # ── 현재 이미지: session_id 직접 매핑 ─────────────────────────────────────
-    curr_imgs = get_images_by_session(report.session_id)
+    curr_imgs = get_images_by_session(report.session_id) if report.session_id else []
     if curr_imgs:
         # capture_time 기준 내림차순 → 가장 최신 프레임이 "현재"
         curr_imgs = sorted(curr_imgs, key=lambda x: x.capture_time or _MIN_DT)
@@ -726,19 +726,21 @@ def api_report_pairings(report_id: str):
     report = get_report_by_id(report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="보고서 없음.")
-    if not report.session_id:
-        return {"current_image_id": None, "past_image_id": None, "pairs": []}
-
     from datetime import datetime as _dt
     _MIN_DT = _dt.min
 
-    pairings = get_pairings_by_session(report.session_id)
+    pairings = get_pairings_by_session(report.session_id) if report.session_id else []
+    if not pairings and report.report_time:
+        pairings = get_pairings_near_time(report.report_time)
     if pairings:
         latest_pt = max(p.pairing_time for p in pairings)
         pairings = [p for p in pairings if p.pairing_time == latest_pt]
 
+    if not pairings:
+        return {"current_image_id": None, "past_image_id": None, "pairs": []}
+
     # ── 현재 이미지 ID (api_report_images 와 동일 로직) ─────────────────────
-    curr_imgs = get_images_by_session(report.session_id)
+    curr_imgs = get_images_by_session(report.session_id) if report.session_id else []
     if curr_imgs:
         curr_imgs = sorted(curr_imgs, key=lambda x: x.capture_time or _MIN_DT)
         current_image_id = curr_imgs[-1].id
@@ -978,6 +980,12 @@ def api_all_reports(limit: int = Query(default=None)):
         lat, lon = (None, None)
         if r.session_id:
             lat, lon = get_session_location(r.session_id)
+        # session_id 없거나 pairing에 session_id 미설정 구 데이터 → 시간 기반 폴백
+        if (lat is None or lon is None) and r.report_time:
+            fb = get_pairings_near_time(r.report_time)
+            if fb:
+                lat = fb[0].lat_center
+                lon = fb[0].lon_center
         country = _get_country_name(lat, lon) if lat is not None and lon is not None else None
         items.append({
             "id":           r.id,
