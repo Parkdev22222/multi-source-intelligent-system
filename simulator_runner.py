@@ -50,13 +50,31 @@ PIPELINE_CMD = [
 
 def _pick_images(n: int = 2) -> list:
     """
-    SAMPLE_DIR 에서 tif/tiff/JPG/jpg 파일을 한 풀에 섞어 n 장을 중복 없이 랜덤 선택.
+    SAMPLE_DIR 에서 tif/tiff/JPG/jpg 파일을 수집한 뒤,
+    파일명을 '_' 로 split 했을 때 앞 2개 토큰이 동일한 파일끼리 쌍으로 묶어
+    그 중 하나를 랜덤 선택해 반환한다.
+    쌍이 없으면 전체 풀에서 랜덤 n 장으로 폴백.
     반환값은 metadata.json 에 쓰이는 상대 경로 'sample/<파일명>' 형식.
     """
     tifs  = sorted(SAMPLE_DIR.glob("*.tiff")) + sorted(SAMPLE_DIR.glob("*.tif"))
     jpgs  = sorted(SAMPLE_DIR.glob("*.JPG"))  + sorted(SAMPLE_DIR.glob("*.jpg"))
     pool  = tifs + jpgs
 
+    # '_' split 앞 2토큰 기준으로 그룹핑
+    groups: dict[str, list] = {}
+    for p in pool:
+        parts = p.stem.split("_")          # 확장자 제외 파일명 분리
+        key   = "_".join(parts[:2]) if len(parts) >= 2 else p.stem
+        groups.setdefault(key, []).append(p)
+
+    # 파일이 n장 이상인 그룹만 추출
+    valid = [files for files in groups.values() if len(files) >= n]
+
+    if valid:
+        chosen = random.choice(valid)      # 그룹 하나 랜덤 선택
+        return [f"sample/{p.name}" for p in random.sample(chosen, n)]
+
+    # 쌍을 찾지 못하면 전체 풀에서 랜덤 선택 (폴백)
     if len(pool) >= n:
         chosen = random.sample(pool, n)
         return [f"sample/{p.name}" for p in chosen]
