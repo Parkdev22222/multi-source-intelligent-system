@@ -439,7 +439,7 @@
     </div>
     <div id="det-sidebar">
       <div id="det-sidebar-hdr">탐지 목록 <span id="det-count-badge"></span></div>
-      <div id="det-sidebar-hint">🗑 우측 ✕ 버튼으로 삭제<br>박스 클릭 후 캔버스 ✕ 또는 Del키도 가능</div>
+      <div id="det-sidebar-hint">스크롤: 줌 | 미들마우스 드래그: 이동 | Ctrl+0: 초기화<br>좌클릭 드래그: 박스 그리기 | Del / ✕: 선택 박스 삭제</div>
       <div id="ed-det-list"></div>
       <div id="det-add-form">
         <label>객체 분류명</label>
@@ -1354,7 +1354,11 @@ let _edOrig    = {w:1, h:1};  // 원본 이미지 크기
 let _edDets    = [];     // [{object_class, confidence, bbox:{x1,y1,x2,y2}}]
 let _edSelIdx  = -1;
 let _edHoverIdx = -1;    // 사이드바 마우스오버 인덱스
-let _edDrag    = null;   // {sx,sy,ex,ey} (canvas pixel 좌표)
+let _edDrag    = null;   // {sx,sy,ex,ey} — world pixel 좌표 (zoom/pan 역변환 후)
+let _edZoom    = 1;      // 현재 줌 배율
+let _edPanX    = 0;      // 뷰포트 이동 X (canvas 내부 px)
+let _edPanY    = 0;      // 뷰포트 이동 Y (canvas 내부 px)
+let _edPanDrag = null;   // 미들 마우스 팬 상태 {startX,startY,startPanX,startPanY}
 let _edImgEl   = new Image();
 
 const _edCanvas = document.getElementById('det-canvas');
@@ -1367,6 +1371,19 @@ function _edScale() {
 }
 
 function _canvasCoords(e) {
+  // 1단계: CSS 픽셀 → canvas 내부 픽셀 (CSS 스케일 보정)
+  const r = _edCanvas.getBoundingClientRect();
+  const rawX = (e.clientX - r.left) * (_edCanvas.width  / r.width);
+  const rawY = (e.clientY - r.top)  * (_edCanvas.height / r.height);
+  // 2단계: zoom/pan 역변환 → 월드 좌표 (이미지 원점 기준 canvas px)
+  return {
+    x: (rawX - _edPanX) / _edZoom,
+    y: (rawY - _edPanY) / _edZoom,
+  };
+}
+
+// CSS픽셀 → raw canvas 픽셀 (pan/zoom 미적용, 팬 드래그용)
+function _rawCanvasCoords(e) {
   const r = _edCanvas.getBoundingClientRect();
   return {
     x: (e.clientX - r.left) * (_edCanvas.width  / r.width),
@@ -1387,7 +1404,21 @@ function _toOrig(v, axis) {
 
 function _edDraw() {
   _edCtx.clearRect(0, 0, _edCanvas.width, _edCanvas.height);
+
+  // zoom/pan 변환 적용 — 이후 모든 좌표는 world(canvas px) 기준
+  _edCtx.save();
+  _edCtx.translate(_edPanX, _edPanY);
+  _edCtx.scale(_edZoom, _edZoom);
+
   _edCtx.drawImage(_edImgEl, 0, 0, _edCanvas.width, _edCanvas.height);
+
+  // 시각적 선 굵기·폰트를 zoom에 무관하게 일정하게 유지 (÷ _edZoom)
+  const lnW    = 2  / _edZoom;
+  const lnWsel = 3  / _edZoom;
+  const fs     = 11 / _edZoom;   // 폰트 크기 (canvas px 기준)
+  const fsBtn  = 13 / _edZoom;
+  const pad    = 3  / _edZoom;
+  const lblH   = (fs + 5) / 1;   // 이미 /zoom 된 값
 
   _edDets.forEach((det, i) => {
     const x1 = _toCanvas(det.bbox.x1, 'x'), y1 = _toCanvas(det.bbox.y1, 'y');
@@ -1395,42 +1426,47 @@ function _edDraw() {
     const sel   = i === _edSelIdx;
     const hover = i === _edHoverIdx && !sel;
     const color = sel ? '#ff4444' : hover ? '#ff4444' : '#00ff88';
-    _edCtx.strokeStyle = color;
-    _edCtx.lineWidth   = (sel || hover) ? 3 : 2;
-    _edCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-    // label background
-    const label = `${det.object_class} ${(det.confidence * 100).toFixed(0)}%`;
-    const lw = label.length * 6 + 6;
-    _edCtx.fillStyle = (sel || hover) ? 'rgba(255,68,68,.75)' : 'rgba(0,255,136,.75)';
-    _edCtx.fillRect(x1, y1 - 16, lw, 16);
-    _edCtx.fillStyle = '#000';
-    _edCtx.font = 'bold 11px monospace';
-    _edCtx.fillText(label, x1 + 3, y1 - 3);
 
-    // 선택된 박스: 우상단에 ✕ 삭제 버튼
+    _edCtx.strokeStyle = color;
+    _edCtx.lineWidth   = (sel || hover) ? lnWsel : lnW;
+    _edCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+    // 레이블 배경 + 텍스트
+    const label = `${det.object_class} ${(det.confidence * 100).toFixed(0)}%`;
+    _edCtx.font = `bold ${fs}px monospace`;
+    const lblW = _edCtx.measureText(label).width + pad * 2;
+    _edCtx.fillStyle = (sel || hover) ? 'rgba(255,68,68,.75)' : 'rgba(0,255,136,.75)';
+    _edCtx.fillRect(x1, y1 - lblH, lblW, lblH);
+    _edCtx.fillStyle = '#000';
+    _edCtx.fillText(label, x1 + pad, y1 - pad);
+
+    // 선택된 박스: 우상단 ✕ 삭제 버튼
     if (sel) {
-      const btnSize = 18;
-      const bx = x2 - btnSize, by = y1;
+      const bs = 18 / _edZoom;
+      const bx = x2 - bs, by = y1;
       _edCtx.fillStyle = 'rgba(220,30,30,.9)';
-      _edCtx.fillRect(bx, by, btnSize, btnSize);
+      _edCtx.fillRect(bx, by, bs, bs);
       _edCtx.fillStyle = '#fff';
-      _edCtx.font = 'bold 13px monospace';
-      _edCtx.fillText('✕', bx + 3, by + 13);
-      // 삭제 버튼 위치 기억 (클릭 판정용)
-      det._delBtn = {bx, by, bw: btnSize, bh: btnSize};
+      _edCtx.font = `bold ${fsBtn}px monospace`;
+      _edCtx.fillText('✕', bx + pad, by + bs * 0.72);
+      // 클릭 판정용 — world 좌표로 저장 (zoom/pan 역변환 후와 일치)
+      det._delBtn = {bx, by, bw: bs, bh: bs};
     } else {
       det._delBtn = null;
     }
   });
 
+  // 드래그 중인 새 바운딩 박스 (점선)
   if (_edDrag) {
     const {sx, sy, ex, ey} = _edDrag;
     _edCtx.strokeStyle = '#ffcc00';
-    _edCtx.lineWidth   = 2;
-    _edCtx.setLineDash([5, 3]);
+    _edCtx.lineWidth   = lnW;
+    _edCtx.setLineDash([5 / _edZoom, 3 / _edZoom]);
     _edCtx.strokeRect(Math.min(sx,ex), Math.min(sy,ey), Math.abs(ex-sx), Math.abs(ey-sy));
     _edCtx.setLineDash([]);
   }
+
+  _edCtx.restore();
 }
 
 function _edDeleteDet(idx) {
@@ -1464,6 +1500,16 @@ function _edRenderList() {
 }
 
 _edCanvas.addEventListener('mousedown', e => {
+  // 미들 마우스: 팬(이동) 시작
+  if (e.button === 1) {
+    e.preventDefault();
+    const raw = _rawCanvasCoords(e);
+    _edPanDrag = { startX: raw.x, startY: raw.y, startPanX: _edPanX, startPanY: _edPanY };
+    _edCanvas.style.cursor = 'grabbing';
+    return;
+  }
+  if (e.button !== 0) return;
+
   const {x, y} = _canvasCoords(e);
   // ✕ 삭제 버튼 클릭 판정 (선택된 박스에만 렌더링됨)
   if (_edSelIdx >= 0) {
@@ -1489,6 +1535,14 @@ _edCanvas.addEventListener('mousedown', e => {
 });
 
 _edCanvas.addEventListener('mousemove', e => {
+  // 팬 드래그 처리
+  if (_edPanDrag) {
+    const raw = _rawCanvasCoords(e);
+    _edPanX = _edPanDrag.startPanX + (raw.x - _edPanDrag.startX);
+    _edPanY = _edPanDrag.startPanY + (raw.y - _edPanDrag.startY);
+    _edDraw();
+    return;
+  }
   if (!_edDrag) return;
   const {x, y} = _canvasCoords(e);
   _edDrag.ex = x; _edDrag.ey = y;
@@ -1496,10 +1550,17 @@ _edCanvas.addEventListener('mousemove', e => {
 });
 
 _edCanvas.addEventListener('mouseup', e => {
+  // 미들 마우스 팬 종료
+  if (e.button === 1) {
+    _edPanDrag = null;
+    _edCanvas.style.cursor = 'crosshair';
+    return;
+  }
   if (!_edDrag) return;
   const {sx, sy, ex, ey} = _edDrag;
   _edDrag = null;
-  const minDim = 8;
+  // 최소 크기 기준: zoom 1에서 8px → zoom 시 비례
+  const minDim = 8 / _edZoom;
   if (Math.abs(ex - sx) < minDim || Math.abs(ey - sy) < minDim) { _edDraw(); return; }
   const cls  = document.getElementById('det-class-input').value.trim() || 'unknown';
   const conf = Math.max(0, Math.min(1, parseFloat(document.getElementById('det-conf-input').value) || 0.9));
@@ -1516,8 +1577,22 @@ _edCanvas.addEventListener('mouseup', e => {
 });
 
 _edCanvas.addEventListener('mouseleave', () => {
+  if (_edPanDrag) { _edPanDrag = null; _edCanvas.style.cursor = 'crosshair'; }
   if (_edDrag) { _edDrag = null; _edDraw(); }
 });
+
+// 스크롤 줌 — 마우스 위치 중심으로 확대/축소
+_edCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const raw     = _rawCanvasCoords(e);
+  const factor  = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const newZoom = Math.max(0.25, Math.min(12, _edZoom * factor));
+  // 마우스 아래 점이 화면에서 고정되도록 pan 보정
+  _edPanX = raw.x - (raw.x - _edPanX) * (newZoom / _edZoom);
+  _edPanY = raw.y - (raw.y - _edPanY) * (newZoom / _edZoom);
+  _edZoom = newZoom;
+  _edDraw();
+}, { passive: false });
 
 // Delete / Backspace: 선택된 박스 삭제
 document.addEventListener('keydown', e => {
@@ -1528,6 +1603,12 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     _edDeleteDet(_edSelIdx);
   }
+  // Ctrl+0 (또는 Cmd+0): 줌/팬 초기화
+  if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    _edZoom = 1; _edPanX = 0; _edPanY = 0;
+    _edDraw();
+  }
 });
 
 async function openDetEditor(imageId, label) {
@@ -1536,6 +1617,11 @@ async function openDetEditor(imageId, label) {
   _edSelIdx   = -1;
   _edHoverIdx = -1;
   _edDrag     = null;
+  _edZoom     = 1;
+  _edPanX     = 0;
+  _edPanY     = 0;
+  _edPanDrag  = null;
+  _edCanvas.style.cursor = 'crosshair';
 
   const modal = document.getElementById('det-editor-modal');
   document.getElementById('det-editor-title').textContent = `◈ 객체탐지 수정 – ${label}`;
