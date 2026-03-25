@@ -26,6 +26,8 @@ from src.config import (
     LLM_MAX_NEW_TOKENS,
     LLM_MODEL_NAME,
     LLM_TEMPERATURE,
+    LLM_TRANSLATE_MAX_TOKENS,
+    LLM_TRANSLATE_TO_KOREAN,
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
 )
@@ -170,7 +172,8 @@ class _VllmBackend:
         )
         logger.info(f"[Reporter] {LLM_MODEL_NAME} loaded.")
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: Optional[int] = None) -> str:
         from vllm import SamplingParams
 
         if self._llm is None:
@@ -182,7 +185,7 @@ class _VllmBackend:
         ]
         sampling_params = SamplingParams(
             temperature=LLM_TEMPERATURE,
-            max_tokens=LLM_MAX_NEW_TOKENS,
+            max_tokens=max_tokens if max_tokens is not None else LLM_MAX_NEW_TOKENS,
         )
         outputs = self._llm.chat(messages, sampling_params=sampling_params)
         return outputs[0].outputs[0].text
@@ -194,7 +197,8 @@ class _FallbackBackend:
     Produces a structured summary directly from pairing records.
     """
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: Optional[int] = None) -> str:
         # Extract the data section from the user_prompt (everything before INSTRUCTIONS)
         data_section = user_prompt.split("=== INSTRUCTIONS ===")[0].strip()
         return textwrap.dedent(f"""
@@ -231,7 +235,8 @@ class _FallbackBackend:
 class _OllamaBackend:
     """Calls a locally running Ollama server."""
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: Optional[int] = None) -> str:
         import urllib.request
 
         payload = json.dumps({
@@ -243,7 +248,7 @@ class _OllamaBackend:
             "stream": False,
             "options": {
                 "temperature": LLM_TEMPERATURE,
-                "num_predict": LLM_MAX_NEW_TOKENS,
+                "num_predict": max_tokens if max_tokens is not None else LLM_MAX_NEW_TOKENS,
             },
         }).encode()
 
@@ -279,15 +284,53 @@ class _SafeBackend:
         self._primary = primary
         self._fallback = _FallbackBackend()
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: Optional[int] = None) -> str:
         try:
-            return self._primary.generate(system_prompt, user_prompt)
+            return self._primary.generate(system_prompt, user_prompt, max_tokens=max_tokens)
         except Exception as exc:
             logger.warning(
                 f"[Reporter] LLM backend failed ({exc}). "
                 "Using rule-based fallback report."
             )
-            return self._fallback.generate(system_prompt, user_prompt)
+            return self._fallback.generate(system_prompt, user_prompt, max_tokens=max_tokens)
+
+
+# ---------------------------------------------------------------------------
+# Korean translation helper
+# ---------------------------------------------------------------------------
+
+def _build_translation_system_prompt() -> str:
+    return (
+        "You are a professional Korean translator specializing in military intelligence documents. "
+        "Translate the following English report into Korean. "
+        "Rules:\n"
+        "1. Preserve every section header exactly as-is (e.g. '1. CLASSIFICATION', "
+        "'2. EXECUTIVE SUMMARY', etc.).\n"
+        "2. Preserve all coordinates, timestamps, confidence scores, object class names "
+        "(TANK, APC, etc.), and proper nouns without translation.\n"
+        "3. Translate all narrative, analytical, and descriptive text faithfully into Korean.\n"
+        "4. Do NOT add, omit, or re-interpret any content — translate only.\n"
+        "5. Output ONLY the translated text; do not include any preamble or explanation."
+    )
+
+
+def _translate_report_to_korean(backend, english_text: str) -> str:
+    """
+    이미 로드된 EXAONE 백엔드를 재사용해 보고서를 한국어로 번역한다.
+    번역 실패 시 원문(영어)을 그대로 반환한다.
+    """
+    try:
+        korean_text = backend.generate(
+            _build_translation_system_prompt(),
+            english_text,
+            max_tokens=LLM_TRANSLATE_MAX_TOKENS,
+        )
+        logger.info("[Reporter] 한국어 번역 완료.")
+        return korean_text
+    except Exception as exc:
+        logger.warning(f"[Reporter] 번역 실패 ({exc}) — 원문(영어)을 사용합니다.")
+        return english_text
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +372,11 @@ class MilitaryReporter:
         logger.info(f"[Reporter] Generating military report for {len(pairings)} pairings...")
         report_text = self._backend.generate(system_prompt, user_prompt)
 
+        # 한국어 번역 (LLM_TRANSLATE=false 환경변수로 비활성화 가능)
+        if LLM_TRANSLATE_TO_KOREAN:
+            logger.info("[Reporter] 보고서를 한국어로 번역 중...")
+            report_text = _translate_report_to_korean(self._backend, report_text)
+
         # Derive observation period from pairing records (metadata.json capture times)
         past_times = [p.past_capture_time for p in pairings if p.past_capture_time]
         current_times = [p.current_capture_time for p in pairings if p.current_capture_time]
@@ -341,11 +389,13 @@ class MilitaryReporter:
         n_matched_rep = sum(1 for p in pairings if p.status == 'matched')
         n_moved_rep = sum(1 for p in pairings if p.status == 'moved')
         n_disappeared_rep = sum(1 for p in pairings if p.status == 'disappeared')
+        lang_note = "한국어 (EXAONE 번역)" if LLM_TRANSLATE_TO_KOREAN else "English"
         header = (
             f"{'='*72}\n"
             f"  MILITARY INTELLIGENCE REPORT\n"
             f"  Generated by: Multi-Source Intelligent System (MSIS)\n"
             f"  Model: {LLM_MODEL_NAME}\n"
+            f"  Language: {lang_note}\n"
             f"  Past observation:    {obs_past}\n"
             f"  Current observation: {obs_current}\n"
             f"  Report generated:    {report_time.strftime('%Y-%m-%dT%H:%M:%SZ')}\n"

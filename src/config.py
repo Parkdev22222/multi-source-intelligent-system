@@ -81,6 +81,10 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "exaone4:32b")
 # Use "vllm" or "ollama"
 LLM_BACKEND = os.getenv("LLM_BACKEND", "vllm")
+# 보고서 번역 — LLM_TRANSLATE=false 로 비활성화 가능
+LLM_TRANSLATE_TO_KOREAN = os.getenv("LLM_TRANSLATE", "true").lower() == "true"
+# 번역 시 최대 출력 토큰 (보고서 길이를 여유 있게 커버)
+LLM_TRANSLATE_MAX_TOKENS = int(os.getenv("LLM_TRANSLATE_MAX_TOKENS", "4096"))
 
 # --- Detection Confidence ---
 DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE", "0.3"))
