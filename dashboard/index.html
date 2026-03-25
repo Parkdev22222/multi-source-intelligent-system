@@ -160,6 +160,13 @@
       border-radius:4px; padding:0; max-width:340px; min-width:260px;
       box-shadow:0 4px 24px rgba(0,0,0,.7); pointer-events:none;
     }
+    /* 탐지 결과 팝업: 이미지+목록 2열 레이아웃 */
+    #db-popup.det-mode { max-width:660px; min-width:480px; }
+    #db-popup .det-popup-wrap { display:flex; }
+    #db-popup .det-popup-img-panel { flex:0 0 280px; border-right:1px solid var(--border); }
+    #db-popup .det-popup-img-panel img { display:block; width:100%; height:240px; object-fit:contain; background:#000; }
+    #db-popup .det-popup-img-panel .det-img-placeholder { display:flex; align-items:center; justify-content:center; height:240px; color:var(--dim); font-size:10px; }
+    #db-popup .det-popup-list-panel { flex:1; padding:8px 10px; overflow-y:auto; max-height:240px; font-size:10px; color:var(--text); line-height:1.6; }
     #db-popup .pop-hdr { padding:6px 10px; background:#0a1520; border-bottom:1px solid var(--border); font-size:10px; color:var(--amber); }
     #db-popup img { display:block; width:100%; max-height:220px; object-fit:contain; background:#000; }
     #db-popup .pop-body { padding:8px 10px; font-size:10px; color:var(--text); line-height:1.6; }
@@ -803,8 +810,9 @@ const popup  = document.getElementById('db-popup');
 const popHdr = document.getElementById('pop-hdr');
 const popImg = document.getElementById('pop-img');
 const popBody= document.getElementById('pop-body');
-let   popImgCache = {};   // imageId → b64
-let   popDetCache = {};   // imageId → detections[]
+let   popImgCache      = {};   // imageId → thumb b64
+let   popRenderedCache = {};   // imageId → rendered (bbox) b64
+let   popDetCache      = {};   // imageId → detections[]
 let   hidePopupTimer = null;
 
 function movePopup(e) {
@@ -820,6 +828,7 @@ function movePopup(e) {
 
 function hidePopup() {
   popup.style.display = 'none';
+  popup.classList.remove('det-mode');
   popImg.style.display = 'none';
   popImg.src = '';
   popBody.innerHTML = '';
@@ -857,34 +866,77 @@ async function showImagePopup(imgMeta, e) {
   }
 }
 
-/* 탐지 정보 팝업 (SAM3 섹션 hover) */
+/* 탐지 정보 팝업 (SAM3 섹션 hover) — 왼쪽: bbox 이미지, 오른쪽: 탐지 목록 */
 async function showDetectionPopup(imageId, imgMeta, e) {
   popHdr.textContent = `SAM3 탐지 결과 | ${fmtTime(imgMeta.capture_time)}`;
   popImg.style.display = 'none';
-  popBody.innerHTML = '<span style="color:var(--dim)">탐지 정보 로딩 중...</span>';
+  popup.classList.add('det-mode');
+  popBody.innerHTML = `
+    <div class="det-popup-wrap">
+      <div class="det-popup-img-panel" id="det-pop-img-panel">
+        <div class="det-img-placeholder">이미지 로딩 중...</div>
+      </div>
+      <div class="det-popup-list-panel" id="det-pop-list-panel">
+        <span style="color:var(--dim)">탐지 정보 로딩 중...</span>
+      </div>
+    </div>`;
   popup.style.display = 'block';
   movePopup(e);
 
-  if (!popDetCache[imageId]) {
-    try {
-      const r = await fetch(`${API}/api/detections/by-image/${imageId}`);
-      if (r.ok) {
-        const d = await r.json();
-        popDetCache[imageId] = d.detections || [];
-      }
-    } catch(_) {}
+  // 렌더링 이미지 + 탐지 목록 병렬 fetch
+  const [renderedB64, dets] = await Promise.all([
+    (async () => {
+      if (popRenderedCache[imageId]) return popRenderedCache[imageId];
+      try {
+        const r = await fetch(`${API}/api/image/${imageId}/rendered`);
+        if (r.ok) {
+          const d = await r.json();
+          popRenderedCache[imageId] = d.image_b64 || null;
+          return popRenderedCache[imageId];
+        }
+      } catch(_) {}
+      return null;
+    })(),
+    (async () => {
+      if (popDetCache[imageId]) return popDetCache[imageId];
+      try {
+        const r = await fetch(`${API}/api/detections/by-image/${imageId}`);
+        if (r.ok) {
+          const d = await r.json();
+          popDetCache[imageId] = d.detections || [];
+          return popDetCache[imageId];
+        }
+      } catch(_) {}
+      return [];
+    })(),
+  ]);
+
+  // 팝업이 이미 닫혔으면 반영하지 않음
+  if (popup.style.display === 'none') return;
+
+  // 왼쪽: bbox 이미지
+  const imgPanel = document.getElementById('det-pop-img-panel');
+  if (imgPanel) {
+    if (renderedB64) {
+      imgPanel.innerHTML = `<img src="data:image/png;base64,${renderedB64}" alt="탐지 결과" />`;
+    } else {
+      imgPanel.innerHTML = `<div class="det-img-placeholder">이미지 없음</div>`;
+    }
   }
 
-  const dets = popDetCache[imageId] || [];
+  // 오른쪽: 탐지 목록
+  const listPanel = document.getElementById('det-pop-list-panel');
+  if (!listPanel) return;
+
   if (!dets.length) {
-    popBody.innerHTML = '<div class="pop-det-empty">탐지 결과 없음</div>';
+    listPanel.innerHTML = '<div class="pop-det-empty">탐지 결과 없음</div>';
     return;
   }
 
   let html =
-    `<div style="color:var(--dim);margin-bottom:4px;">` +
-    `촬영: ${fmtTime(imgMeta.capture_time)} | ${imgMeta.source_type || '—'} | ${imgMeta.lat_center?.toFixed(3)}°N ${imgMeta.lon_center?.toFixed(3)}°E</div>` +
-    `<div style="display:flex;justify-content:space-between;color:var(--amber);margin-bottom:3px;font-size:9px;"><span>객체 클래스</span><span>신뢰도</span></div>`;
+    `<div style="color:var(--dim);margin-bottom:5px;font-size:9px;">` +
+    `${imgMeta.source_type || '—'} | ${imgMeta.lat_center?.toFixed(3)}°N ${imgMeta.lon_center?.toFixed(3)}°E</div>` +
+    `<div style="display:flex;justify-content:space-between;color:var(--amber);margin-bottom:3px;font-size:9px;border-bottom:1px solid var(--border);padding-bottom:2px;"><span>객체 클래스</span><span>신뢰도</span></div>`;
   dets.forEach(d => {
     const pct = (d.confidence * 100).toFixed(1);
     const color = d.confidence >= 0.8 ? 'var(--green)' : d.confidence >= 0.5 ? 'var(--amber)' : 'var(--red)';
@@ -893,7 +945,7 @@ async function showDetectionPopup(imageId, imgMeta, e) {
       <span class="pop-det-conf" style="color:${color}">${pct}%</span>
     </div>`;
   });
-  popBody.innerHTML = html;
+  listPanel.innerHTML = html;
 }
 
 /* ── 시뮬레이션 1스텝 실행 ── */
