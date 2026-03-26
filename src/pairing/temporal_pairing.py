@@ -44,6 +44,7 @@ from src.config import (
     MOVE_DISTANCE_THRESHOLD_DEG,
     SIMILARITY_CLIP_WEIGHT,
     SIMILARITY_MATCH_THRESHOLD,
+    SIMILARITY_SIZE_WEIGHT,
 )
 from src.database.models import DetectionRecord, PairingRecord
 from src.database.sensor_db import get_image_record_by_id, get_most_recent_past_detections
@@ -72,6 +73,22 @@ def _naive(dt: Optional[datetime]) -> Optional[datetime]:
 def _geo_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Simple Euclidean distance in degrees between two lat/lon points."""
     return ((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) ** 0.5
+
+
+def _size_similarity(a: "DetectionResult", b: "DetectionResult") -> float:
+    """두 탐지 객체의 크기 유사도 (0~1).
+
+    mask_area_px 가 유효하면 세그멘테이션 면적 사용, 없으면 bbox 면적 사용.
+    min/max 비율이므로 크기가 같을수록 1.0, 차이가 클수록 0에 가까워진다.
+    """
+    def _area(det: "DetectionResult") -> float:
+        if det.mask_area_px and det.mask_area_px > 0:
+            return det.mask_area_px
+        return max((det.bbox_x2 - det.bbox_x1) * (det.bbox_y2 - det.bbox_y1), 1e-6)
+
+    area_a = _area(a)
+    area_b = _area(b)
+    return min(area_a, area_b) / max(area_a, area_b)
 
 
 def _bbox_iou(
@@ -594,11 +611,13 @@ def pair_by_similarity(
             if cur.object_class.lower() != past.object_class.lower():
                 continue
             if clip_sim_matrix is not None:
-                score = float(clip_sim_matrix[ci, pi])
+                base_score = float(clip_sim_matrix[ci, pi])
             else:
                 # Fallback: geo proximity score when CLIP is unavailable
                 geo_dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
-                score = max(0.0, 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG)
+                base_score = max(0.0, 1.0 - geo_dist / COORDINATE_MATCH_RADIUS_DEG)
+            size_sim = _size_similarity(cur, past)
+            score = (1.0 - SIMILARITY_SIZE_WEIGHT) * base_score + SIMILARITY_SIZE_WEIGHT * size_sim
             candidates.append((score, ci, pi))
 
     # Iterative per-ci best-pi assignment (Gale-Shapley / deferred-acceptance):

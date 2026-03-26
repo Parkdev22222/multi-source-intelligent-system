@@ -109,6 +109,9 @@ CLIP_MODEL_NAME = os.getenv("CLIP_MODEL_NAME", "openai/clip-vit-base-patch16")
 # Weight of CLIP cosine similarity vs geo proximity score (0.0 – 1.0)
 # score = CLIP_WEIGHT * clip_sim + (1 - CLIP_WEIGHT) * geo_score
 SIMILARITY_CLIP_WEIGHT = float(os.getenv("SIMILARITY_CLIP_WEIGHT", "0.7"))
+# Weight of size similarity (bbox/mask area ratio) in the combined score (0.0 – 1.0)
+# final_score = (1 - SIZE_WEIGHT) * clip_or_geo_score + SIZE_WEIGHT * size_sim
+SIMILARITY_SIZE_WEIGHT = float(os.getenv("SIMILARITY_SIZE_WEIGHT", "0.2"))
 # Minimum combined score for a current↔past pair to be accepted as a match.
 # Pairs whose best score does not exceed this threshold are treated as
 # "new" (current) or "disappeared" (past) instead of being matched.
