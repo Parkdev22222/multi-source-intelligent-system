@@ -227,8 +227,11 @@ def detect_with_sam3(image_path: str, classes: list, model_name: str,
                      confidence_thr: float, mask_score_thr: float,
                      nms_iou: float, sam3_path: str, device: str,
                      tile_size: int = 1008, tile_overlap: int = 200,
-                     tiled: bool = True) -> list:
-    """SAM3로 이미지 탐지. tiled=True이면 슬라이딩 윈도우 적용."""
+                     tiled: bool = True, multiscale: bool = True) -> list:
+    """SAM3로 이미지 탐지.
+    tiled=True    : 슬라이딩 윈도우 적용 (작은 객체).
+    multiscale=True: 타일과 함께 전체 이미지도 탐지 (큰 객체 누락 방지).
+    """
 
     if sam3_path and Path(sam3_path).exists():
         if str(sam3_path) not in sys.path:
@@ -256,6 +259,14 @@ def detect_with_sam3(image_path: str, classes: list, model_name: str,
     all_detections = []
 
     if tiled:
+        # ── 멀티스케일: 전체 이미지 탐지 (큰 객체용) ────────────────────────
+        if multiscale:
+            logger.info("멀티스케일: 전체 이미지 탐지 (큰 객체용)")
+            all_detections.extend(
+                _detect_tile(processor, img, 0, 0,
+                             orig_w, orig_h, classes, mask_score_thr, max_area)
+            )
+        # ── 타일 탐지 (작은 객체용) ──────────────────────────────────────────
         tiles = _tile_coords(orig_w, orig_h, tile_size, tile_overlap)
         logger.info(f"슬라이딩 윈도우: {len(tiles)}개 타일 "
                     f"(size={tile_size}, overlap={tile_overlap})")
@@ -291,9 +302,10 @@ def main():
     parser.add_argument("--confidence", type=float, default=DEFAULT_CONFIDENCE, help="신뢰도 임계값")
     parser.add_argument("--mask-score", type=float, default=DEFAULT_MASK_SCORE,  help="마스크 점수 임계값")
     parser.add_argument("--nms-iou",    type=float, default=DEFAULT_NMS_IOU,     help="NMS IoU 임계값")
-    parser.add_argument("--tile-size",    type=int,  default=1008,  help="슬라이딩 윈도우 타일 크기 (픽셀)")
-    parser.add_argument("--tile-overlap", type=int,  default=200,   help="타일 간 겹침 픽셀")
-    parser.add_argument("--no-tile",      action="store_true",       help="슬라이딩 윈도우 비활성화 (전체 이미지 한 번에 처리)")
+    parser.add_argument("--tile-size",      type=int, default=1008, help="슬라이딩 윈도우 타일 크기 (픽셀)")
+    parser.add_argument("--tile-overlap",   type=int, default=200,  help="타일 간 겹침 픽셀")
+    parser.add_argument("--no-tile",        action="store_true",    help="슬라이딩 윈도우 비활성화 (전체 이미지 한 번에 처리)")
+    parser.add_argument("--no-multiscale",  action="store_true",    help="멀티스케일 비활성화 (타일 탐지만 실행, 큰 객체 누락 가능)")
     args = parser.parse_args()
 
     # 입력 파일 확인
@@ -333,6 +345,7 @@ def main():
         tile_size=args.tile_size,
         tile_overlap=args.tile_overlap,
         tiled=not args.no_tile,
+        multiscale=not args.no_multiscale,
     )
 
     # 결과 출력

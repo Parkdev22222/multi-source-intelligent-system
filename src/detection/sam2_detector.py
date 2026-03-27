@@ -42,6 +42,7 @@ from src.config import (
     TILE_SIZE,
     TILE_OVERLAP,
     TILE_NMS_IOU,
+    TILE_MULTISCALE,
 )
 from src.detection.image_loader import ImageMeta, LoadedImage, pixel_to_geo
 
@@ -495,6 +496,23 @@ class SAM3Detector:
         all_results: List[DetectionResult] = []
 
         if TILE_ENABLED:
+            # ── 멀티스케일: 전체 이미지 탐지 (큰 객체) ──────────────────────
+            if TILE_MULTISCALE:
+                logger.info("[SAM3Detector] 멀티스케일: 전체 이미지 탐지 (큰 객체용)")
+                for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
+                    try:
+                        all_results.extend(
+                            self._detect_class(
+                                pil_image, class_name, class_index,
+                                orig_w, orig_h, now, image_id, meta,
+                            )
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            f"[SAM3Detector] 전체이미지 class '{class_name}': {exc}"
+                        )
+
+            # ── 타일 탐지 (작은 객체) ────────────────────────────────────────
             tiles = _tile_coords(orig_w, orig_h, TILE_SIZE, TILE_OVERLAP)
             logger.info(f"[SAM3Detector] 슬라이딩 윈도우: {len(tiles)}개 타일 "
                         f"(size={TILE_SIZE}, overlap={TILE_OVERLAP})")
