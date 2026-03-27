@@ -33,6 +33,17 @@ SAM3_DEVICE = os.getenv("SAM3_DEVICE", "cuda")  # "cuda" or "cpu"
 # SAM3 requires a fixed inference resolution of 1008×1008
 SAM3_INFERENCE_SIZE = 1008
 
+# --- Sliding Window (Tiled Detection) ---
+# 이미지를 타일로 분할해 각 타일마다 SAM3를 실행 → 작은 객체 탐지 향상.
+# TILE_ENABLED=false 로 비활성화 시 전체 이미지를 한 번에 처리 (기존 방식).
+TILE_ENABLED    = os.getenv("TILE_ENABLED",    "true").lower() == "true"
+# 타일 크기 (픽셀). SAM3 입력 해상도(1008)와 맞추는 것이 권장.
+TILE_SIZE       = int(os.getenv("TILE_SIZE",   "1008"))
+# 인접 타일 간 겹치는 픽셀 수. 경계 객체 누락 방지용.
+TILE_OVERLAP    = int(os.getenv("TILE_OVERLAP", "200"))
+# 타일 NMS IoU 임계값 (타일 병합 시 중복 제거).
+TILE_NMS_IOU    = float(os.getenv("TILE_NMS_IOU", "0.3"))
+
 # --- Military Object Classes (aerial/satellite imagery) ---
 MILITARY_OBJECT_CLASSES = [
     "military tank",

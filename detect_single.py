@@ -52,6 +52,26 @@ COLORS = [
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
+def _tile_coords(img_w, img_h, tile_size, overlap):
+    """슬라이딩 윈도우 타일 좌표 (x1,y1,x2,y2) 목록 반환."""
+    stride = max(tile_size - overlap, 1)
+    tiles = []
+    y = 0
+    while y < img_h:
+        x = 0
+        while x < img_w:
+            x2 = min(x + tile_size, img_w)
+            y2 = min(y + tile_size, img_h)
+            tiles.append((x, y, x2, y2))
+            if x2 == img_w:
+                break
+            x += stride
+        if y + tile_size >= img_h:
+            break
+        y += stride
+    return tiles
+
+
 def _nms(detections, iou_threshold=0.3):
     """간단한 NMS – confidence 내림차순 greedy."""
     if not detections:
@@ -134,43 +154,14 @@ def _draw_results(image_path: str, detections: list, output_path: str):
 
 # ── SAM3 탐지 ──────────────────────────────────────────────────────────────
 
-def detect_with_sam3(image_path: str, classes: list, model_name: str,
-                     confidence_thr: float, mask_score_thr: float,
-                     nms_iou: float, sam3_path: str, device: str) -> list:
-    """SAM3로 이미지 탐지. 결과 dict 리스트 반환."""
-
-    # SAM3 경로 추가
-    if sam3_path and Path(sam3_path).exists():
-        if str(sam3_path) not in sys.path:
-            sys.path.insert(0, str(sam3_path))
-        logger.info(f"SAM3 경로 추가: {sam3_path}")
-
-    try:
-        from sam3.model_builder import build_sam3_image_model
-        from sam3.model.sam3_image_processor import Sam3Processor
-    except ImportError as e:
-        logger.error(f"SAM3 import 실패: {e}")
-        logger.error("SAM3 설치 필요: pip install -e <sam3 경로>")
-        sys.exit(1)
-
-    import torch
-
-    logger.info(f"SAM3 모델 로딩: {model_name} on {device}")
-    model = build_sam3_image_model(model_name)
-    model = model.to(device).eval()
-    processor = Sam3Processor(model)
-    logger.info("SAM3 모델 로딩 완료")
-
-    img = Image.open(image_path).convert("RGB")
-    orig_w, orig_h = img.size
-    max_area = 0.9 * orig_w * orig_h
-
-    all_detections = []
-
+def _detect_tile(processor, tile_img, tile_x1, tile_y1,
+                 orig_w, orig_h, classes, mask_score_thr, max_area):
+    """타일 한 장 탐지 → 원본 좌표로 변환된 dict 리스트 반환."""
+    tile_w, tile_h = tile_img.size
+    results = []
     for cls in classes:
-        logger.info(f"  탐지 중: {cls}")
         try:
-            state  = processor.set_image(img)
+            state  = processor.set_image(tile_img)
             output = processor.set_text_prompt(state=state, prompt=cls)
 
             masks_out  = output.get("masks",  [])
@@ -189,38 +180,99 @@ def detect_with_sam3(image_path: str, classes: list, model_name: str,
                 score = float(score)
                 if score < mask_score_thr:
                     continue
-
-                # bbox
-                if boxes_out.ndim >= 2 and i < len(boxes_out):
-                    x1, y1, x2, y2 = (float(v) for v in boxes_out[i])
-                else:
+                if not (boxes_out.ndim >= 2 and i < len(boxes_out)):
                     continue
 
-                if (x2 - x1) < 4 or (y2 - y1) < 4:
+                # 타일 내 좌표
+                tx1, ty1, tx2, ty2 = (float(v) for v in boxes_out[i])
+                if (tx2 - tx1) < 4 or (ty2 - ty1) < 4:
                     continue
+
+                # 원본 좌표로 변환
+                x1 = tx1 + tile_x1
+                y1 = ty1 + tile_y1
+                x2 = tx2 + tile_x1
+                y2 = ty2 + tile_y1
+
                 if (x2 - x1) * (y2 - y1) > max_area:
                     continue
 
-                # 마스크
+                # 마스크 (원본 좌표 공간으로 패딩)
                 mask = None
                 if masks_out.ndim >= 3 and i < len(masks_out):
                     raw = np.squeeze(masks_out[i]).astype(bool)
-                    if raw.shape != (orig_h, orig_w):
+                    if raw.shape != (tile_h, tile_w):
                         pm = Image.fromarray(raw.astype(np.uint8) * 255, "L")
-                        pm = pm.resize((orig_w, orig_h), Image.NEAREST)
+                        pm = pm.resize((tile_w, tile_h), Image.NEAREST)
                         raw = np.array(pm) > 127
-                    mask = raw
+                    # 원본 크기 캔버스에 타일 마스크 배치
+                    full_mask = np.zeros((orig_h, orig_w), dtype=bool)
+                    y2i = min(tile_y1 + tile_h, orig_h)
+                    x2i = min(tile_x1 + tile_w, orig_w)
+                    full_mask[tile_y1:y2i, tile_x1:x2i] = raw[:y2i - tile_y1,
+                                                                :x2i - tile_x1]
+                    mask = full_mask
 
-                all_detections.append({
+                results.append({
                     "class": cls, "confidence": score,
                     "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                     "mask": mask,
                 })
-
         except Exception as e:
-            logger.warning(f"  {cls} 탐지 실패: {e}")
+            logger.warning(f"  타일({tile_x1},{tile_y1}) {cls} 탐지 실패: {e}")
+    return results
 
-    # NMS
+
+def detect_with_sam3(image_path: str, classes: list, model_name: str,
+                     confidence_thr: float, mask_score_thr: float,
+                     nms_iou: float, sam3_path: str, device: str,
+                     tile_size: int = 1008, tile_overlap: int = 200,
+                     tiled: bool = True) -> list:
+    """SAM3로 이미지 탐지. tiled=True이면 슬라이딩 윈도우 적용."""
+
+    if sam3_path and Path(sam3_path).exists():
+        if str(sam3_path) not in sys.path:
+            sys.path.insert(0, str(sam3_path))
+        logger.info(f"SAM3 경로 추가: {sam3_path}")
+
+    try:
+        from sam3.model_builder import build_sam3_image_model
+        from sam3.model.sam3_image_processor import Sam3Processor
+    except ImportError as e:
+        logger.error(f"SAM3 import 실패: {e}")
+        logger.error("SAM3 설치 필요: pip install -e <sam3 경로>")
+        sys.exit(1)
+
+    logger.info(f"SAM3 모델 로딩: {model_name} on {device}")
+    model = build_sam3_image_model(model_name)
+    model = model.to(device).eval()
+    processor = Sam3Processor(model)
+    logger.info("SAM3 모델 로딩 완료")
+
+    img = Image.open(image_path).convert("RGB")
+    orig_w, orig_h = img.size
+    max_area = 0.9 * orig_w * orig_h
+
+    all_detections = []
+
+    if tiled:
+        tiles = _tile_coords(orig_w, orig_h, tile_size, tile_overlap)
+        logger.info(f"슬라이딩 윈도우: {len(tiles)}개 타일 "
+                    f"(size={tile_size}, overlap={tile_overlap})")
+        for idx, (tx1, ty1, tx2, ty2) in enumerate(tiles):
+            logger.info(f"  타일 {idx+1}/{len(tiles)}  ({tx1},{ty1})→({tx2},{ty2})")
+            tile_img = img.crop((tx1, ty1, tx2, ty2))
+            all_detections.extend(
+                _detect_tile(processor, tile_img, tx1, ty1,
+                             orig_w, orig_h, classes, mask_score_thr, max_area)
+            )
+    else:
+        logger.info("전체 이미지 탐지 (타일 비활성)")
+        all_detections.extend(
+            _detect_tile(processor, img, 0, 0,
+                         orig_w, orig_h, classes, mask_score_thr, max_area)
+        )
+
     detections = _nms(all_detections, nms_iou)
     logger.info(f"탐지 완료: {len(all_detections)}개 → NMS 후 {len(detections)}개")
     return detections
@@ -239,6 +291,9 @@ def main():
     parser.add_argument("--confidence", type=float, default=DEFAULT_CONFIDENCE, help="신뢰도 임계값")
     parser.add_argument("--mask-score", type=float, default=DEFAULT_MASK_SCORE,  help="마스크 점수 임계값")
     parser.add_argument("--nms-iou",    type=float, default=DEFAULT_NMS_IOU,     help="NMS IoU 임계값")
+    parser.add_argument("--tile-size",    type=int,  default=1008,  help="슬라이딩 윈도우 타일 크기 (픽셀)")
+    parser.add_argument("--tile-overlap", type=int,  default=200,   help="타일 간 겹침 픽셀")
+    parser.add_argument("--no-tile",      action="store_true",       help="슬라이딩 윈도우 비활성화 (전체 이미지 한 번에 처리)")
     args = parser.parse_args()
 
     # 입력 파일 확인
@@ -264,6 +319,8 @@ def main():
     logger.info(f"클래스: {args.classes}")
     logger.info(f"디바이스: {args.device}")
 
+    logger.info(f"슬라이딩 윈도우: {'비활성' if args.no_tile else f'활성 (size={args.tile_size}, overlap={args.tile_overlap})'}")
+
     detections = detect_with_sam3(
         image_path=args.image,
         classes=args.classes,
@@ -273,6 +330,9 @@ def main():
         nms_iou=args.nms_iou,
         sam3_path=args.sam3_path,
         device=args.device,
+        tile_size=args.tile_size,
+        tile_overlap=args.tile_overlap,
+        tiled=not args.no_tile,
     )
 
     # 결과 출력

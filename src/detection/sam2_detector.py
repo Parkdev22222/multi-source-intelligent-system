@@ -38,6 +38,10 @@ from src.config import (
     SAM3_DEVICE,
     SAM3_MASK_SCORE_THRESHOLD,
     SAM3_MODEL_NAME,
+    TILE_ENABLED,
+    TILE_SIZE,
+    TILE_OVERLAP,
+    TILE_NMS_IOU,
 )
 from src.detection.image_loader import ImageMeta, LoadedImage, pixel_to_geo
 
@@ -134,6 +138,31 @@ def _tighten_mask(mask: np.ndarray) -> np.ndarray:
         return labeled == sizes.argmax()
     except ImportError:
         return mask
+
+
+def _tile_coords(img_w: int, img_h: int,
+                 tile_size: int, overlap: int) -> List[Tuple[int, int, int, int]]:
+    """슬라이딩 윈도우 타일 좌표 목록 (x1, y1, x2, y2) 반환.
+
+    stride = tile_size - overlap 으로 이동하며 이미지 전체를 커버한다.
+    마지막 타일이 경계를 넘으면 이미지 끝에 맞춰 클리핑.
+    """
+    stride = max(tile_size - overlap, 1)
+    tiles: List[Tuple[int, int, int, int]] = []
+    y = 0
+    while y < img_h:
+        x = 0
+        while x < img_w:
+            x2 = min(x + tile_size, img_w)
+            y2 = min(y + tile_size, img_h)
+            tiles.append((x, y, x2, y2))
+            if x2 == img_w:
+                break
+            x += stride
+        if y + tile_size >= img_h:
+            break
+        y += stride
+    return tiles
 
 
 def _nms_detections(
@@ -400,21 +429,60 @@ class SAM3Detector:
             ))
         return detections
 
+    def _detect_on_tile(
+        self,
+        pil_image,
+        tile_x1: int, tile_y1: int,
+        tile_w: int, tile_h: int,
+        orig_w: int, orig_h: int,
+        now, image_id: str, meta: ImageMeta,
+    ) -> List[DetectionResult]:
+        """타일 한 장에 대해 모든 클래스 탐지 후 원본 좌표로 변환."""
+        from PIL import Image as PILImage
+        tile_img = pil_image.crop((tile_x1, tile_y1,
+                                   tile_x1 + tile_w, tile_y1 + tile_h))
+        results: List[DetectionResult] = []
+        for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
+            try:
+                dets = self._detect_class(
+                    tile_img, class_name, class_index,
+                    tile_w, tile_h, now, image_id, meta,
+                )
+                # 타일 내 좌표 → 원본 이미지 좌표로 역변환
+                for d in dets:
+                    d.bbox_x1 += tile_x1
+                    d.bbox_y1 += tile_y1
+                    d.bbox_x2 += tile_x1
+                    d.bbox_y2 += tile_y1
+                    # 위경도도 원본 이미지 기준으로 재계산
+                    from src.detection.image_loader import pixel_to_geo
+                    cx = (d.bbox_x1 + d.bbox_x2) / 2.0
+                    cy = (d.bbox_y1 + d.bbox_y2) / 2.0
+                    d.lat, d.lon = pixel_to_geo(cx, cy, orig_w, orig_h, meta)
+                results.extend(dets)
+            except Exception as exc:
+                logger.warning(
+                    f"[SAM3Detector] tile({tile_x1},{tile_y1}) "
+                    f"class '{class_name}': {exc}"
+                )
+        return results
+
     def detect(self, loaded_image: LoadedImage, image_id: str) -> List[DetectionResult]:
         """
         SAM3 텍스트 프롬프트 세그멘테이션으로 군사 객체를 탐지한다.
-        MILITARY_OBJECT_CLASSES 각 클래스마다 _detect_class() 호출 후 NMS 적용.
+        TILE_ENABLED=True 이면 슬라이딩 윈도우로 타일 분할 탐지,
+        False 이면 전체 이미지를 한 번에 처리 (기존 방식).
         """
         if self._model is None:
             self._load_model()
 
         image_np = loaded_image.array
-        meta = loaded_image.meta
+        meta     = loaded_image.meta
         orig_h, orig_w = image_np.shape[:2]
 
         logger.info(
             f"[SAM3Detector] Detecting: {meta.image_path} "
-            f"({orig_w}×{orig_h}) at {meta.capture_time}"
+            f"({orig_w}×{orig_h}) tile={TILE_ENABLED}"
         )
 
         if self._model is None:
@@ -426,18 +494,36 @@ class SAM3Detector:
         now = meta.capture_time
         all_results: List[DetectionResult] = []
 
-        for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
-            try:
+        if TILE_ENABLED:
+            tiles = _tile_coords(orig_w, orig_h, TILE_SIZE, TILE_OVERLAP)
+            logger.info(f"[SAM3Detector] 슬라이딩 윈도우: {len(tiles)}개 타일 "
+                        f"(size={TILE_SIZE}, overlap={TILE_OVERLAP})")
+            for idx, (tx1, ty1, tx2, ty2) in enumerate(tiles):
+                tw, th = tx2 - tx1, ty2 - ty1
+                logger.debug(f"  타일 {idx+1}/{len(tiles)}  "
+                             f"({tx1},{ty1})→({tx2},{ty2})")
                 all_results.extend(
-                    self._detect_class(
-                        pil_image, class_name, class_index,
+                    self._detect_on_tile(
+                        pil_image, tx1, ty1, tw, th,
                         orig_w, orig_h, now, image_id, meta,
                     )
                 )
-            except Exception as exc:
-                logger.warning(f"[SAM3Detector] Error on class '{class_name}': {exc}")
+        else:
+            for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
+                try:
+                    all_results.extend(
+                        self._detect_class(
+                            pil_image, class_name, class_index,
+                            orig_w, orig_h, now, image_id, meta,
+                        )
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        f"[SAM3Detector] Error on class '{class_name}': {exc}"
+                    )
 
-        final = _nms_detections(all_results, NMS_IOU_THRESHOLD)
+        final = _nms_detections(all_results, TILE_NMS_IOU if TILE_ENABLED
+                                             else NMS_IOU_THRESHOLD)
         logger.info(
             f"[SAM3Detector] {len(all_results)} raw → {len(final)} after NMS "
             f"(image_id={image_id[:8]})"
