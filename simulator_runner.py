@@ -176,7 +176,9 @@ def _pick_and_crop_image(
         paths.append(str(rel))
 
     logger.info(f"[SimRunner/crop] 크롭 저장: {paths}")
-    return paths, past_time, now
+    # 각 크롭의 지리 범위 계산용 시작 비율 (A=0, B=offset)
+    fracs = [0.0, crop_offset]
+    return paths, past_time, now, fracs
 
 
 def _extract_tiff_capture_time(path: Path) -> datetime:
@@ -224,15 +226,22 @@ def _build_metadata(
     sat: dict,
     imgs: list,
     explicit_times: list = None,
+    crop_axis: str = None,
+    crop_size_ratio: float = None,
+    crop_fracs: list = None,
 ) -> list:
     """
     위성 위치와 선택된 이미지 2장으로 metadata.json 항목 2개 생성.
 
     Args:
-        sat:            활성 위성 정보 dict
-        imgs:           이미지 상대경로 목록 (data/images/ 기준)
-        explicit_times: capture_time 명시 리스트 (크롭 모드에서 사용).
-                        None 이면 TIFF 태그 / 파일 수정시간에서 자동 추출.
+        sat:             활성 위성 정보 dict
+        imgs:            이미지 상대경로 목록 (data/images/ 기준)
+        explicit_times:  capture_time 명시 리스트 (크롭 모드에서 사용).
+                         None 이면 TIFF 태그 / 파일 수정시간에서 자동 추출.
+        crop_axis:       크롭 방향 ("vertical" | "horizontal"). 크롭 모드 전용.
+        crop_size_ratio: 각 크롭 크기 비율 (0.0~1.0). 크롭 모드 전용.
+        crop_fracs:      imgs 순서에 대응하는 각 크롭의 시작 비율 리스트.
+                         예) [0.0, 0.15] → A는 0%, B는 15% 지점에서 시작.
     """
     lat, lon = sat["lat"], sat["lon"]
     r = 0.01   # 촬영 범위 반경 (° ≈ 1.1 km)
@@ -250,6 +259,13 @@ def _build_metadata(
         region_name    = sat["id"],
     )
 
+    # 크롭별 지리 범위 조정: img_rel → frac_start
+    frac_map: dict[str, float] = {}
+    if crop_axis and crop_size_ratio is not None and crop_fracs:
+        for i, img_rel in enumerate(imgs):
+            if i < len(crop_fracs):
+                frac_map[img_rel] = crop_fracs[i]
+
     # capture_time 추출: 명시값 우선, 없으면 TIFF 태그 / 파일 수정시간 폴백
     timed = []
     for i, img_rel in enumerate(imgs):
@@ -262,10 +278,32 @@ def _build_metadata(
 
     timed.sort(key=lambda x: x[0])   # 오래된 것이 앞 (과거 프레임)
 
-    return [
-        {**base, "image_file": img_rel, "capture_time": ct.isoformat()}
-        for ct, img_rel in timed
-    ]
+    entries = []
+    for ct, img_rel in timed:
+        entry = dict(base)
+        entry["image_file"]   = img_rel
+        entry["capture_time"] = ct.isoformat()
+
+        # 크롭 모드: 각 크롭이 원본에서 차지하는 비율로 위경도 범위 재산정
+        if img_rel in frac_map:
+            frac_start = frac_map[img_rel]
+            frac_end   = frac_start + crop_size_ratio
+            span       = 2 * r  # 원본 전체 범위 (° 단위)
+
+            if crop_axis == "vertical":
+                # X축 이동 → 경도(lon) 범위 조정, 위도(lat) 불변
+                entry["lon_min"]    = lon - r + frac_start * span
+                entry["lon_max"]    = lon - r + frac_end   * span
+                entry["lon_center"] = (entry["lon_min"] + entry["lon_max"]) / 2
+            else:  # horizontal
+                # Y축 이동 → 위도(lat) 범위 조정, 경도(lon) 불변
+                entry["lat_min"]    = lat - r + frac_start * span
+                entry["lat_max"]    = lat - r + frac_end   * span
+                entry["lat_center"] = (entry["lat_min"] + entry["lat_max"]) / 2
+
+        entries.append(entry)
+
+    return entries
 
 
 # ── 공개 API ───────────────────────────────────────────────────────────────
@@ -326,8 +364,9 @@ def run_step(
 
     # ── 2. 이미지 선택 ────────────────────────────────────────────────────
     explicit_times = None
+    crop_fracs = None
     if mode == "crop":
-        imgs, past_time, curr_time = _pick_and_crop_image(
+        imgs, past_time, curr_time, crop_fracs = _pick_and_crop_image(
             axis=CROP_AXIS,
             crop_size=CROP_SIZE,
             crop_offset=CROP_OFFSET,
@@ -339,7 +378,12 @@ def run_step(
         logger.info(f"[SimRunner] 분리 이미지 모드 — 이미지: {imgs}")
 
     # ── 3. metadata.json 업데이트 ─────────────────────────────────────────
-    meta = _build_metadata(active, imgs, explicit_times=explicit_times)
+    meta = _build_metadata(
+        active, imgs, explicit_times=explicit_times,
+        crop_axis=CROP_AXIS if mode == "crop" else None,
+        crop_size_ratio=CROP_SIZE if mode == "crop" else None,
+        crop_fracs=crop_fracs,
+    )
     METADATA_PATH.parent.mkdir(parents=True, exist_ok=True)
     METADATA_PATH.write_text(
         json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
