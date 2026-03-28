@@ -382,30 +382,20 @@ def api_simulator_auto_toggle():
     return {"auto_enabled": _auto_state["enabled"]}
 
 
-class SimStepRequest(BaseModel):
-    image_mode:  str   = "separate"  # "separate" | "crop"
-    crop_axis:   str   = "vertical"  # "vertical" | "horizontal"
-    crop_split:  float = 0.5         # 0.0 ~ 1.0
-
-
 @app.post("/api/simulator/step")
-def api_simulator_step(body: SimStepRequest = Body(default=SimStepRequest())):
+def api_simulator_step():
     """
-    위성 모의기 1스텝 실행.
-
-    Body (선택, 모두 생략 가능):
-      image_mode  "separate" (기본) — sample/ 에서 서로 다른 이미지 2장 선택
-                  "crop"            — sample/ 에서 1장 선택 후 2영역으로 크롭
-      crop_axis   "vertical" (기본) | "horizontal"  (크롭 모드에서만 사용)
-      crop_split  분할 비율 0.0~1.0, 기본 0.5       (크롭 모드에서만 사용)
+    위성 모의기 1스텝 실행:
+      1. 위성 궤도 계산 → 현재 위경도
+      2. config.py IMAGE_MODE 에 따라 이미지 선택
+         separate: sample/ 에서 서로 다른 이미지 2장
+         crop:     sample/ 에서 1장 선택 후 크롭해 2장 생성
+      3. metadata.json 갱신
+      4. main.py 파이프라인 실행 (탐지 + 페어링 + 보고서 → DB 삽입)
     """
     try:
         from simulator_runner import run_step
-        result = run_step(
-            image_mode=body.image_mode,
-            crop_axis=body.crop_axis,
-            crop_split=body.crop_split,
-        )
+        result = run_step()
     except Exception as exc:
         logger.error(f"[API] simulator step error: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))

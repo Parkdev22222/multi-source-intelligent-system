@@ -132,5 +132,18 @@ SIMILARITY_SIZE_WEIGHT = float(os.getenv("SIMILARITY_SIZE_WEIGHT", "0.2"))
 # Range: -1.0 – 1.0 for pure CLIP cosine; 0.0 – 1.0 for combined score.
 SIMILARITY_MATCH_THRESHOLD = float(os.getenv("SIMILARITY_MATCH_THRESHOLD", "0.5"))
 
+# --- Simulator Image Mode ---
+# SAM3 입력 이미지를 준비하는 방식.
+#
+#   IMAGE_MODE=separate  sample/ 에서 서로 다른 이미지 2장을 선택 (기본값)
+#   IMAGE_MODE=crop      sample/ 에서 이미지 1장을 선택한 뒤 두 영역으로 크롭해 2장으로 활용
+#
+# 크롭 모드 전용 파라미터:
+#   CROP_AXIS    분할 축  — "vertical" (좌/우, 기본) | "horizontal" (상/하)
+#   CROP_SPLIT   분할 비율 0.0~1.0 (기본 0.5 = 정중앙)
+IMAGE_MODE  = os.getenv("IMAGE_MODE",  "separate")
+CROP_AXIS   = os.getenv("CROP_AXIS",   "vertical")
+CROP_SPLIT  = float(os.getenv("CROP_SPLIT", "0.5"))
+
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

@@ -31,6 +31,7 @@ from pathlib import Path
 
 from src.satellite.simulator import get_active_satellite, get_positions
 from src.satellite.land_check import is_land
+from src.config import IMAGE_MODE, CROP_AXIS, CROP_SPLIT
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +42,7 @@ CROPS_DIR     = SAMPLE_DIR / ".crops"          # 크롭 임시 파일 저장 위
 METADATA_PATH = BASE_DIR / "data" / "images" / "metadata.json"
 REPORT_OUTPUT = BASE_DIR / "data" / "reports" / "report.txt"
 
-# ── 이미지 선택 모드 (환경변수로 기본값 설정) ──────────────────────────────
-#   IMAGE_MODE=separate  : 서로 다른 이미지 2장 선택 (기본)
-#   IMAGE_MODE=crop      : 이미지 1장을 두 영역으로 크롭해 2장으로 활용
-IMAGE_MODE  = os.getenv("IMAGE_MODE",  "separate")  # "separate" | "crop"
-CROP_AXIS   = os.getenv("CROP_AXIS",   "vertical")  # "vertical" | "horizontal"
-CROP_SPLIT  = float(os.getenv("CROP_SPLIT", "0.5")) # 분할 비율 (0.0 ~ 1.0)
+# IMAGE_MODE / CROP_AXIS / CROP_SPLIT 은 src/config.py 에서 관리
 
 PIPELINE_CMD = [
     sys.executable, str(BASE_DIR / "main.py"),

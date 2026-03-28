@@ -59,13 +59,6 @@
     #auto-toggle-btn.off  { border-color:var(--dim); color:var(--dim); }
     #auto-toggle-btn.off:hover { background:var(--dim); color:#000; }
 
-    #img-mode-row { display:flex; align-items:center; gap:8px; margin-bottom:5px; flex-wrap:wrap; }
-    .img-mode-lbl { font-size:9px; color:var(--dim); letter-spacing:.5px; }
-    .img-mode-radio { font-size:9px; color:var(--dim); display:flex; align-items:center; gap:3px; cursor:pointer; }
-    .img-mode-radio input { cursor:pointer; accent-color:var(--amber); }
-    #crop-opts { display:flex; gap:5px; margin-bottom:5px; }
-    #crop-axis-sel { font-family:var(--font); font-size:9px; padding:2px 5px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:2px; cursor:pointer; flex:1; }
-    #crop-split-inp { width:52px; font-family:var(--font); font-size:9px; padding:2px 5px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:2px; text-align:center; }
     #run-btn {
       width:100%; padding:7px 0; background:transparent; border:1px solid var(--border);
       color:var(--dim); cursor:pointer; font-family:var(--font); font-size:11px;
@@ -368,24 +361,6 @@
         <div id="auto-indicator"></div>
         <span id="auto-label">자동 실행 OFF</span>
         <button id="auto-toggle-btn" class="off">AUTO ON</button>
-      </div>
-
-      <!-- 이미지 선택 모드 -->
-      <div id="img-mode-row">
-        <span class="img-mode-lbl">이미지 모드:</span>
-        <label class="img-mode-radio">
-          <input type="radio" name="imgMode" value="separate" checked> 분리 2장
-        </label>
-        <label class="img-mode-radio">
-          <input type="radio" name="imgMode" value="crop"> 단일 크롭
-        </label>
-      </div>
-      <div id="crop-opts" style="display:none">
-        <select id="crop-axis-sel" title="분할 축">
-          <option value="vertical">좌/우 분할</option>
-          <option value="horizontal">상/하 분할</option>
-        </select>
-        <input id="crop-split-inp" type="number" min="0.1" max="0.9" step="0.05" value="0.5" title="분할 비율">
       </div>
 
       <!-- 수동 실행 버튼 -->
@@ -1098,14 +1073,6 @@ async function showDetectionPopup(imageId, imgMeta, e) {
 }
 
 /* ── 시뮬레이션 1스텝 실행 ── */
-// 이미지 모드 라디오 토글 → 크롭 옵션 표시/숨김
-document.querySelectorAll('input[name="imgMode"]').forEach(r => {
-  r.addEventListener('change', () => {
-    document.getElementById('crop-opts').style.display =
-      r.value === 'crop' && r.checked ? 'flex' : 'none';
-  });
-});
-
 document.getElementById('run-btn').addEventListener('click', async () => {
   const btn = document.getElementById('run-btn');
   const status = document.getElementById('sim-status');
@@ -1132,14 +1099,7 @@ document.getElementById('run-btn').addEventListener('click', async () => {
   }, 2500);
 
   try {
-    const imageMode  = document.querySelector('input[name="imgMode"]:checked')?.value || 'separate';
-    const cropAxis   = document.getElementById('crop-axis-sel').value;
-    const cropSplit  = parseFloat(document.getElementById('crop-split-inp').value) || 0.5;
-    const res = await fetch(`${API}/api/simulator/step`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_mode: imageMode, crop_axis: cropAxis, crop_split: cropSplit }),
-    });
+    const res = await fetch(`${API}/api/simulator/step`, { method: 'POST' });
     clearInterval(timer); clearInterval(stepTimer);
     bar.style.width = '100%';
 
