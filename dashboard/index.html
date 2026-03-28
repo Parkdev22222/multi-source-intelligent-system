@@ -1311,7 +1311,15 @@ async function openReportById(id, fname) {
       meta.textContent = `오류: ${err.detail || repRes.statusText}`;
       return;
     }
-    const report = await repRes.json();
+
+    // 보고서 JSON + 이미지 JSON 동시 파싱
+    const [report, imgs] = await Promise.all([
+      repRes.json(),
+      imgRes.ok ? imgRes.json().catch(() => null) : Promise.resolve(null),
+    ]);
+
+    // ── 모든 데이터 준비 완료 후 DOM을 한번에 업데이트 ──
+
     const rptTime = report.report_time ? new Date(report.report_time).toLocaleString('ko-KR') : '—';
     const sessShort = report.session_id ? report.session_id.slice(0, 8).toUpperCase() : null;
     const sessLabel = sessShort
@@ -1334,7 +1342,6 @@ async function openReportById(id, fname) {
     document.getElementById('rpt-regen-btn').style.display = 'inline-block';
 
     // 위성사진 패널 처리
-    const imgs = imgRes.ok ? await imgRes.json() : null;
     const hasPast = imgs?.past_images?.length > 0;
     const hasCurr = imgs?.current_images?.length > 0;
 
