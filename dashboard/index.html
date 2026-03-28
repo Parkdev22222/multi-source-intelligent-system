@@ -879,6 +879,19 @@ async function loadAllImages() {
       item.addEventListener('mouseleave', () => { hidePopup(); removeHoverMarker(); });
       list.appendChild(item);
     });
+
+    // 백그라운드 썸네일 프리패치 (hover 전에 캐시 채워두기)
+    (async () => {
+      for (const img of data.images) {
+        if (!popImgCache[img.id]) {
+          try {
+            const r = await fetch(`${API}/api/image/${img.id}/thumb`);
+            if (r.ok) { const d = await r.json(); popImgCache[img.id] = d.image_b64; }
+          } catch(_) {}
+          await new Promise(r => setTimeout(r, 80));
+        }
+      }
+    })();
   } catch(e) { console.warn('[AllImages]', e); }
 }
 
@@ -924,6 +937,19 @@ async function loadAllDetections() {
       });
       list.appendChild(item);
     });
+
+    // 백그라운드 렌더링 이미지 프리패치 (hover 전에 캐시 채워두기)
+    (async () => {
+      for (const img of imgs) {
+        if (!popRenderedCache[img.id]) {
+          try {
+            const r = await fetch(`${API}/api/image/${img.id}/rendered`);
+            if (r.ok) { const d = await r.json(); popRenderedCache[img.id] = d.image_b64 || null; }
+          } catch(_) {}
+          await new Promise(r => setTimeout(r, 80));
+        }
+      }
+    })();
   } catch(e) { console.warn('[AllDetections]', e); }
 }
 
