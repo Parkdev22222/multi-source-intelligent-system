@@ -31,7 +31,7 @@ from pathlib import Path
 
 from src.satellite.simulator import get_active_satellite, get_positions
 from src.satellite.land_check import is_land
-from src.config import IMAGE_MODE, CROP_AXIS, CROP_SPLIT
+from src.config import IMAGE_MODE, CROP_AXIS, CROP_SIZE, CROP_OFFSET
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ CROPS_DIR     = SAMPLE_DIR / ".crops"          # 크롭 임시 파일 저장 위
 METADATA_PATH = BASE_DIR / "data" / "images" / "metadata.json"
 REPORT_OUTPUT = BASE_DIR / "data" / "reports" / "report.txt"
 
-# IMAGE_MODE / CROP_AXIS / CROP_SPLIT 은 src/config.py 에서 관리
+# IMAGE_MODE / CROP_AXIS / CROP_SIZE / CROP_OFFSET 은 src/config.py 에서 관리
 
 PIPELINE_CMD = [
     sys.executable, str(BASE_DIR / "main.py"),
@@ -92,22 +92,36 @@ def _pick_images(n: int = 2) -> list:
 
 def _pick_and_crop_image(
     axis: str = "vertical",
-    split: float = 0.5,
+    crop_size: float = 0.7,
+    crop_offset: float = 0.15,
 ) -> tuple:
     """
-    sample/ 에서 이미지 1장을 랜덤 선택한 뒤 두 영역으로 크롭해 임시 파일로 저장.
+    sample/ 에서 이미지 1장을 랜덤 선택한 뒤 일부 겹치는 크롭 2장을 생성.
+
+    crop_A (이전 프레임): 원점에서 crop_size 비율 크기
+    crop_B (현재 프레임): crop_offset 만큼 이동한 시작점에서 같은 크기
+
+    두 크롭의 겹침 영역 ≈ crop_size − crop_offset (기본: 0.70 − 0.15 = 55%)
+
+    예시 (vertical, crop_size=0.7, crop_offset=0.15, W=1000):
+      crop_A: x = [  0, 700]  (70% 너비)
+      crop_B: x = [150, 850]  (70% 너비, 150px 이동)
+      겹침:   x = [150, 700]  → 550px = 원본의 55%
+
+    ┌──────────────────────────────┐ 원본 (W=1000)
+    │ crop_A [0──────────700]      │
+    │     crop_B    [150──────850] │
+    │         겹침  [150──700]     │
+    └──────────────────────────────┘
 
     Args:
-        axis:  분할 축 — "vertical" (좌/우) | "horizontal" (상/하)
-        split: 분할 비율 (0.0 ~ 1.0). 기본 0.5 = 정중앙 분할.
+        axis:        오프셋 방향 — "vertical" (X축 이동) | "horizontal" (Y축 이동)
+        crop_size:   각 크롭 크기 (원본 대비 비율, 0.0~1.0)
+        crop_offset: 두 크롭 시작점 간의 이동 비율 (원본 대비, 0.0~1.0)
+                     crop_offset < (1 - crop_size) 조건을 만족해야 두 크롭 모두 원본 범위 내에 있음.
 
     Returns:
         (img_paths, past_time, current_time)
-          img_paths    — ["sample/.crops/…_A.png", "sample/.crops/…_B.png"]
-          past_time    — 크롭 A의 촬영 시각 (현재 −6h)
-          current_time — 크롭 B의 촬영 시각 (현재)
-
-    크롭 A → 이전 프레임(과거), 크롭 B → 현재 프레임.
     """
     from PIL import Image as PILImage
 
@@ -122,18 +136,26 @@ def _pick_and_crop_image(
         )
 
     src = random.choice(pool)
-    logger.info(f"[SimRunner/crop] 원본 이미지: {src.name}  axis={axis}  split={split}")
+    logger.info(
+        f"[SimRunner/crop] 원본: {src.name}  axis={axis}  "
+        f"crop_size={crop_size}  crop_offset={crop_offset}"
+    )
 
     with PILImage.open(str(src)).convert("RGB") as img:
         w, h = img.size
         if axis == "horizontal":
-            cut = max(1, int(h * split))
-            crop_a = img.crop((0, 0, w, cut))
-            crop_b = img.crop((0, cut, w, h))
+            ch     = max(1, int(h * crop_size))
+            offset = max(0, min(int(h * crop_offset), h - ch))
+            crop_a = img.crop((0, 0,      w, ch))
+            crop_b = img.crop((0, offset, w, offset + ch))
         else:  # vertical (기본)
-            cut = max(1, int(w * split))
-            crop_a = img.crop((0, 0, cut, h))
-            crop_b = img.crop((cut, 0, w, h))
+            cw     = max(1, int(w * crop_size))
+            offset = max(0, min(int(w * crop_offset), w - cw))
+            crop_a = img.crop((0,      0, cw,      h))
+            crop_b = img.crop((offset, 0, offset + cw, h))
+
+    overlap_pct = max(0.0, crop_size - crop_offset) / crop_size * 100
+    logger.info(f"[SimRunner/crop] 두 크롭 겹침 비율: {overlap_pct:.1f}%")
 
     CROPS_DIR.mkdir(parents=True, exist_ok=True)
     stem = src.stem
@@ -250,19 +272,13 @@ def _build_metadata(
 
 def run_step(
     image_mode: str = None,
-    crop_axis: str = None,
-    crop_split: float = None,
 ) -> dict:
     """
     위성 모의기 1 스텝 실행.
 
     Args:
         image_mode:  "separate" (기본) | "crop"
-                     None 이면 환경변수 IMAGE_MODE 값 사용.
-        crop_axis:   크롭 분할 축 — "vertical" | "horizontal"
-                     None 이면 환경변수 CROP_AXIS 값 사용.
-        crop_split:  크롭 분할 비율 (0.0 ~ 1.0, 기본 0.5)
-                     None 이면 환경변수 CROP_SPLIT 값 사용.
+                     None 이면 src/config.py IMAGE_MODE 값 사용.
 
     Returns:
         {
@@ -277,8 +293,7 @@ def run_step(
         }
     """
     mode  = image_mode or IMAGE_MODE
-    axis  = crop_axis  or CROP_AXIS
-    split = crop_split if crop_split is not None else CROP_SPLIT
+    mode = image_mode or IMAGE_MODE
 
     t0 = time.time()
 
@@ -312,11 +327,13 @@ def run_step(
     # ── 2. 이미지 선택 ────────────────────────────────────────────────────
     explicit_times = None
     if mode == "crop":
-        imgs, past_time, curr_time = _pick_and_crop_image(axis, split)
-        explicit_times = [past_time, curr_time]
-        logger.info(
-            f"[SimRunner] 크롭 모드 — axis={axis}  split={split}  이미지: {imgs}"
+        imgs, past_time, curr_time = _pick_and_crop_image(
+            axis=CROP_AXIS,
+            crop_size=CROP_SIZE,
+            crop_offset=CROP_OFFSET,
         )
+        explicit_times = [past_time, curr_time]
+        logger.info(f"[SimRunner] 크롭 모드 — 이미지: {imgs}")
     else:
         imgs = _pick_images(2)
         logger.info(f"[SimRunner] 분리 이미지 모드 — 이미지: {imgs}")

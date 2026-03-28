@@ -137,13 +137,19 @@ SIMILARITY_MATCH_THRESHOLD = float(os.getenv("SIMILARITY_MATCH_THRESHOLD", "0.5"
 #
 #   IMAGE_MODE=separate  sample/ 에서 서로 다른 이미지 2장을 선택 (기본값)
 #   IMAGE_MODE=crop      sample/ 에서 이미지 1장을 선택한 뒤 두 영역으로 크롭해 2장으로 활용
+#                        두 크롭은 동일 지역을 포함하되 CROP_OFFSET 만큼 이동해 일부 겹침.
 #
 # 크롭 모드 전용 파라미터:
-#   CROP_AXIS    분할 축  — "vertical" (좌/우, 기본) | "horizontal" (상/하)
-#   CROP_SPLIT   분할 비율 0.0~1.0 (기본 0.5 = 정중앙)
-IMAGE_MODE  = os.getenv("IMAGE_MODE",  "separate")
-CROP_AXIS   = os.getenv("CROP_AXIS",   "vertical")
-CROP_SPLIT  = float(os.getenv("CROP_SPLIT", "0.5"))
+#   CROP_AXIS    분할 축  — "vertical" (좌/우 오프셋, 기본) | "horizontal" (상/하 오프셋)
+#   CROP_SIZE    각 크롭의 크기 (원본 이미지 대비 비율, 0.0~1.0, 기본 0.7)
+#                예) 0.7 → 각 크롭이 원본의 70% 크기
+#   CROP_OFFSET  두 크롭 시작점 간의 이동 비율 (원본 이미지 대비, 0.0~1.0, 기본 0.15)
+#                예) 0.15 → crop_A 대비 crop_B를 15% 이동
+#                겹침 영역 ≈ CROP_SIZE − CROP_OFFSET (= 기본 55%)
+IMAGE_MODE   = os.getenv("IMAGE_MODE",   "separate")
+CROP_AXIS    = os.getenv("CROP_AXIS",    "vertical")
+CROP_SIZE    = float(os.getenv("CROP_SIZE",   "0.7"))
+CROP_OFFSET  = float(os.getenv("CROP_OFFSET", "0.15"))
 
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
