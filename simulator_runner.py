@@ -20,6 +20,7 @@ FastAPI 에서 호출:
 
 import json
 import logging
+import os
 import random
 import subprocess
 import sys
@@ -36,8 +37,16 @@ logger = logging.getLogger(__name__)
 # ── 경로 ──────────────────────────────────────────────────────────────────
 BASE_DIR      = Path(__file__).resolve().parent
 SAMPLE_DIR    = BASE_DIR / "data" / "images" / "sample"
+CROPS_DIR     = SAMPLE_DIR / ".crops"          # 크롭 임시 파일 저장 위치
 METADATA_PATH = BASE_DIR / "data" / "images" / "metadata.json"
 REPORT_OUTPUT = BASE_DIR / "data" / "reports" / "report.txt"
+
+# ── 이미지 선택 모드 (환경변수로 기본값 설정) ──────────────────────────────
+#   IMAGE_MODE=separate  : 서로 다른 이미지 2장 선택 (기본)
+#   IMAGE_MODE=crop      : 이미지 1장을 두 영역으로 크롭해 2장으로 활용
+IMAGE_MODE  = os.getenv("IMAGE_MODE",  "separate")  # "separate" | "crop"
+CROP_AXIS   = os.getenv("CROP_AXIS",   "vertical")  # "vertical" | "horizontal"
+CROP_SPLIT  = float(os.getenv("CROP_SPLIT", "0.5")) # 분할 비율 (0.0 ~ 1.0)
 
 PIPELINE_CMD = [
     sys.executable, str(BASE_DIR / "main.py"),
@@ -85,6 +94,73 @@ def _pick_images(n: int = 2) -> list:
     )
 
 
+def _pick_and_crop_image(
+    axis: str = "vertical",
+    split: float = 0.5,
+) -> tuple:
+    """
+    sample/ 에서 이미지 1장을 랜덤 선택한 뒤 두 영역으로 크롭해 임시 파일로 저장.
+
+    Args:
+        axis:  분할 축 — "vertical" (좌/우) | "horizontal" (상/하)
+        split: 분할 비율 (0.0 ~ 1.0). 기본 0.5 = 정중앙 분할.
+
+    Returns:
+        (img_paths, past_time, current_time)
+          img_paths    — ["sample/.crops/…_A.png", "sample/.crops/…_B.png"]
+          past_time    — 크롭 A의 촬영 시각 (현재 −6h)
+          current_time — 크롭 B의 촬영 시각 (현재)
+
+    크롭 A → 이전 프레임(과거), 크롭 B → 현재 프레임.
+    """
+    from PIL import Image as PILImage
+
+    tifs = sorted(SAMPLE_DIR.glob("*.tiff")) + sorted(SAMPLE_DIR.glob("*.tif"))
+    jpgs = sorted(SAMPLE_DIR.glob("*.JPG"))  + sorted(SAMPLE_DIR.glob("*.jpg"))
+    pool = tifs + jpgs
+
+    if not pool:
+        raise RuntimeError(
+            "data/images/sample/ 에 이미지가 없습니다. "
+            "크롭 모드는 최소 1장이 필요합니다."
+        )
+
+    src = random.choice(pool)
+    logger.info(f"[SimRunner/crop] 원본 이미지: {src.name}  axis={axis}  split={split}")
+
+    with PILImage.open(str(src)).convert("RGB") as img:
+        w, h = img.size
+        if axis == "horizontal":
+            cut = max(1, int(h * split))
+            crop_a = img.crop((0, 0, w, cut))
+            crop_b = img.crop((0, cut, w, h))
+        else:  # vertical (기본)
+            cut = max(1, int(w * split))
+            crop_a = img.crop((0, 0, cut, h))
+            crop_b = img.crop((cut, 0, w, h))
+
+    CROPS_DIR.mkdir(parents=True, exist_ok=True)
+    stem = src.stem
+    now       = datetime.now(tz=timezone.utc)
+    past_time = now - timedelta(hours=6)
+
+    paths = []
+    for crop, label, ct in [
+        (crop_a, "A", past_time),
+        (crop_b, "B", now),
+    ]:
+        fname = CROPS_DIR / f"{stem}_crop_{label}.png"
+        crop.save(str(fname))
+        # mtime 을 capture_time 으로 설정 → _extract_tiff_capture_time 폴백 시 올바른 순서 보장
+        ts = ct.timestamp()
+        os.utime(str(fname), (ts, ts))
+        rel = fname.relative_to(SAMPLE_DIR.parent)  # "sample/.crops/…"
+        paths.append(str(rel))
+
+    logger.info(f"[SimRunner/crop] 크롭 저장: {paths}")
+    return paths, past_time, now
+
+
 def _extract_tiff_capture_time(path: Path) -> datetime:
     """
     TIFF 파일에서 촬영 시각을 추출.
@@ -126,12 +202,19 @@ def _extract_tiff_capture_time(path: Path) -> datetime:
     return datetime.fromtimestamp(mtime, tz=timezone.utc)
 
 
-def _build_metadata(sat: dict, imgs: list) -> list:
+def _build_metadata(
+    sat: dict,
+    imgs: list,
+    explicit_times: list = None,
+) -> list:
     """
     위성 위치와 선택된 이미지 2장으로 metadata.json 항목 2개 생성.
-    capture_time 은 TIFF 파일에 내장된 태그에서 추출.
-    태그 없으면 파일 수정시간 사용.
-    imgs 를 capture_time 순으로 정렬해 [과거, 현재] 순서 유지.
+
+    Args:
+        sat:            활성 위성 정보 dict
+        imgs:           이미지 상대경로 목록 (data/images/ 기준)
+        explicit_times: capture_time 명시 리스트 (크롭 모드에서 사용).
+                        None 이면 TIFF 태그 / 파일 수정시간에서 자동 추출.
     """
     lat, lon = sat["lat"], sat["lon"]
     r = 0.01   # 촬영 범위 반경 (° ≈ 1.1 km)
@@ -149,11 +232,14 @@ def _build_metadata(sat: dict, imgs: list) -> list:
         region_name    = sat["id"],
     )
 
-    # capture_time 추출 및 정렬
+    # capture_time 추출: 명시값 우선, 없으면 TIFF 태그 / 파일 수정시간 폴백
     timed = []
-    for img_rel in imgs:
-        img_path = SAMPLE_DIR.parent / img_rel  # data/images/<img_rel>
-        ct = _extract_tiff_capture_time(img_path)
+    for i, img_rel in enumerate(imgs):
+        if explicit_times and i < len(explicit_times):
+            ct = explicit_times[i]
+        else:
+            img_path = SAMPLE_DIR.parent / img_rel  # data/images/<img_rel>
+            ct = _extract_tiff_capture_time(img_path)
         timed.append((ct, img_rel))
 
     timed.sort(key=lambda x: x[0])   # 오래된 것이 앞 (과거 프레임)
@@ -166,21 +252,38 @@ def _build_metadata(sat: dict, imgs: list) -> list:
 
 # ── 공개 API ───────────────────────────────────────────────────────────────
 
-def run_step() -> dict:
+def run_step(
+    image_mode: str = None,
+    crop_axis: str = None,
+    crop_split: float = None,
+) -> dict:
     """
     위성 모의기 1 스텝 실행.
+
+    Args:
+        image_mode:  "separate" (기본) | "crop"
+                     None 이면 환경변수 IMAGE_MODE 값 사용.
+        crop_axis:   크롭 분할 축 — "vertical" | "horizontal"
+                     None 이면 환경변수 CROP_AXIS 값 사용.
+        crop_split:  크롭 분할 비율 (0.0 ~ 1.0, 기본 0.5)
+                     None 이면 환경변수 CROP_SPLIT 값 사용.
 
     Returns:
         {
           success:     bool,
           elapsed_s:   float,
-          satellites:  list[dict],   # 전체 위성 현재 위치
-          active:      dict,         # 선택된 위성
-          images:      list[str],    # 선택된 이미지 경로 (상대)
+          image_mode:  str,          # 실제 사용된 모드
+          satellites:  list[dict],
+          active:      dict,
+          images:      list[str],    # 선택/생성된 이미지 경로 (상대)
           stdout_tail: str,
           stderr_tail: str,
         }
     """
+    mode  = image_mode or IMAGE_MODE
+    axis  = crop_axis  or CROP_AXIS
+    split = crop_split if crop_split is not None else CROP_SPLIT
+
     t0 = time.time()
 
     # ── 1. 위성 위치 계산 ──────────────────────────────────────────────────
@@ -201,6 +304,7 @@ def run_step() -> dict:
             "skipped":     True,
             "skip_reason": skip_reason,
             "elapsed_s":   round(time.time() - t0, 2),
+            "image_mode":  mode,
             "satellites":  satellites,
             "active":      active,
             "images":      [],
@@ -210,11 +314,19 @@ def run_step() -> dict:
     logger.info("[SimRunner] 육지 확인 (lat=%.4f, lon=%.4f) → 파이프라인 진행", lat, lon)
 
     # ── 2. 이미지 선택 ────────────────────────────────────────────────────
-    imgs = _pick_images(2)
-    logger.info(f"[SimRunner] 선택된 이미지: {imgs}")
+    explicit_times = None
+    if mode == "crop":
+        imgs, past_time, curr_time = _pick_and_crop_image(axis, split)
+        explicit_times = [past_time, curr_time]
+        logger.info(
+            f"[SimRunner] 크롭 모드 — axis={axis}  split={split}  이미지: {imgs}"
+        )
+    else:
+        imgs = _pick_images(2)
+        logger.info(f"[SimRunner] 분리 이미지 모드 — 이미지: {imgs}")
 
     # ── 3. metadata.json 업데이트 ─────────────────────────────────────────
-    meta = _build_metadata(active, imgs)
+    meta = _build_metadata(active, imgs, explicit_times=explicit_times)
     METADATA_PATH.parent.mkdir(parents=True, exist_ok=True)
     METADATA_PATH.write_text(
         json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -243,6 +355,7 @@ def run_step() -> dict:
     return {
         "success":     success,
         "elapsed_s":   round(elapsed, 2),
+        "image_mode":  mode,
         "satellites":  satellites,
         "active":      active,
         "images":      imgs,

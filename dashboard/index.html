@@ -59,6 +59,13 @@
     #auto-toggle-btn.off  { border-color:var(--dim); color:var(--dim); }
     #auto-toggle-btn.off:hover { background:var(--dim); color:#000; }
 
+    #img-mode-row { display:flex; align-items:center; gap:8px; margin-bottom:5px; flex-wrap:wrap; }
+    .img-mode-lbl { font-size:9px; color:var(--dim); letter-spacing:.5px; }
+    .img-mode-radio { font-size:9px; color:var(--dim); display:flex; align-items:center; gap:3px; cursor:pointer; }
+    .img-mode-radio input { cursor:pointer; accent-color:var(--amber); }
+    #crop-opts { display:flex; gap:5px; margin-bottom:5px; }
+    #crop-axis-sel { font-family:var(--font); font-size:9px; padding:2px 5px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:2px; cursor:pointer; flex:1; }
+    #crop-split-inp { width:52px; font-family:var(--font); font-size:9px; padding:2px 5px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:2px; text-align:center; }
     #run-btn {
       width:100%; padding:7px 0; background:transparent; border:1px solid var(--border);
       color:var(--dim); cursor:pointer; font-family:var(--font); font-size:11px;
@@ -202,8 +209,9 @@
     #report-hdr-close:hover { color:var(--red); }
     #report-meta { padding:8px 16px; border-bottom:1px solid var(--border); font-size:10px; color:var(--dim); line-height:1.6; }
     /* 위성사진 비교 패널 */
-    #report-img-row { display:none; gap:8px; padding:10px 16px; border-bottom:1px solid var(--border); background:#080d14; }
+    #report-img-row { display:none; flex-direction:column; padding:10px 16px; border-bottom:1px solid var(--border); background:#080d14; }
     #report-img-row.has-images { display:flex; }
+    #rpt-sep-panels { display:flex; gap:8px; }
     .rpt-img-panel { flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
     .rpt-img-label { font-size:9px; letter-spacing:1px; text-transform:uppercase; color:var(--dim); }
     .rpt-img-label.past-lbl  { color:#5599ff; }
@@ -212,6 +220,22 @@
     .rpt-img-wrap img { max-width:100%; max-height:200px; object-fit:contain; display:block; }
     .rpt-img-time { width:100%; box-sizing:border-box; font-size:10px; color:#e8d47a; background:rgba(0,0,0,.78); padding:4px 10px; text-align:center; letter-spacing:.4px; border-top:1px solid rgba(220,180,60,.25); flex-shrink:0; }
     .rpt-img-loading { font-size:10px; color:var(--dim); padding:12px; }
+    /* 이미지 모드 토글 */
+    #rpt-img-mode-bar { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+    .img-mode-btn { font-size:9px; padding:3px 9px; border-radius:2px; border:1px solid var(--border); background:transparent; color:var(--dim); cursor:pointer; font-family:var(--font); letter-spacing:.5px; transition:all .12s; }
+    .img-mode-btn.active { border-color:var(--amber); color:var(--amber); background:rgba(255,179,0,.1); }
+    .img-mode-btn:hover:not(.active) { border-color:var(--text); color:var(--text); }
+    /* 단일 크롭 에디터 */
+    #rpt-crop-editor { display:none; flex-direction:column; gap:8px; }
+    #crop-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    #crop-src-sel { font-family:var(--font); font-size:10px; padding:2px 6px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:2px; cursor:pointer; }
+    .crop-act-btn { font-size:10px; padding:3px 9px; border-radius:2px; cursor:pointer; font-family:var(--font); letter-spacing:.4px; border:1px solid var(--border); background:transparent; color:var(--dim); transition:all .12s; }
+    .crop-act-btn:hover { border-color:var(--text); color:var(--text); }
+    .crop-act-btn.apply { border-color:var(--green); color:var(--green); }
+    .crop-act-btn.apply:hover { background:rgba(0,255,136,.1); }
+    #crop-canvas-container { position:relative; width:100%; background:#050a10; border:1px solid var(--border); border-radius:3px; overflow:hidden; display:flex; align-items:center; justify-content:center; min-height:80px; }
+    #crop-canvas { display:block; max-width:100%; max-height:230px; cursor:crosshair; touch-action:none; user-select:none; }
+    #crop-loading { position:absolute; font-size:10px; color:var(--dim); }
     #report-body { flex:1; overflow-y:auto; padding:14px 16px; }
     #report-content { white-space:pre-wrap; font-size:11px; color:var(--text); line-height:1.7; }
 
@@ -346,6 +370,24 @@
         <button id="auto-toggle-btn" class="off">AUTO ON</button>
       </div>
 
+      <!-- 이미지 선택 모드 -->
+      <div id="img-mode-row">
+        <span class="img-mode-lbl">이미지 모드:</span>
+        <label class="img-mode-radio">
+          <input type="radio" name="imgMode" value="separate" checked> 분리 2장
+        </label>
+        <label class="img-mode-radio">
+          <input type="radio" name="imgMode" value="crop"> 단일 크롭
+        </label>
+      </div>
+      <div id="crop-opts" style="display:none">
+        <select id="crop-axis-sel" title="분할 축">
+          <option value="vertical">좌/우 분할</option>
+          <option value="horizontal">상/하 분할</option>
+        </select>
+        <input id="crop-split-inp" type="number" min="0.1" max="0.9" step="0.05" value="0.5" title="분할 비율">
+      </div>
+
       <!-- 수동 실행 버튼 -->
       <button id="run-btn">▶ 수동 1스텝 실행</button>
       <div id="sim-status">자동 시뮬레이션을 켜거나 수동 실행하세요</div>
@@ -449,13 +491,42 @@
     </div>
     <div id="report-meta">로딩 중...</div>
     <div id="report-img-row">
-      <div class="rpt-img-panel">
-        <div class="rpt-img-label past-lbl">이전 위성사진</div>
-        <div class="rpt-img-wrap" id="rpt-past-wrap"><span class="rpt-img-loading">로딩 중...</span></div>
+      <!-- 이미지 모드 토글 -->
+      <div id="rpt-img-mode-bar">
+        <button id="img-mode-sep-btn" class="img-mode-btn active">◫ 분리 이미지</button>
+        <button id="img-mode-crop-btn" class="img-mode-btn">✂ 단일 크롭</button>
       </div>
-      <div class="rpt-img-panel">
-        <div class="rpt-img-label curr-lbl">현재 위성사진 (객체탐지)</div>
-        <div class="rpt-img-wrap" id="rpt-curr-wrap"><span class="rpt-img-loading">로딩 중...</span></div>
+      <!-- 분리 이미지 모드 (기본) -->
+      <div id="rpt-sep-panels">
+        <div class="rpt-img-panel">
+          <div class="rpt-img-label past-lbl">이전 위성사진</div>
+          <div class="rpt-img-wrap" id="rpt-past-wrap"><span class="rpt-img-loading">로딩 중...</span></div>
+        </div>
+        <div class="rpt-img-panel">
+          <div class="rpt-img-label curr-lbl">현재 위성사진 (객체탐지)</div>
+          <div class="rpt-img-wrap" id="rpt-curr-wrap"><span class="rpt-img-loading">로딩 중...</span></div>
+        </div>
+      </div>
+      <!-- 단일 크롭 모드 -->
+      <div id="rpt-crop-editor">
+        <div id="crop-toolbar">
+          <label style="font-size:10px;color:var(--dim)">원본 이미지:</label>
+          <select id="crop-src-sel">
+            <option value="curr">현재 이미지</option>
+            <option value="past">이전 이미지</option>
+          </select>
+          <button class="crop-act-btn" id="crop-reset-btn">↺ 초기화</button>
+          <button class="crop-act-btn apply" id="crop-apply-btn">✓ 크롭 적용</button>
+          <span style="font-size:9px;color:var(--dim);margin-left:4px">
+            <span style="color:#5599ff">■</span> 이전 영역 &nbsp;
+            <span style="color:#00cc66">■</span> 현재 영역
+            &nbsp;· 드래그로 이동, 모서리로 크기 조절
+          </span>
+        </div>
+        <div id="crop-canvas-container">
+          <canvas id="crop-canvas"></canvas>
+          <div id="crop-loading">이미지 로딩 중...</div>
+        </div>
       </div>
     </div>
     <div id="report-body">
@@ -1027,6 +1098,14 @@ async function showDetectionPopup(imageId, imgMeta, e) {
 }
 
 /* ── 시뮬레이션 1스텝 실행 ── */
+// 이미지 모드 라디오 토글 → 크롭 옵션 표시/숨김
+document.querySelectorAll('input[name="imgMode"]').forEach(r => {
+  r.addEventListener('change', () => {
+    document.getElementById('crop-opts').style.display =
+      r.value === 'crop' && r.checked ? 'flex' : 'none';
+  });
+});
+
 document.getElementById('run-btn').addEventListener('click', async () => {
   const btn = document.getElementById('run-btn');
   const status = document.getElementById('sim-status');
@@ -1053,7 +1132,14 @@ document.getElementById('run-btn').addEventListener('click', async () => {
   }, 2500);
 
   try {
-    const res = await fetch(`${API}/api/simulator/step`, { method: 'POST' });
+    const imageMode  = document.querySelector('input[name="imgMode"]:checked')?.value || 'separate';
+    const cropAxis   = document.getElementById('crop-axis-sel').value;
+    const cropSplit  = parseFloat(document.getElementById('crop-split-inp').value) || 0.5;
+    const res = await fetch(`${API}/api/simulator/step`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_mode: imageMode, crop_axis: cropAxis, crop_split: cropSplit }),
+    });
     clearInterval(timer); clearInterval(stepTimer);
     bar.style.width = '100%';
 
@@ -1243,6 +1329,190 @@ let _currentReportId  = null;
 let _currImageIds     = [];   // 현재 시점 이미지 ID 배열
 let _pastImageIds     = [];   // 과거 시점 이미지 ID 배열
 let _pvizOpen         = false;
+
+/* ── 이미지 모드 ── */
+let _imgMode = 'separate';  // 'separate' | 'crop'
+const _cropState = {
+  img:    null,   // HTMLImageElement (로드된 원본)
+  canvas: null,
+  ctx:    null,
+  drag:   null,   // 현재 드래그 상태
+  rects: [
+    { x:0, y:0, w:0, h:0, label:'이전' },
+    { x:0, y:0, w:0, h:0, label:'현재' },
+  ],
+};
+
+/* ── 크롭 에디터 함수 ── */
+
+function _cropDraw() {
+  const { img, canvas, ctx, rects } = _cropState;
+  if (!ctx || !img) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  rects.forEach((r, ri) => {
+    ctx.fillStyle   = ri === 0 ? 'rgba(85,153,255,0.22)' : 'rgba(0,204,102,0.22)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = ri === 0 ? '#5599ff' : '#00cc66';
+    ctx.lineWidth   = 2;
+    ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+    ctx.font      = 'bold 11px sans-serif';
+    ctx.fillStyle = ri === 0 ? '#5599ff' : '#00cc66';
+    ctx.fillText(r.label, r.x + 5, r.y + 15);
+    // 모서리 핸들
+    const HS = 7;
+    [[r.x, r.y], [r.x+r.w, r.y], [r.x+r.w, r.y+r.h], [r.x, r.y+r.h]].forEach(([hx,hy]) => {
+      ctx.fillRect(hx - HS/2, hy - HS/2, HS, HS);
+    });
+  });
+}
+
+function _cropReset() {
+  const { canvas, rects } = _cropState;
+  if (!canvas || !canvas.width) return;
+  const cw = canvas.width, ch = canvas.height, half = Math.floor(cw / 2);
+  rects[0] = { x: 0,    y: 0, w: half,      h: ch, label: '이전' };
+  rects[1] = { x: half, y: 0, w: cw - half, h: ch, label: '현재' };
+  _cropDraw();
+}
+
+function _cropApply() {
+  const { img, canvas, rects } = _cropState;
+  if (!img || !canvas) return;
+  const sx = img.naturalWidth  / canvas.width;
+  const sy = img.naturalHeight / canvas.height;
+  ['rpt-past-wrap', 'rpt-curr-wrap'].forEach((wrapId, ri) => {
+    const r   = rects[ri];
+    const tmp = document.createElement('canvas');
+    tmp.width  = Math.round(r.w * sx);
+    tmp.height = Math.round(r.h * sy);
+    tmp.getContext('2d').drawImage(img, r.x*sx, r.y*sy, r.w*sx, r.h*sy, 0, 0, tmp.width, tmp.height);
+    const wrap = document.getElementById(wrapId);
+    wrap.innerHTML = '';
+    const imgEl = document.createElement('img');
+    imgEl.src = tmp.toDataURL('image/png');
+    imgEl.alt = r.label;
+    wrap.appendChild(imgEl);
+  });
+}
+
+function _hitTestCropCorner(r, cx, cy) {
+  const HS = 8;
+  const corners = [
+    { key:'nw', x:r.x,     y:r.y     }, { key:'ne', x:r.x+r.w, y:r.y     },
+    { key:'se', x:r.x+r.w, y:r.y+r.h }, { key:'sw', x:r.x,     y:r.y+r.h },
+  ];
+  for (const c of corners)
+    if (Math.abs(cx - c.x) <= HS/2 && Math.abs(cy - c.y) <= HS/2) return c.key;
+  return null;
+}
+
+function _attachCropEvents() {
+  const canvas = document.getElementById('crop-canvas');
+
+  function _xy(e) {
+    const rect = canvas.getBoundingClientRect();
+    return [(e.clientX - rect.left) * (canvas.width  / rect.width),
+            (e.clientY - rect.top)  * (canvas.height / rect.height)];
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const [cx, cy] = _xy(e);
+    const rects = _cropState.rects;
+    for (let ri = 1; ri >= 0; ri--) {
+      const corner = _hitTestCropCorner(rects[ri], cx, cy);
+      if (corner) {
+        _cropState.drag = { ri, type:'corner', corner, sx:cx, sy:cy, orig:{...rects[ri]} };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+      const r = rects[ri];
+      if (cx >= r.x && cx <= r.x+r.w && cy >= r.y && cy <= r.y+r.h) {
+        _cropState.drag = { ri, type:'move', sx:cx, sy:cy, orig:{...rects[ri]} };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    const d = _cropState.drag;
+    if (!d) return;
+    const [cx, cy] = _xy(e);
+    const dx = cx - d.sx, dy = cy - d.sy;
+    const r  = _cropState.rects[d.ri];
+    const o  = d.orig;
+    const cw = canvas.width, ch = canvas.height, MIN = 20;
+    if (d.type === 'move') {
+      r.x = Math.max(0, Math.min(cw - r.w, o.x + dx));
+      r.y = Math.max(0, Math.min(ch - r.h, o.y + dy));
+    } else {
+      switch (d.corner) {
+        case 'nw': r.x = Math.min(o.x+dx, o.x+o.w-MIN); r.y = Math.min(o.y+dy, o.y+o.h-MIN);
+                   r.w = Math.max(MIN, o.w-dx); r.h = Math.max(MIN, o.h-dy); break;
+        case 'ne': r.y = Math.min(o.y+dy, o.y+o.h-MIN);
+                   r.w = Math.max(MIN, o.w+dx); r.h = Math.max(MIN, o.h-dy); break;
+        case 'se': r.w = Math.max(MIN, o.w+dx); r.h = Math.max(MIN, o.h+dy); break;
+        case 'sw': r.x = Math.min(o.x+dx, o.x+o.w-MIN);
+                   r.w = Math.max(MIN, o.w-dx); r.h = Math.max(MIN, o.h+dy); break;
+      }
+      r.x = Math.max(0, Math.min(r.x, cw - r.w));
+      r.y = Math.max(0, Math.min(r.y, ch - r.h));
+      r.w = Math.min(r.w, cw - r.x);
+      r.h = Math.min(r.h, ch - r.y);
+    }
+    _cropDraw();
+  });
+
+  canvas.addEventListener('pointerup',     () => { _cropState.drag = null; });
+  canvas.addEventListener('pointercancel', () => { _cropState.drag = null; });
+}
+
+async function _initCropEditor(srcKey) {
+  const container = document.getElementById('crop-canvas-container');
+  const loadingEl = document.getElementById('crop-loading');
+  const canvas    = document.getElementById('crop-canvas');
+  loadingEl.textContent  = '이미지 로딩 중...';
+  loadingEl.style.display = 'block';
+  canvas.style.display    = 'none';
+
+  const imgId = srcKey === 'curr' ? _currImageIds[0] : _pastImageIds[0];
+  if (!imgId) { loadingEl.textContent = '이미지 없음'; return; }
+
+  try {
+    const res = await fetch(`${API}/api/image/${encodeURIComponent(imgId)}/raw?max_size=800`);
+    if (!res.ok) { loadingEl.textContent = '이미지 로드 실패'; return; }
+    const data = await res.json();
+    const imgEl = new Image();
+    imgEl.onload = () => {
+      const maxW = (container.clientWidth || 800) - 4;
+      const maxH = 220;
+      const scale = Math.min(maxW / imgEl.width, maxH / imgEl.height, 1);
+      canvas.width  = Math.round(imgEl.width  * scale);
+      canvas.height = Math.round(imgEl.height * scale);
+      _cropState.img    = imgEl;
+      _cropState.canvas = canvas;
+      _cropState.ctx    = canvas.getContext('2d');
+      _cropReset();
+      loadingEl.style.display = 'none';
+      canvas.style.display    = 'block';
+    };
+    imgEl.onerror = () => { loadingEl.textContent = '이미지 디코드 실패'; };
+    imgEl.src = `data:image/png;base64,${data.image_b64}`;
+  } catch(e) {
+    loadingEl.textContent = `오류: ${e.message}`;
+  }
+}
+
+function _switchImgMode(mode) {
+  _imgMode = mode;
+  document.getElementById('rpt-sep-panels').style.display  = mode === 'separate' ? 'flex'  : 'none';
+  document.getElementById('rpt-crop-editor').style.display = mode === 'crop'     ? 'flex'  : 'none';
+  document.getElementById('img-mode-sep-btn').classList.toggle('active', mode === 'separate');
+  document.getElementById('img-mode-crop-btn').classList.toggle('active', mode === 'crop');
+  if (mode === 'crop') _initCropEditor(document.getElementById('crop-src-sel').value);
+}
 
 function buildImgEl(info) {
   const wrap = document.createElement('div');
