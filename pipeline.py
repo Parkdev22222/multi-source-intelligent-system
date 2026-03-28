@@ -244,11 +244,14 @@ class MavenPipeline:
                 ]
 
             # --- Fetch past detections (returns records + past batch capture_time) ---
+            # prefer_session_id: 동일 세션의 과거 이미지를 우선 사용 (crop 모드에서
+            # 이전 세션의 다른 이미지가 "과거"로 선택되는 현상 방지)
             past_records, past_capture_time = get_most_recent_past_detections(
                 lat_center=meta.lat_center,
                 lon_center=meta.lon_center,
                 radius_deg=COORDINATE_MATCH_RADIUS_DEG,
                 before_time=meta.capture_time,
+                prefer_session_id=session_id,
             )
 
             # --- Build pairing records ---
@@ -401,6 +404,7 @@ class MavenPipeline:
             lon_center=img_rec.lon_center,
             radius_deg=COORDINATE_MATCH_RADIUS_DEG,
             before_time=capture_time,
+            prefer_session_id=session_id,
         )
         logger.info(f"[Rerun] past detections: {len(past_records)}")
 

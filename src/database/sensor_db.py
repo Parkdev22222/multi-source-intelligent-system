@@ -128,23 +128,28 @@ def get_most_recent_past_detections(
     radius_deg: float,
     before_time: datetime,
     limit: int = 100,
+    prefer_session_id: str = None,
 ) -> tuple:
     """
     Return (detections, past_capture_time) where detections are within
     `radius_deg` of (lat_center, lon_center) captured strictly BEFORE
     `before_time`, limited to the single most recent capture_time batch.
 
+    prefer_session_id: when set, first try to find past data within this
+    session (same-session temporal pairing). Only falls back to the global
+    cross-session search when no same-session past data exists.
+    This prevents previous-session images from contaminating crop-mode pairing.
+
     past_capture_time is the capture_time of that past batch (None if no records).
     """
     engine = get_engine()
-    # Normalise before_time to naive so SQLite string comparison works correctly
-    # (metadata.json ISO strings may include timezone offsets).
     before_time_naive = _naive(before_time)
-    with Session(engine) as session:
-        # First find the most recent capture_time in that region before current time
-        from sqlalchemy import func, and_
-        from .models import ImageRecord
 
+    from sqlalchemy import func
+    from .models import ImageRecord
+
+    def _query_latest_and_records(session, extra_filters):
+        """Find most-recent capture_time batch matching extra_filters."""
         latest_time_row = (
             session.query(func.max(ImageRecord.capture_time))
             .join(DetectionRecord, DetectionRecord.image_id == ImageRecord.id)
@@ -152,35 +157,52 @@ def get_most_recent_past_detections(
                 ImageRecord.capture_time < before_time_naive,
                 DetectionRecord.lat.between(lat_center - radius_deg, lat_center + radius_deg),
                 DetectionRecord.lon.between(lon_center - radius_deg, lon_center + radius_deg),
+                *extra_filters,
             )
             .scalar()
         )
-
         if latest_time_row is None:
-            return [], None
+            return None, []
 
-        # Get all detections from that most-recent past batch
-        past_records = (
+        records = (
             session.query(DetectionRecord)
             .join(ImageRecord, DetectionRecord.image_id == ImageRecord.id)
             .filter(
                 ImageRecord.capture_time == latest_time_row,
                 DetectionRecord.lat.between(lat_center - radius_deg, lat_center + radius_deg),
                 DetectionRecord.lon.between(lon_center - radius_deg, lon_center + radius_deg),
+                *extra_filters,
             )
             .limit(limit)
             .all()
         )
+        return latest_time_row, records
 
-        # Expunge from session to use outside
-        for r in past_records:
+    with Session(engine) as session:
+        # 1. 동일 세션 내 과거 데이터 우선 검색 (crop 모드에서 세션 오염 방지)
+        if prefer_session_id:
+            ts, records = _query_latest_and_records(
+                session, [ImageRecord.session_id == prefer_session_id]
+            )
+            if records:
+                for r in records:
+                    session.expunge(r)
+                logger.info(
+                    f"[SensorDB] Found {len(records)} past detections (same session) near "
+                    f"({lat_center:.4f}, {lon_center:.4f}) at {ts}"
+                )
+                return records, ts
+
+        # 2. 전체 DB 폴백 (cross-session)
+        ts, records = _query_latest_and_records(session, [])
+        for r in records:
             session.expunge(r)
 
         logger.info(
-            f"[SensorDB] Found {len(past_records)} past detections near "
-            f"({lat_center:.4f}, {lon_center:.4f}) at {latest_time_row}"
+            f"[SensorDB] Found {len(records)} past detections near "
+            f"({lat_center:.4f}, {lon_center:.4f}) at {ts}"
         )
-        return past_records, latest_time_row
+        return records, ts
 
 
 def get_detection_by_id(detection_id: str) -> Optional[DetectionRecord]:
