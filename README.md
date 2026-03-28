@@ -367,6 +367,299 @@ python visualize_detections.py --limit 3 --class "helicopter" --no-mask --out-di
 
 ---
 
+## 보고서 생성 과정 상세 (현재 config.py 설정 기준)
+
+현재 `config.py` 설정을 기준으로 `python main.py` 실행 시 보고서가 생성되기까지의 전 과정을 단계별로 설명합니다.
+
+---
+
+### 전체 흐름 요약
+
+```
+metadata.json 읽기
+      │
+      ▼
+[Step 1] 이미지 수집 + 초해상도 (Real-ESRGAN / PIL LANCZOS) → 8000×6000px
+      │
+      ▼
+[Step 1] SAM3 탐지 – 멀티스케일 + 슬라이딩 윈도우 타일
+  ├─ 전체 이미지 탐지  (큰 객체용, TILE_MULTISCALE=true)
+  └─ 타일 탐지         (작은 객체용, 1008px 타일, 200px 겹침)
+      │  NMS (IoU=0.3) 중복 제거
+      ▼
+[Step 1] Sensor DB 저장 (image_records + detection_records)
+      │
+      ▼
+[Step 2] Temporal Pairing – similarity 모드
+  ├─ CLIP ViT-Large 임베딩 (현재/과거 각 객체 crop)
+  ├─ score = 0.8 × CLIP cosine sim + 0.2 × 크기 유사도
+  └─ Gale-Shapley 할당 → new / matched / moved / disappeared
+      │
+      ▼
+[Step 2] Pairing DB 저장 (pairing_records)
+      │
+      ▼
+[Step 3] LLM 보고서 생성 (EXAONE-3.5-7.8B-Instruct-AWQ, vLLM)
+  ├─ 영어 보고서 생성  (new + disappeared 객체 중심)
+  └─ 한국어 번역       (동일 모델 재사용)
+      │
+      ▼
+[Step 3] Reports DB 저장 + (선택) 파일 저장
+```
+
+---
+
+### Step 1-A: 이미지 수집 및 초해상도 (Super Resolution)
+
+**설정값**: `SR_TARGET_W=8000`, `SR_TARGET_H=6000`
+
+1. `metadata.json`을 읽어 `capture_time` 오름차순으로 정렬합니다.
+2. 각 이미지 파일을 로드한 뒤 **초해상도(SR) 업스케일**을 적용합니다.
+   - 목표 해상도: **8000×6000 px** (종횡비 유지, 이미 목표 크기 이상이면 건너뜀)
+   - 필요 배율 > 2× → `Real-ESRGAN x4` 모델 사용
+   - 필요 배율 ≤ 2× → `Real-ESRGAN x2` 모델 사용
+   - `basicsr` / `realesrgan` 패키지 미설치 시 → **PIL LANCZOS 폴백**
+3. SR 이후 실제 배열 크기가 Sensor DB의 `det_width` / `det_height`로 기록됩니다.
+   이후 탐지 결과의 bbox 좌표는 이 SR 적용 후 해상도를 기준으로 합니다.
+
+---
+
+### Step 1-B: SAM3 탐지 (멀티스케일 슬라이딩 윈도우)
+
+**설정값**: `SAM3_MODEL_NAME="/content/drive/MyDrive/sam3"`, `SAM3_DEVICE=cuda`
+**타일 설정**: `TILE_ENABLED=true`, `TILE_SIZE=1008`, `TILE_OVERLAP=200`, `TILE_MULTISCALE=true`, `TILE_NMS_IOU=0.3`
+
+SAM3는 텍스트 프롬프트를 받아 해당 개념의 모든 인스턴스를 한 번의 순전파(forward pass)로 세그멘테이션합니다. SAM3의 고정 입력 해상도는 **1008×1008 px**입니다.
+
+#### 탐지 방식: 멀티스케일 + 슬라이딩 윈도우
+
+```
+SR 이후 이미지 (최대 8000×6000px)
+      │
+      ├─── [전체 이미지 탐지] ──────────────────────────────── TILE_MULTISCALE=true
+      │    이미지 전체를 1008×1008로 리사이즈 → SAM3 추론
+      │    → 큰 객체(탱크, 건물, 활주로 등) 탐지에 유리
+      │
+      └─── [타일 탐지] ─────────────────────────────────────── TILE_ENABLED=true
+           stride = TILE_SIZE - TILE_OVERLAP = 808px
+           ┌───────────────────────────────────────────────┐
+           │  타일 분할 (1008×1008px, 200px 겹침)           │
+           │  각 타일을 1008×1008로 리사이즈 → SAM3 추론    │
+           │  bbox, lat/lon 좌표를 원본 이미지 기준으로 역변환│
+           └───────────────────────────────────────────────┘
+           → 작은 객체(차량, 미사일 발사대, 인원 등) 탐지에 유리
+                    │
+                    ▼
+           전체 이미지 탐지 결과 + 타일 탐지 결과 병합
+                    │
+                    ▼
+           NMS (IoU 임계값 = 0.3) 중복 제거
+```
+
+#### 탐지 대상 클래스 (20개, 텍스트 프롬프트 방식)
+
+| 군사 장비 | 군사 시설 | 민간/기타 |
+|---|---|---|
+| military tank | military building | civilian vehicle |
+| armored personnel carrier | radar installation | civilian building |
+| military truck | supply depot | road |
+| military jeep | fuel storage | runway |
+| fighter aircraft | command post | unknown object |
+| helicopter | military personnel | |
+| military ship | | |
+| missile launcher | | |
+| artillery | | |
+
+#### 탐지 후처리 필터
+
+| 설정 | 값 | 설명 |
+|---|---|---|
+| `DETECTION_CONFIDENCE_THRESHOLD` | 0.3 | 신뢰도 0.3 미만 탐지 제거 |
+| `NMS_IOU_THRESHOLD` | 0.3 | IoU ≥ 0.3이면 낮은 신뢰도 bbox 제거 |
+| `MAX_BBOX_AREA_RATIO` | 0.15 | 이미지 전체 면적의 15% 초과 bbox 제거 |
+| `SAM3_MASK_SCORE_THRESHOLD` | 0.5 | 마스크 신뢰도 0.5 미만 제거 |
+
+#### 위경도 변환
+
+각 탐지 객체의 bbox 중심 픽셀 좌표를 `metadata.json`의 `lat_min/max`, `lon_min/max` 값을 이용한 선형 보간으로 위경도로 변환합니다.
+
+```
+lat = lat_max - (bbox_cy / img_h) × (lat_max - lat_min)
+lon = lon_min + (bbox_cx / img_w) × (lon_max - lon_min)
+```
+
+탐지 결과는 `detection_records` 테이블에 저장됩니다:
+- `object_class`, `confidence`, `bbox_x1/y1/x2/y2`, `lat`, `lon`, `mask_rle`, `mask_area_px`
+
+---
+
+### Step 2: Temporal Pairing (similarity 모드)
+
+**설정값**: `TRACKING_MODE=similarity`, `CLIP_MODEL_NAME="/content/drive/MyDrive/.../vit-large-patch16-224"`
+`SIMILARITY_CLIP_WEIGHT=0.7`, `SIMILARITY_SIZE_WEIGHT=0.2`, `SIMILARITY_MATCH_THRESHOLD=0.5`
+`COORDINATE_MATCH_RADIUS_DEG=0.01` (≈ 1.1 km), `MOVE_DISTANCE_THRESHOLD_DEG=0.001` (≈ 111 m)
+
+현재 프레임의 탐지 결과와 직전 프레임(같은 지역, `capture_time` 기준 가장 최근 과거)의 탐지 결과를 매칭하여 변화를 분류합니다.
+
+#### 2-1. CLIP 임베딩 생성
+
+```
+현재 탐지 객체 N개          과거 탐지 객체 M개
+       │                           │
+       ▼                           ▼
+  SAM mask_rle 복원           과거 이미지 파일 로드 (+ SR 재적용)
+  배경 픽셀 zeroing            SAM mask_rle 복원 → 배경 zeroing
+  bbox crop (4px padding)      bbox crop
+       │                           │
+       └──────────┬────────────────┘
+                  ▼
+      CLIP ViT-Large-patch16-224 임베딩
+      L2 정규화 → float32 (N×D), (M×D)
+```
+
+CLIP 로드 실패 시 geo proximity 점수만으로 매칭 (파이프라인 중단 없음).
+
+#### 2-2. 유사도 점수 계산
+
+클래스가 다른 쌍은 후보에서 제외되며, 같은 클래스 쌍에 대해:
+
+```
+CLIP cosine similarity  =  cur_embed · past_embed    (∈ [-1, 1])
+size_similarity         =  min(area_cur, area_past) / max(area_cur, area_past)
+                           (mask_area_px 우선, 없으면 bbox 면적)
+
+최종 score = 0.8 × CLIP_cosine + 0.2 × size_similarity
+```
+
+> **geo distance는 CLIP 실패 시 대체 점수로만 사용됩니다.** CLIP이 정상 동작하면 공간 거리는 점수에 반영되지 않습니다.
+
+#### 2-3. 최적 매칭 (Gale-Shapley 알고리즘)
+
+- 점수 > `SIMILARITY_MATCH_THRESHOLD` (0.5) 인 쌍만 후보로 등록
+- Gale-Shapley 지연 승인(deferred-acceptance) 방식으로 1:1 최적 매칭
+- 매칭된 쌍 중 geo distance > `MOVE_DISTANCE_THRESHOLD_DEG` (0.001°, ≈ 111 m) 이면 `"moved"`, 아니면 `"matched"`
+
+#### 2-4. 상태 분류
+
+| 상태 | 조건 | 의미 |
+|---|---|---|
+| `new` | 현재에만 있고 매칭 안 됨 | 새로 출현한 객체 |
+| `matched` | 현재 ↔ 과거 매칭, 이동 없음 | 정지 객체 |
+| `moved` | 현재 ↔ 과거 매칭, 위치 변화 > 111 m | 이동한 객체 |
+| `disappeared` | 과거에만 있고 매칭 안 됨 | 현재 영상에서 사라진 객체 |
+
+결과는 `pairing_records` 테이블에 저장됩니다.
+
+---
+
+### Step 3-A: LLM 보고서 생성 (EXAONE via vLLM)
+
+**설정값**: `LLM_BACKEND=vllm`, `LLM_MODEL_NAME=".../EXAONE-3.5-7.8B-Instruct-AWQ"`
+`LLM_TEMPERATURE=0.2`, `LLM_MAX_NEW_TOKENS=2048`, `LLM_GPU_MEMORY_UTILIZATION=0.85`
+
+#### 프롬프트 구성
+
+같은 세션의 pairing_records 중 **가장 최근 `pairing_time` 배치**만 선택합니다 (동일 파이프라인에서 여러 이미지를 처리할 때 이전 프레임 결과가 섞이지 않도록).
+
+LLM에게 전달되는 컨텍스트:
+
+```
+PAST_OBS: <과거 촬영 시각>   CURRENT_OBS: <현재 촬영 시각>   ROI: <위경도 중심>
+CURRENT_FRAME_DETECTIONS: N  (NEW:n1  STATIONARY:n2  MOVED:n3)
+PAST_ONLY (disappeared): n4
+NOTE: Report covers only NEW and DISAPPEARED objects.
+
+=== NEW OBJECTS ===
+  military tank CONF=0.87 (37.576,126.968) DETECTED=2026-03-18T12:00:00Z
+  ...
+
+=== DISAPPEARED OBJECTS ===
+  fighter aircraft CONF=0.79 (37.571,126.962) LAST_SEEN=2026-03-17T08:00:00Z
+  ...
+
+=== TASK ===
+Write a military intelligence report ...
+Sections: 1.CLASSIFICATION 2.EXECUTIVE SUMMARY 3.SITUATION 4.CHANGE ANALYSIS
+          5.THREAT ASSESSMENT 6.INTELLIGENCE GAPS 7.RECOMMENDED ACTIONS 8.APPENDIX
+```
+
+> `matched` (정지) 및 `moved` (이동) 객체는 보고서에서 **제외**됩니다. 활동 지표인 신규 출현과 소실 객체만 분석합니다.
+
+#### vLLM 추론 파라미터
+
+| 파라미터 | 값 |
+|---|---|
+| quantization | AWQ |
+| dtype | float16 |
+| gpu_memory_utilization | 0.85 |
+| max_model_len | 4096 |
+| temperature | 0.2 |
+| max_new_tokens | 2048 |
+
+---
+
+### Step 3-B: 한국어 번역
+
+**설정값**: `LLM_TRANSLATE_TO_KOREAN=true`, `LLM_TRANSLATE_MAX_TOKENS=4096`
+
+영어 보고서가 생성된 직후, **동일한 EXAONE 모델**을 재사용하여 한국어로 번역합니다.
+
+번역 규칙:
+- 섹션 헤더(1. CLASSIFICATION, 2. EXECUTIVE SUMMARY 등)는 그대로 유지
+- 좌표, 타임스탬프, 신뢰도 점수, 객체 클래스명(TANK, APC 등)은 번역하지 않음
+- 서술·분석·설명 텍스트만 번역
+- 번역 실패 시 영어 원문 반환 (파이프라인 중단 없음)
+
+---
+
+### Step 3-C: 보고서 헤더 및 저장
+
+번역 완료 후 다음 메타데이터 헤더가 앞에 붙습니다:
+
+```
+════════════════════════════════════════════════════════════════════════
+  MILITARY INTELLIGENCE REPORT
+  Generated by: Multi-Source Intelligent System (MSIS)
+  Model: .../EXAONE-3.5-7.8B-Instruct-AWQ
+  Language: 한국어 (EXAONE 번역)
+  Past observation:    2026-03-17T08:00:00Z
+  Current observation: 2026-03-18T12:00:00Z
+  Report generated:    2026-03-18T12:05:00Z
+  Current frame detections: 12  (new=5 / stationary=4 / moved=3)
+  Disappeared (past only):  7
+  Total pairing records:    19
+════════════════════════════════════════════════════════════════════════
+```
+
+보고서는 다음 두 위치에 저장됩니다:
+
+| 저장 위치 | 내용 |
+|---|---|
+| `data/db/reports.db` → `report_records` 테이블 | 전체 보고서 텍스트 + 메타데이터 (session_id, 모델명, pairing_count 등) |
+| `--report-output` 경로 (지정 시) | 동일 텍스트를 파일로 저장 |
+
+---
+
+### GPU 메모리 사용 패턴
+
+현재 설정에서 CUDA 장치는 다음 순서로 모델을 로드합니다:
+
+```
+[Step 1] SAM3 (/content/drive/MyDrive/sam3) 로드 → CUDA
+         ↓ 탐지 완료 후 메모리 유지 (동일 세션에서 재사용)
+
+[Step 2] CLIP ViT-Large-patch16-224 로드 → (CPU 또는 CUDA)
+         ↓ 임베딩 완료 후 캐시 유지
+
+[Step 3] EXAONE-3.5-7.8B-Instruct-AWQ → vLLM (GPU 85% 사용)
+         ↓ AWQ 4-bit 양자화로 메모리 절감
+         ↓ 영어 보고서 생성 + 한국어 번역 (모델 재사용)
+```
+
+> SAM3와 EXAONE을 동시에 GPU에 올리기 어려운 경우, Step 1 완료 후 SAM3를 언로드하거나 `SAM3_DEVICE=cpu`로 설정하여 EXAONE에 GPU 메모리를 양보할 수 있습니다.
+
+---
+
 ## Notes
 
 - **SAM3 resolution**: SAM3 requires a fixed inference resolution of 1008×1008.
