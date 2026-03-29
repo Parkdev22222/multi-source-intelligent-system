@@ -21,6 +21,9 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from src.config import (
+    DOCTRINE_ENABLED,
+    DOCTRINE_MAX_CHARS,
+    DOCTRINE_TOP_K,
     LLM_BACKEND,
     LLM_GPU_MEMORY_UTILIZATION,
     LLM_MAX_NEW_TOKENS,
@@ -41,8 +44,8 @@ logger = logging.getLogger(__name__)
 # Prompt builder
 # ---------------------------------------------------------------------------
 
-def _build_system_prompt() -> str:
-    return (
+def _build_system_prompt(doctrine_context: str = "") -> str:
+    base = (
         "You are a military IMINT analyst. Produce a concise formal intelligence report "
         "from AI-based satellite/drone object detection data. "
         "Use standard section headers. Be factual. "
@@ -54,6 +57,15 @@ def _build_system_prompt() -> str:
         "be obscured, or relocated. Always qualify disappearance as 'no longer observed in "
         "current imagery' rather than implying confirmed destruction or elimination."
     )
+    if doctrine_context:
+        base += (
+            "\n\nThe following excerpts from military doctrine documents are provided as "
+            "reference. Use them to inform threat assessment, rules of engagement, and "
+            "recommended actions where relevant. Do not quote doctrine verbatim — "
+            "integrate the principles naturally into your analysis.\n\n"
+            + doctrine_context
+        )
+    return base
 
 
 _MAX_DETAIL = 20   # max individual records shown per change category
@@ -343,6 +355,20 @@ class MilitaryReporter:
     def __init__(self):
         self._backend = _SafeBackend(_get_backend())
 
+        # 교리 RAG 초기화 (DOCTRINE_ENABLED=true 일 때만 로드)
+        self._retriever = None
+        if DOCTRINE_ENABLED:
+            try:
+                from src.reporting.doctrine_retriever import DoctrineRetriever
+                self._retriever = DoctrineRetriever()
+                if self._retriever.is_ready:
+                    logger.info("[Reporter] 교리 RAG 활성화됨.")
+                else:
+                    logger.warning("[Reporter] 교리 RAG 비활성화 — 벡터 DB를 먼저 구축하세요.")
+                    self._retriever = None
+            except Exception as exc:
+                logger.warning(f"[Reporter] DoctrineRetriever 로드 실패 ({exc}) — RAG 없이 진행.")
+
     def generate_report(
         self,
         pairings: List[PairingRecord],
@@ -366,7 +392,32 @@ class MilitaryReporter:
             return "NO DATA: No pairing records available for report generation."
 
         report_time = datetime.now(tz=timezone.utc)
-        system_prompt = _build_system_prompt()
+
+        # --- 교리 RAG: 탐지 객체 클래스 기반으로 관련 교리 문서 검색 ---
+        doctrine_context = ""
+        if self._retriever is not None:
+            # new + disappeared 객체 클래스를 쿼리에 사용 (보고서에 반영되는 것만)
+            object_classes = [
+                p.current_object_class or p.past_object_class
+                for p in pairings
+                if p.status in ("new", "disappeared")
+            ]
+            lats = [p.lat_center for p in pairings]
+            lons = [p.lon_center for p in pairings]
+            region_lat = sum(lats) / len(lats) if lats else 0.0
+            region_lon = sum(lons) / len(lons) if lons else 0.0
+
+            doctrine_context = self._retriever.get_context(
+                object_classes=object_classes,
+                region_lat=region_lat,
+                region_lon=region_lon,
+                top_k=DOCTRINE_TOP_K,
+                max_chars_per_chunk=DOCTRINE_MAX_CHARS,
+            )
+            if doctrine_context:
+                logger.info("[Reporter] 교리 컨텍스트 삽입 완료.")
+
+        system_prompt = _build_system_prompt(doctrine_context)
         user_prompt = _build_user_prompt(pairings)
 
         logger.info(f"[Reporter] Generating military report for {len(pairings)} pairings...")

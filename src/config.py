@@ -151,5 +151,21 @@ CROP_AXIS    = os.getenv("CROP_AXIS",    "vertical")
 CROP_SIZE    = float(os.getenv("CROP_SIZE",   "0.7"))
 CROP_OFFSET  = float(os.getenv("CROP_OFFSET", "0.15"))
 
+# --- Doctrine RAG ---
+# 군사 교리 문서를 FAISS 벡터 DB로 색인해 보고서 생성 시 RAG로 참조합니다.
+# build_doctrine_vectordb.py 로 벡터 DB를 먼저 구축해야 합니다.
+#
+#   DOCTRINE_ENABLED   true  이면 보고서 생성 시 교리 컨텍스트를 LLM 프롬프트에 삽입
+#   DOCTRINE_DB_PATH   벡터 DB 디렉터리 (doctrine.index + doctrine.meta.json)
+#   DOCTRINE_EMBED_MODEL  임베딩 모델명 (미설정 시 build_info.json 에서 자동 읽음)
+#   DOCTRINE_TOP_K     검색할 상위 청크 수 (기본 5)
+#   DOCTRINE_MAX_CHARS 청크당 최대 삽입 문자 수 (기본 600, 너무 크면 프롬프트 초과 주의)
+DOCTRINE_ENABLED    = os.getenv("DOCTRINE_ENABLED", "false").lower() == "true"
+DOCTRINE_DB_PATH    = os.getenv("DOCTRINE_DB_PATH",
+                                str(DATA_DIR / "doctrine" / "vectordb"))
+DOCTRINE_EMBED_MODEL = os.getenv("DOCTRINE_EMBED_MODEL", "")
+DOCTRINE_TOP_K      = int(os.getenv("DOCTRINE_TOP_K", "5"))
+DOCTRINE_MAX_CHARS  = int(os.getenv("DOCTRINE_MAX_CHARS", "600"))
+
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
