@@ -90,6 +90,10 @@ LLM_DEVICE = os.getenv("LLM_DEVICE", "cuda")
 LLM_MAX_NEW_TOKENS = int(os.getenv("LLM_MAX_NEW_TOKENS", "2048"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 LLM_GPU_MEMORY_UTILIZATION = float(os.getenv("LLM_GPU_MEMORY_UTILIZATION", "0.85"))
+# vLLM max_model_len — EXAONE-3.5-7.8B supports 32 768 tokens.
+# Default 8192 gives enough headroom for RAG context + generation.
+# Set to 32768 to use the full context window (requires more VRAM).
+LLM_MAX_MODEL_LEN = int(os.getenv("LLM_MAX_MODEL_LEN", "8192"))
 # Ollama endpoint alternative
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "exaone4:32b")

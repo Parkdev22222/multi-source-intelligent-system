@@ -26,6 +26,7 @@ from src.config import (
     DOCTRINE_TOP_K,
     LLM_BACKEND,
     LLM_GPU_MEMORY_UTILIZATION,
+    LLM_MAX_MODEL_LEN,
     LLM_MAX_NEW_TOKENS,
     LLM_MODEL_NAME,
     LLM_TEMPERATURE,
@@ -180,7 +181,7 @@ class _VllmBackend:
             quantization="awq",
             dtype="float16",
             gpu_memory_utilization=LLM_GPU_MEMORY_UTILIZATION,
-            max_model_len=4096,
+            max_model_len=LLM_MAX_MODEL_LEN,
         )
         logger.info(f"[Reporter] {LLM_MODEL_NAME} loaded.")
 
