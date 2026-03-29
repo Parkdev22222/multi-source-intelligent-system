@@ -223,6 +223,24 @@ class MavenPipeline:
                 if img_rec is None:
                     continue
                 image_id = img_rec.id
+
+                # 세션 내 동일 session_id 로 capture_time이 더 이른 ImageRecord 존재 여부 확인.
+                # 없으면 이 이미지가 세션의 "과거 기준 이미지"이므로 페어링 대상이 아님 — 건너뜀.
+                has_session_past = (
+                    sess.query(ImageRecord.id)
+                    .filter(
+                        ImageRecord.session_id == session_id,
+                        ImageRecord.capture_time < capture_time_naive,
+                    )
+                    .first() is not None
+                )
+                if not has_session_past:
+                    logger.info(
+                        f"[Pair] Skip {Path(meta.image_path).name} "
+                        f"— oldest image in session (reference frame, not current)"
+                    )
+                    continue
+
                 current_orm = (
                     sess.query(DR).filter(DR.image_id == image_id).all()
                 )
@@ -242,27 +260,16 @@ class MavenPipeline:
                     for d in current_orm
                 ]
 
-            # --- Fetch past detections (returns records + past batch capture_time) ---
-            # 동일 세션 내 과거 ImageRecord 존재 여부 먼저 확인.
-            # 존재하면 session_only=True → cross-session 폴백 완전 차단.
-            # (과거 이미지에 탐지 결과가 0개여도 이전 세션 이미지와 섞이지 않음)
-            engine2 = get_engine()
-            with Session(engine2) as _s:
-                _has_session_past = (
-                    _s.query(ImageRecord.id)
-                    .filter(
-                        ImageRecord.session_id == session_id,
-                        ImageRecord.capture_time < capture_time_naive,
-                    )
-                    .first() is not None
-                )
+            # --- Fetch past detections (same session only) ---
+            # 동일 세션의 과거 이미지가 항상 존재함이 위에서 확인됐으므로
+            # session_only=True 로 cross-session 폴백을 완전히 차단.
             past_records, past_capture_time = get_most_recent_past_detections(
                 lat_center=meta.lat_center,
                 lon_center=meta.lon_center,
                 radius_deg=COORDINATE_MATCH_RADIUS_DEG,
                 before_time=meta.capture_time,
                 prefer_session_id=session_id,
-                session_only=_has_session_past,
+                session_only=True,
             )
 
             # --- Build pairing records ---
