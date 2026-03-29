@@ -129,6 +129,7 @@ def get_most_recent_past_detections(
     before_time: datetime,
     limit: int = 100,
     prefer_session_id: str = None,
+    session_only: bool = False,
 ) -> tuple:
     """
     Return (detections, past_capture_time) where detections are within
@@ -137,8 +138,13 @@ def get_most_recent_past_detections(
 
     prefer_session_id: when set, first try to find past data within this
     session (same-session temporal pairing). Only falls back to the global
-    cross-session search when no same-session past data exists.
-    This prevents previous-session images from contaminating crop-mode pairing.
+    cross-session search when no same-session past data exists AND
+    session_only=False.
+
+    session_only: when True, never fall back to cross-session search.
+    Use this when a same-session past ImageRecord is known to exist —
+    prevents previous-session images contaminating pairing even when the
+    same-session past image has zero detections.
 
     past_capture_time is the capture_time of that past batch (None if no records).
     """
@@ -193,7 +199,16 @@ def get_most_recent_past_detections(
                 )
                 return records, ts
 
-        # 2. 전체 DB 폴백 (cross-session)
+            # session_only=True: 동일 세션에 과거 이미지가 존재하지만 탐지 결과가 없는 경우
+            # cross-session 폴백 없이 빈 결과 반환 (이전 세션 이미지와 잘못 페어링되는 현상 방지)
+            if session_only:
+                logger.info(
+                    f"[SensorDB] No same-session past detections near "
+                    f"({lat_center:.4f}, {lon_center:.4f}) — session_only, skip global fallback"
+                )
+                return [], None
+
+        # 2. 전체 DB 폴백 (cross-session) — session_only=False 일 때만 실행
         ts, records = _query_latest_and_records(session, [])
         for r in records:
             session.expunge(r)

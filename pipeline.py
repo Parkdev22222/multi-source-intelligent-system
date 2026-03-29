@@ -58,7 +58,6 @@ from src.database.sensor_db import (
 )
 from src.database.pairing_db import (
     insert_pairings_bulk,
-    get_latest_pairings,
     get_pairings_by_session,
     delete_pairings_by_session,
 )
@@ -244,14 +243,26 @@ class MavenPipeline:
                 ]
 
             # --- Fetch past detections (returns records + past batch capture_time) ---
-            # prefer_session_id: 동일 세션의 과거 이미지를 우선 사용 (crop 모드에서
-            # 이전 세션의 다른 이미지가 "과거"로 선택되는 현상 방지)
+            # 동일 세션 내 과거 ImageRecord 존재 여부 먼저 확인.
+            # 존재하면 session_only=True → cross-session 폴백 완전 차단.
+            # (과거 이미지에 탐지 결과가 0개여도 이전 세션 이미지와 섞이지 않음)
+            engine2 = get_engine()
+            with Session(engine2) as _s:
+                _has_session_past = (
+                    _s.query(ImageRecord.id)
+                    .filter(
+                        ImageRecord.session_id == session_id,
+                        ImageRecord.capture_time < capture_time_naive,
+                    )
+                    .first() is not None
+                )
             past_records, past_capture_time = get_most_recent_past_detections(
                 lat_center=meta.lat_center,
                 lon_center=meta.lon_center,
                 radius_deg=COORDINATE_MATCH_RADIUS_DEG,
                 before_time=meta.capture_time,
                 prefer_session_id=session_id,
+                session_only=_has_session_past,
             )
 
             # --- Build pairing records ---
@@ -307,9 +318,9 @@ class MavenPipeline:
     ) -> str:
         """Retrieve latest pairings and generate the military report."""
         pairings = get_pairings_by_session(session_id)
-        if not pairings:
-            # Fall back to global latest
-            pairings = get_latest_pairings()
+        # cross-session 폴백 제거: 현재 세션에 pairing이 없으면 빈 보고서를 생성.
+        # 이전에는 get_latest_pairings()로 폴백하여 다른 세션 이미지로 보고서가
+        # 생성되는 버그가 있었음.
 
         # A session may contain pairings from multiple image frames processed
         # sequentially.  Keep only the most recent pairing_time batch so that
