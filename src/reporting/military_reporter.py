@@ -56,7 +56,15 @@ def _build_system_prompt(doctrine_context: str = "") -> str:
         "NOT detected in the CURRENT (most recent) imagery. It does NOT mean the object is "
         "confirmed destroyed or permanently gone — it may have moved outside the sensor FOV, "
         "be obscured, or relocated. Always qualify disappearance as 'no longer observed in "
-        "current imagery' rather than implying confirmed destruction or elimination."
+        "current imagery' rather than implying confirmed destruction or elimination. "
+        "IMPORTANT: 'PAST_NOT_INCLUDED' means a current detection falls outside the geographic "
+        "coverage of the past imagery — the past sensor did not image that area, so we cannot "
+        "determine whether the object existed previously. Treat these as unverifiable observations "
+        "requiring additional collection, NOT as confirmed new activity. "
+        "IMPORTANT: 'CURRENT_NOT_INCLUDED' means a past detection falls outside the geographic "
+        "coverage of the current imagery — the current sensor did not image that area, so we "
+        "cannot determine whether the object still exists. Treat these as coverage gaps, "
+        "NOT as confirmed disappearances."
     )
     if doctrine_context:
         base += (
@@ -88,15 +96,17 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     def fmt_dt(dt: Optional[datetime]) -> str:
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else "N/A"
 
-    new_objs = [p for p in pairings if p.status == "new"]
-    disappeared_objs = [p for p in pairings if p.status == "disappeared"]
+    new_objs          = [p for p in pairings if p.status == "new"]
+    disappeared_objs  = [p for p in pairings if p.status == "disappeared"]
+    past_not_inc      = [p for p in pairings if p.status == "past_not_included"]
+    cur_not_inc       = [p for p in pairings if p.status == "current_not_included"]
 
     # matched/moved 객체는 보고서에서 제외 — 집계 참고용으로만 카운트
     n_matched = sum(1 for p in pairings if p.status == "matched")
     n_moved   = sum(1 for p in pairings if p.status == "moved")
 
-    # 현재 프레임 탐지 건수 = new + matched + moved (visualize_detections.py 기준과 동일)
-    n_current_detections = len(new_objs) + n_matched + n_moved
+    # 현재 프레임 탐지 건수 = new + matched + moved + past_not_included
+    n_current_detections = len(new_objs) + n_matched + n_moved + len(past_not_inc)
 
     lats = [p.lat_center for p in pairings]
     lons = [p.lon_center for p in pairings]
@@ -111,16 +121,21 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     lines = [
         f"PAST_OBS: {time_past}  CURRENT_OBS: {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
         f"CURRENT_FRAME_DETECTIONS: {n_current_detections}"
-        f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}  MOVED:{n_moved})",
-        f"PAST_ONLY (disappeared from current): {len(disappeared_objs)}",
-        "NOTE: NEW = detected in CURRENT_OBS but absent in PAST_OBS.",
-        "NOTE: DISAPPEARED = detected in PAST_OBS but NOT observed in CURRENT_OBS"
-        " (location unknown — may have relocated or exited sensor coverage).",
-        "NOTE: Report covers only NEW and DISAPPEARED objects.",
+        f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}  MOVED:{n_moved}"
+        f"  PAST_NOT_INCLUDED:{len(past_not_inc)})",
+        f"PAST_ONLY: disappeared={len(disappeared_objs)}"
+        f"  current_not_included={len(cur_not_inc)}",
+        "NOTE: NEW = in overlap zone of both images, detected CURRENT but absent PAST.",
+        "NOTE: DISAPPEARED = in overlap zone of both images, detected PAST but absent CURRENT.",
+        "NOTE: PAST_NOT_INCLUDED = current detection outside past image FOV"
+        " — cannot confirm if new.",
+        "NOTE: CURRENT_NOT_INCLUDED = past detection outside current image FOV"
+        " — cannot confirm if gone.",
+        "NOTE: Report covers NEW, DISAPPEARED, PAST_NOT_INCLUDED, CURRENT_NOT_INCLUDED objects.",
     ]
 
-    # --- NEW objects (high-value: list top _MAX_DETAIL by confidence) ---
-    lines.append(f"\n=== NEW OBJECTS (first observed at CURRENT_OBS: {time_current}) ===")
+    # --- NEW objects ---
+    lines.append(f"\n=== NEW OBJECTS (overlap zone, first observed at CURRENT_OBS: {time_current}) ===")
     top_new = sorted(new_objs, key=lambda p: p.current_confidence or 0, reverse=True)
     for p in top_new[:_MAX_DETAIL]:
         lines.append(
@@ -136,7 +151,7 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     # --- DISAPPEARED objects ---
     lines.append(
         f"\n=== DISAPPEARED OBJECTS"
-        f" (present at PAST_OBS: {time_past}, NOT observed at CURRENT_OBS: {time_current}) ==="
+        f" (overlap zone, present at PAST_OBS: {time_past}, NOT observed at CURRENT_OBS: {time_current}) ==="
     )
     top_gone = sorted(disappeared_objs, key=lambda p: p.past_confidence or 0, reverse=True)
     for p in top_gone[:_MAX_DETAIL]:
@@ -150,15 +165,54 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     if not disappeared_objs:
         lines.append("  (none)")
 
+    # --- PAST_NOT_INCLUDED objects (coverage gap – current detection, no past coverage) ---
+    lines.append(
+        f"\n=== PAST_NOT_INCLUDED OBJECTS"
+        f" (detected CURRENT_OBS: {time_current}, outside past image FOV — unverifiable) ==="
+    )
+    top_pni = sorted(past_not_inc, key=lambda p: p.current_confidence or 0, reverse=True)
+    for p in top_pni[:_MAX_DETAIL]:
+        lines.append(
+            f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
+            f" ({p.current_lat:.3f},{p.current_lon:.3f})"
+            f" DETECTED={fmt_dt(p.current_capture_time)}"
+        )
+    if len(past_not_inc) > _MAX_DETAIL:
+        lines.append(f"  ... +{len(past_not_inc) - _MAX_DETAIL} more: {_class_counts(past_not_inc[_MAX_DETAIL:])}")
+    if not past_not_inc:
+        lines.append("  (none)")
+
+    # --- CURRENT_NOT_INCLUDED objects (coverage gap – past detection, no current coverage) ---
+    lines.append(
+        f"\n=== CURRENT_NOT_INCLUDED OBJECTS"
+        f" (detected PAST_OBS: {time_past}, outside current image FOV — unverifiable) ==="
+    )
+    top_cni = sorted(cur_not_inc, key=lambda p: p.past_confidence or 0, reverse=True)
+    for p in top_cni[:_MAX_DETAIL]:
+        lines.append(
+            f"  {p.past_object_class} CONF={p.past_confidence:.2f}"
+            f" ({p.past_lat:.3f},{p.past_lon:.3f})"
+            f" LAST_SEEN={fmt_dt(p.past_capture_time)}"
+        )
+    if len(cur_not_inc) > _MAX_DETAIL:
+        lines.append(f"  ... +{len(cur_not_inc) - _MAX_DETAIL} more: {_class_counts(cur_not_inc[_MAX_DETAIL:])}")
+    if not cur_not_inc:
+        lines.append("  (none)")
+
     lines += [
         "\n=== TASK ===",
-        "Write a military intelligence report based ONLY on the NEW and DISAPPEARED objects above.",
+        "Write a military intelligence report covering:",
+        "  1) NEW and DISAPPEARED objects (confirmed change in the overlap zone).",
+        "  2) PAST_NOT_INCLUDED objects — flag as 'detected in current imagery but outside"
+        " past sensor coverage; cannot confirm recency of activity'.",
+        "  3) CURRENT_NOT_INCLUDED objects — flag as 'detected in past imagery but outside"
+        " current sensor coverage; status unknown — additional collection required'.",
         "Use PAST_OBS and CURRENT_OBS timestamps (not today's date) as the observation times.",
-        "For DISAPPEARED objects, state they were 'no longer observed in current imagery' — "
-        "do NOT imply they are destroyed, eliminated, or permanently gone.",
+        "For DISAPPEARED objects, state 'no longer observed in current imagery'.",
         "Do NOT mention stationary or repositioned/moved objects.",
         "Sections: 1.CLASSIFICATION 2.EXECUTIVE SUMMARY 3.SITUATION 4.CHANGE ANALYSIS"
-        " 5.THREAT ASSESSMENT 6.INTELLIGENCE GAPS 7.RECOMMENDED ACTIONS 8.APPENDIX",
+        " 5.COVERAGE GAPS 6.THREAT ASSESSMENT 7.INTELLIGENCE GAPS"
+        " 8.RECOMMENDED ACTIONS 9.APPENDIX",
     ]
 
     return "\n".join(lines)
@@ -401,7 +455,7 @@ class MilitaryReporter:
             object_classes = [
                 p.current_object_class or p.past_object_class
                 for p in pairings
-                if p.status in ("new", "disappeared")
+                if p.status in ("new", "disappeared", "past_not_included", "current_not_included")
             ]
             lats = [p.lat_center for p in pairings]
             lons = [p.lon_center for p in pairings]
@@ -436,11 +490,13 @@ class MilitaryReporter:
         obs_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
         # Prepend metadata header
-        n_current = sum(1 for p in pairings if p.status in ('new', 'matched', 'moved'))
-        n_new_rep = sum(1 for p in pairings if p.status == 'new')
-        n_matched_rep = sum(1 for p in pairings if p.status == 'matched')
-        n_moved_rep = sum(1 for p in pairings if p.status == 'moved')
-        n_disappeared_rep = sum(1 for p in pairings if p.status == 'disappeared')
+        n_new_rep          = sum(1 for p in pairings if p.status == 'new')
+        n_matched_rep      = sum(1 for p in pairings if p.status == 'matched')
+        n_moved_rep        = sum(1 for p in pairings if p.status == 'moved')
+        n_disappeared_rep  = sum(1 for p in pairings if p.status == 'disappeared')
+        n_past_not_inc     = sum(1 for p in pairings if p.status == 'past_not_included')
+        n_cur_not_inc      = sum(1 for p in pairings if p.status == 'current_not_included')
+        n_current = n_new_rep + n_matched_rep + n_moved_rep + n_past_not_inc
         lang_note = "한국어 (EXAONE 번역)" if LLM_TRANSLATE_TO_KOREAN else "English"
         header = (
             f"{'='*72}\n"
@@ -452,8 +508,10 @@ class MilitaryReporter:
             f"  Current observation: {obs_current}\n"
             f"  Report generated:    {report_time.strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
             f"  Current frame detections: {n_current}"
-            f"  (new={n_new_rep} / stationary={n_matched_rep} / moved={n_moved_rep})\n"
+            f"  (new={n_new_rep} / stationary={n_matched_rep} / moved={n_moved_rep}"
+            f" / past_not_included={n_past_not_inc})\n"
             f"  Disappeared (past only):  {n_disappeared_rep}\n"
+            f"  Current not included:     {n_cur_not_inc}\n"
             f"  Total pairing records:    {len(pairings)}\n"
             f"{'='*72}\n\n"
         )

@@ -130,6 +130,58 @@ def _bbox_iou(
 
 
 # ---------------------------------------------------------------------------
+# FOV (Field-of-View) coverage helpers
+#
+# Status semantics:
+#   "new"                  – current detection IS within past image FOV but no past match
+#                            (truly new object in the overlap zone)
+#   "disappeared"          – past detection IS within current image FOV but no current match
+#                            (object was there and is now gone in the overlap zone)
+#   "past_not_included"    – current detection is OUTSIDE the past image FOV
+#                            (past imagery did not cover this area; cannot determine if new)
+#   "current_not_included" – past detection is OUTSIDE the current image FOV
+#                            (current imagery does not cover this area; cannot determine if gone)
+# ---------------------------------------------------------------------------
+
+def _collect_fov_bounds(detections: list) -> Optional[tuple]:
+    """
+    Return the union of geographic bounds (lat_min, lat_max, lon_min, lon_max)
+    across all ImageRecords referenced by the detections.
+    Returns None when no valid bounds can be determined.
+    """
+    lat_min_all, lat_max_all = float("inf"), float("-inf")
+    lon_min_all, lon_max_all = float("inf"), float("-inf")
+    found = False
+    seen: set = set()
+    for det in detections:
+        iid = getattr(det, "image_id", None)
+        if not iid or iid in seen:
+            continue
+        seen.add(iid)
+        rec = get_image_record_by_id(iid)
+        if rec is None or None in (rec.lat_min, rec.lat_max, rec.lon_min, rec.lon_max):
+            continue
+        lat_min_all = min(lat_min_all, rec.lat_min)
+        lat_max_all = max(lat_max_all, rec.lat_max)
+        lon_min_all = min(lon_min_all, rec.lon_min)
+        lon_max_all = max(lon_max_all, rec.lon_max)
+        found = True
+    return (lat_min_all, lat_max_all, lon_min_all, lon_max_all) if found else None
+
+
+def _in_fov(lat: float, lon: float, bounds: Optional[tuple]) -> bool:
+    """
+    Return True if (lat, lon) lies within the given bounds.
+    When bounds is None (ImageRecord metadata unavailable), returns True
+    conservatively so objects are not silently dropped.
+    """
+    if bounds is None:
+        return True
+    lat_min, lat_max, lon_min, lon_max = bounds
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
+
+
+# ---------------------------------------------------------------------------
 # Static-object cross-image similarity helpers
 # ---------------------------------------------------------------------------
 
@@ -479,11 +531,14 @@ def pair_by_tracking(
         pairing_records.append(pr)
 
     # ------------------------------------------------------------------
-    # 2. "new" – current detections not matched to any tracked past object
+    # 2. "new" / "past_not_included"
+    #    현재 탐지 객체가 과거 이미지 FOV 밖이면 "past_not_included"
     # ------------------------------------------------------------------
+    past_fov = _collect_fov_bounds(past_detections)
     for cur in current_detections:
         if cur.detection_id in matched_current_ids:
             continue
+        cur_status = "new" if _in_fov(cur.lat, cur.lon, past_fov) else "past_not_included"
         pr = PairingRecord(
             pairing_time=now,
             lat_center=region_lat,
@@ -498,18 +553,21 @@ def pair_by_tracking(
                 "x1": cur.bbox_x1, "y1": cur.bbox_y1,
                 "x2": cur.bbox_x2, "y2": cur.bbox_y2,
             },
-            status="new",
+            status=cur_status,
             source_type=source_type,
             session_id=session_id,
         )
         pairing_records.append(pr)
 
     # ------------------------------------------------------------------
-    # 3. "disappeared" – past objects NOT returned by Sam3Tracker
+    # 3. "disappeared" / "current_not_included"
+    #    과거 탐지 객체가 현재 이미지 FOV 밖이면 "current_not_included"
     # ------------------------------------------------------------------
+    cur_fov = _collect_fov_bounds(current_detections)
     for past in past_detections:
         if past.id in tracked_past_ids:
             continue
+        past_status = "disappeared" if _in_fov(past.lat, past.lon, cur_fov) else "current_not_included"
         pr = PairingRecord(
             pairing_time=now,
             lat_center=region_lat,
@@ -524,7 +582,7 @@ def pair_by_tracking(
                 "x1": past.bbox_x1, "y1": past.bbox_y1,
                 "x2": past.bbox_x2, "y2": past.bbox_y2,
             },
-            status="disappeared",
+            status=past_status,
             source_type=source_type,
             session_id=session_id,
         )
@@ -892,8 +950,11 @@ def pair_by_similarity(
         ]
 
     if not current_detections or not past_detections:
-        # Nothing to match – all current are "new", all past are "disappeared"
+        # Nothing to match – apply FOV check for each unmatched detection
+        _past_fov_early  = _collect_fov_bounds(past_detections)
+        _cur_fov_early   = _collect_fov_bounds(current_detections)
         for cur in current_detections:
+            s = "new" if _in_fov(cur.lat, cur.lon, _past_fov_early) else "past_not_included"
             pairing_records.append(PairingRecord(
                 pairing_time=now, lat_center=region_lat, lon_center=region_lon,
                 current_detection_id=cur.detection_id,
@@ -903,9 +964,10 @@ def pair_by_similarity(
                 current_capture_time=current_capture_time,
                 current_bbox={"x1": cur.bbox_x1, "y1": cur.bbox_y1,
                               "x2": cur.bbox_x2, "y2": cur.bbox_y2},
-                status="new", source_type=source_type, session_id=session_id,
+                status=s, source_type=source_type, session_id=session_id,
             ))
         for past in past_detections:
+            s = "disappeared" if _in_fov(past.lat, past.lon, _cur_fov_early) else "current_not_included"
             pairing_records.append(PairingRecord(
                 pairing_time=now, lat_center=region_lat, lon_center=region_lon,
                 past_detection_id=past.id,
@@ -915,7 +977,7 @@ def pair_by_similarity(
                 past_capture_time=past_capture_time,
                 past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
                            "x2": past.bbox_x2, "y2": past.bbox_y2},
-                status="disappeared", source_type=source_type, session_id=session_id,
+                status=s, source_type=source_type, session_id=session_id,
             ))
         return pairing_records
 
@@ -1041,11 +1103,13 @@ def pair_by_similarity(
         ))
 
     # ------------------------------------------------------------------
-    # 2. "new"
+    # 2. "new" / "past_not_included"
     # ------------------------------------------------------------------
+    past_fov_sim = _collect_fov_bounds(past_detections)
     for cur in current_detections:
         if cur.detection_id in matched_cur_ids:
             continue
+        s = "new" if _in_fov(cur.lat, cur.lon, past_fov_sim) else "past_not_included"
         pairing_records.append(PairingRecord(
             pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             current_detection_id=cur.detection_id,
@@ -1055,15 +1119,17 @@ def pair_by_similarity(
             current_capture_time=current_capture_time,
             current_bbox={"x1": cur.bbox_x1, "y1": cur.bbox_y1,
                           "x2": cur.bbox_x2, "y2": cur.bbox_y2},
-            status="new", source_type=source_type, session_id=session_id,
+            status=s, source_type=source_type, session_id=session_id,
         ))
 
     # ------------------------------------------------------------------
-    # 3. "disappeared"
+    # 3. "disappeared" / "current_not_included"
     # ------------------------------------------------------------------
+    cur_fov_sim = _collect_fov_bounds(current_detections)
     for past in past_detections:
         if past.id in matched_past_ids:
             continue
+        s = "disappeared" if _in_fov(past.lat, past.lon, cur_fov_sim) else "current_not_included"
         pairing_records.append(PairingRecord(
             pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             past_detection_id=past.id,
@@ -1073,7 +1139,7 @@ def pair_by_similarity(
             past_capture_time=past_capture_time,
             past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
                        "x2": past.bbox_x2, "y2": past.bbox_y2},
-            status="disappeared", source_type=source_type, session_id=session_id,
+            status=s, source_type=source_type, session_id=session_id,
         ))
 
     # ------------------------------------------------------------------
