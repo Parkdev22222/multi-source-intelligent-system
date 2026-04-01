@@ -47,7 +47,11 @@ from src.config import (
     SIMILARITY_SIZE_WEIGHT,
 )
 from src.database.models import DetectionRecord, PairingRecord
-from src.database.sensor_db import get_image_record_by_id, get_most_recent_past_detections
+from src.database.sensor_db import (
+    get_image_record_by_id,
+    get_most_recent_past_detections,
+    insert_detections_bulk,
+)
 from src.detection.sam2_detector import DetectionResult, TrackedObject
 
 if TYPE_CHECKING:
@@ -57,6 +61,26 @@ logger = logging.getLogger(__name__)
 
 # Minimum bbox IoU to accept a TrackedObject ↔ DetectionResult match
 IOU_MATCH_THRESHOLD = 0.25
+
+# ---------------------------------------------------------------------------
+# Static (building) object classes – cannot physically move between frames.
+# Pairing rules:
+#   1. "moved" status is never assigned – always "matched".
+#   2. Only pair two detections whose geo distance ≤ MOVE_DISTANCE_THRESHOLD_DEG
+#      (same location constraint).
+#   3. When one side is missing a detection, attempt cross-image similarity:
+#      crop the same geo region from both images and compare with CLIP.
+#      If similarity ≥ _STATIC_SIM_THRESHOLD → synthesise a DetectionRecord
+#      for the missing frame, insert into sensor DB, and pair as "matched".
+# ---------------------------------------------------------------------------
+_STATIC_CLASSES: frozenset = frozenset({
+    "civilian building",
+    "command post",
+    "fuel storage",
+    "supply depot",
+    "military building",
+})
+_STATIC_SIM_THRESHOLD: float = 0.5   # CLIP cosine similarity threshold
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +127,201 @@ def _bbox_iou(
     area_a = (ax2 - ax1) * (ay2 - ay1)
     area_b = (bx2 - bx1) * (by2 - by1)
     return inter / (area_a + area_b - inter + 1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Static-object cross-image similarity helpers
+# ---------------------------------------------------------------------------
+
+def _geo_bbox_on_image(
+    lat_top: float, lon_left: float, lat_bottom: float, lon_right: float,
+    img_w: int, img_h: int,
+    lat_min: float, lat_max: float, lon_min: float, lon_max: float,
+    padding: int = 4,
+) -> Optional[tuple]:
+    """
+    Convert geographic bbox (lat_top, lon_left, lat_bottom, lon_right) to
+    pixel bbox (x1, y1, x2, y2) on an image defined by its geo bounds.
+
+    pixel_to_geo formula (from image_loader.py):
+        lat = lat_max - (cy / h) * (lat_max - lat_min)
+        lon = lon_min + (cx / w) * (lon_max - lon_min)
+    Inverse:
+        cy = (lat_max - lat) / (lat_max - lat_min) * h
+        cx = (lon - lon_min) / (lon_max - lon_min) * w
+
+    Returns None if the bbox falls entirely outside the image bounds.
+    """
+    lat_span = lat_max - lat_min
+    lon_span = lon_max - lon_min
+    if lat_span <= 0 or lon_span <= 0:
+        return None
+
+    x1 = int((lon_left  - lon_min) / lon_span * img_w) - padding
+    x2 = int((lon_right - lon_min) / lon_span * img_w) + padding
+    y1 = int((lat_max - lat_top)    / lat_span * img_h) - padding
+    y2 = int((lat_max - lat_bottom) / lat_span * img_h) + padding
+
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(img_w, x2), min(img_h, y2)
+
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return x1, y1, x2, y2
+
+
+def _det_geo_bbox(det, img_record) -> Optional[tuple]:
+    """
+    Return the geographic bounding box of a detection as
+    (lat_top, lon_left, lat_bottom, lon_right).
+
+    Works with both DetectionResult (dataclass) and DetectionRecord (ORM)
+    because both expose the same field names.
+    """
+    w = img_record.det_width
+    h = img_record.det_height
+    if not w or not h:
+        return None
+    lat_min = img_record.lat_min
+    lat_max = img_record.lat_max
+    lon_min = img_record.lon_min
+    lon_max = img_record.lon_max
+    if None in (lat_min, lat_max, lon_min, lon_max):
+        return None
+
+    lat_span = lat_max - lat_min
+    lon_span = lon_max - lon_min
+
+    lat_top    = lat_max - (det.bbox_y1 / h) * lat_span
+    lat_bottom = lat_max - (det.bbox_y2 / h) * lat_span
+    lon_left   = lon_min + (det.bbox_x1 / w) * lon_span
+    lon_right  = lon_min + (det.bbox_x2 / w) * lon_span
+    return lat_top, lon_left, lat_bottom, lon_right
+
+
+def _load_pil_for_image_id(image_id: str) -> Optional["PILImage"]:
+    """Load PIL image (with super-resolution) for a given image_id."""
+    from PIL import Image as PILImage
+    from src.detection.super_resolution import super_resolve
+
+    record = get_image_record_by_id(image_id)
+    if record is None:
+        return None
+    from pathlib import Path as _Path
+    p = _Path(record.image_path)
+    if not p.exists():
+        return None
+    img = PILImage.open(p).convert("RGB")
+    arr = super_resolve(np.array(img, dtype=np.uint8))
+    return PILImage.fromarray(arr)
+
+
+def _clip_similarity_crops(crop_a: "PILImage", crop_b: "PILImage") -> float:
+    """Return CLIP cosine similarity between two PIL crops. Falls back to 0.0 on error."""
+    try:
+        embeds = _clip_embedder.embed([crop_a, crop_b])   # (2, D)
+        return float(embeds[0] @ embeds[1])
+    except Exception as exc:
+        logger.warning(f"[StaticCrossCheck] CLIP similarity failed: {exc}")
+        return 0.0
+
+
+def _static_cross_check(
+    det,                    # DetectionResult or DetectionRecord – the side WITH a bbox
+    img_rec_with: "ImageRecord",
+    pil_with: "PILImage",
+    img_rec_without: "ImageRecord",
+    pil_without: "PILImage",
+    capture_time_without,   # datetime for the "missing" frame
+    session_id: str,
+    source_type: str,
+) -> Optional[DetectionRecord]:
+    """
+    For a static-class object detected in one frame but absent in the other:
+    1. Crop the detected bbox from pil_with.
+    2. Crop the same geographic region from pil_without.
+    3. Compute CLIP cosine similarity.
+    4. If similarity ≥ _STATIC_SIM_THRESHOLD, create and insert a synthetic
+       DetectionRecord for the "missing" frame, then return it.
+    5. Otherwise return None.
+    """
+    geo_box = _det_geo_bbox(det, img_rec_with)
+    if geo_box is None:
+        return None
+    lat_top, lon_left, lat_bottom, lon_right = geo_box
+
+    # Crop from the "with bbox" image
+    w_with = img_rec_with.det_width or pil_with.width
+    h_with = img_rec_with.det_height or pil_with.height
+    coords_with = _geo_bbox_on_image(
+        lat_top, lon_left, lat_bottom, lon_right,
+        w_with, h_with,
+        img_rec_with.lat_min, img_rec_with.lat_max,
+        img_rec_with.lon_min, img_rec_with.lon_max,
+    )
+    if coords_with is None:
+        return None
+    cx1, cy1, cx2, cy2 = coords_with
+    crop_with = pil_with.crop((cx1, cy1, cx2, cy2))
+
+    # Crop the same geo region from the "without bbox" image
+    w_wo = img_rec_without.det_width or pil_without.width
+    h_wo = img_rec_without.det_height or pil_without.height
+    coords_wo = _geo_bbox_on_image(
+        lat_top, lon_left, lat_bottom, lon_right,
+        w_wo, h_wo,
+        img_rec_without.lat_min, img_rec_without.lat_max,
+        img_rec_without.lon_min, img_rec_without.lon_max,
+    )
+    if coords_wo is None:
+        return None
+    wx1, wy1, wx2, wy2 = coords_wo
+    crop_wo = pil_without.crop((wx1, wy1, wx2, wy2))
+
+    sim = _clip_similarity_crops(crop_with, crop_wo)
+    logger.info(
+        f"[StaticCrossCheck] {det.object_class}  sim={sim:.3f}  "
+        f"threshold={_STATIC_SIM_THRESHOLD}"
+    )
+    if sim < _STATIC_SIM_THRESHOLD:
+        return None
+
+    # Synthesise a DetectionRecord for the "without" frame
+    from src.detection.image_loader import pixel_to_geo
+    from src.database.models import ImageRecord as _IRModel
+
+    # Pixel-space bbox on the "without" image
+    cx_px = (wx1 + wx2) / 2.0
+    cy_px = (wy1 + wy2) / 2.0
+    # Geo centre from the known detection (more accurate than re-projecting)
+    lat_c = det.lat
+    lon_c = det.lon
+
+    synthetic = DetectionRecord(
+        image_id=img_rec_without.id,
+        detection_time=capture_time_without,
+        object_class=det.object_class,
+        object_class_index=getattr(det, "object_class_index", None),
+        confidence=det.confidence,
+        bbox_x1=float(wx1),
+        bbox_y1=float(wy1),
+        bbox_x2=float(wx2),
+        bbox_y2=float(wy2),
+        lat=lat_c,
+        lon=lon_c,
+        mask_rle=None,
+        mask_area_px=None,
+        source_type=source_type,
+        session_id=session_id,
+    )
+    ids = insert_detections_bulk([synthetic])
+    synthetic.id = ids[0]
+    logger.info(
+        f"[StaticCrossCheck] Synthetic DetectionRecord inserted  "
+        f"id={synthetic.id}  class={synthetic.object_class}  "
+        f"sim={sim:.3f}  image_id={img_rec_without.id[:8]}"
+    )
+    return synthetic
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +435,11 @@ def pair_by_tracking(
         if (cur_lat is not None and cur_lon is not None
                 and past_lat is not None and past_lon is not None):
             dist = _geo_distance(cur_lat, cur_lon, past_lat, past_lon)
-            status = "moved" if dist > MOVE_DISTANCE_THRESHOLD_DEG else "matched"
+            # 건물류는 물리적으로 이동 불가 → 항상 matched
+            if expected_cls in _STATIC_CLASSES:
+                status = "matched"
+            else:
+                status = "moved" if dist > MOVE_DISTANCE_THRESHOLD_DEG else "matched"
         else:
             status = "matched"
 
@@ -306,6 +529,119 @@ def pair_by_tracking(
             session_id=session_id,
         )
         pairing_records.append(pr)
+
+    # ------------------------------------------------------------------
+    # 4. Static-class cross-image check for "new" and "disappeared"
+    #    When a building is unmatched (new or disappeared), compare crops
+    #    from both images.  If similarity ≥ threshold → synthetic detection
+    #    inserted and pair recorded as "matched".
+    # ------------------------------------------------------------------
+    static_new        = [p for p in pairing_records
+                         if p.status == "new"
+                         and (p.current_object_class or "").lower() in _STATIC_CLASSES]
+    static_disappeared = [p for p in pairing_records
+                          if p.status == "disappeared"
+                          and (p.past_object_class or "").lower() in _STATIC_CLASSES]
+
+    if static_new or static_disappeared:
+        # Collect distinct image_ids from current detections to load PILs
+        cur_image_ids = list({d.image_id for d in current_detections if d.image_id})
+        past_image_ids = list({d.image_id for d in past_detections if d.image_id})
+        cur_img_cache: Dict[str, Optional] = {}
+        past_img_cache: Dict[str, Optional] = {}
+
+        def _get_img_rec_pil(iid: str, cache: dict):
+            if iid not in cache:
+                rec = get_image_record_by_id(iid)
+                pil = _load_pil_for_image_id(iid) if rec else None
+                cache[iid] = (rec, pil)
+            return cache[iid]
+
+        # For "new" static: past side is missing → load current PIL, check past image
+        for pr in static_new:
+            if pr.current_detection_id is None:
+                continue
+            # find the DetectionResult
+            cur_det = next(
+                (d for d in current_detections if d.detection_id == pr.current_detection_id),
+                None,
+            )
+            if cur_det is None or not cur_det.image_id:
+                continue
+            cur_rec, cur_pil = _get_img_rec_pil(cur_det.image_id, cur_img_cache)
+            if cur_rec is None or cur_pil is None:
+                continue
+            # Pick the past image that covers the same region
+            if not past_image_ids:
+                continue
+            past_iid = past_image_ids[0]
+            past_rec, past_pil = _get_img_rec_pil(past_iid, past_img_cache)
+            if past_rec is None or past_pil is None:
+                continue
+            synth = _static_cross_check(
+                det=cur_det,
+                img_rec_with=cur_rec,
+                pil_with=cur_pil,
+                img_rec_without=past_rec,
+                pil_without=past_pil,
+                capture_time_without=past_capture_time or current_capture_time,
+                session_id=session_id,
+                source_type=source_type,
+            )
+            if synth is not None:
+                pr.status = "matched"
+                pr.past_detection_id = synth.id
+                pr.past_object_class = synth.object_class
+                pr.past_confidence = synth.confidence
+                pr.past_lat = synth.lat
+                pr.past_lon = synth.lon
+                pr.past_capture_time = synth.detection_time
+                pr.past_bbox = {
+                    "x1": synth.bbox_x1, "y1": synth.bbox_y1,
+                    "x2": synth.bbox_x2, "y2": synth.bbox_y2,
+                }
+
+        # For "disappeared" static: current side is missing → load past PIL, check current image
+        for pr in static_disappeared:
+            if pr.past_detection_id is None:
+                continue
+            past_det = next(
+                (d for d in past_detections if d.id == pr.past_detection_id),
+                None,
+            )
+            if past_det is None or not past_det.image_id:
+                continue
+            past_rec, past_pil = _get_img_rec_pil(past_det.image_id, past_img_cache)
+            if past_rec is None or past_pil is None:
+                continue
+            if not cur_image_ids:
+                continue
+            cur_iid = cur_image_ids[0]
+            cur_rec, cur_pil = _get_img_rec_pil(cur_iid, cur_img_cache)
+            if cur_rec is None or cur_pil is None:
+                continue
+            synth = _static_cross_check(
+                det=past_det,
+                img_rec_with=past_rec,
+                pil_with=past_pil,
+                img_rec_without=cur_rec,
+                pil_without=cur_pil,
+                capture_time_without=current_capture_time,
+                session_id=session_id,
+                source_type=source_type,
+            )
+            if synth is not None:
+                pr.status = "matched"
+                pr.current_detection_id = synth.id
+                pr.current_object_class = synth.object_class
+                pr.current_confidence = synth.confidence
+                pr.current_lat = synth.lat
+                pr.current_lon = synth.lon
+                pr.current_capture_time = synth.detection_time
+                pr.current_bbox = {
+                    "x1": synth.bbox_x1, "y1": synth.bbox_y1,
+                    "x2": synth.bbox_x2, "y2": synth.bbox_y2,
+                }
 
     logger.info(
         f"[Pairing/tracker] ({region_lat:.4f}, {region_lon:.4f}): "
@@ -610,6 +946,10 @@ def pair_by_similarity(
             # 동일 클래스인 경우만 같은 객체 후보로 허용
             if cur.object_class.lower() != past.object_class.lower():
                 continue
+            # 건물류: 위경도가 동일(MOVE_DISTANCE_THRESHOLD_DEG 이내)한 쌍만 허용
+            if cur.object_class.lower() in _STATIC_CLASSES:
+                if _geo_distance(cur.lat, cur.lon, past.lat, past.lon) > MOVE_DISTANCE_THRESHOLD_DEG:
+                    continue
             if clip_sim_matrix is not None:
                 base_score = float(clip_sim_matrix[ci, pi])
             else:
@@ -675,8 +1015,12 @@ def pair_by_similarity(
     # 1. "matched" / "moved"
     # ------------------------------------------------------------------
     for cur, past in pairs:
-        dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
-        status = "moved" if dist > MOVE_DISTANCE_THRESHOLD_DEG else "matched"
+        # 건물류는 이동 불가 → 항상 matched
+        if cur.object_class.lower() in _STATIC_CLASSES:
+            status = "matched"
+        else:
+            dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
+            status = "moved" if dist > MOVE_DISTANCE_THRESHOLD_DEG else "matched"
         pairing_records.append(PairingRecord(
             pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             current_detection_id=cur.detection_id,
@@ -731,6 +1075,115 @@ def pair_by_similarity(
                        "x2": past.bbox_x2, "y2": past.bbox_y2},
             status="disappeared", source_type=source_type, session_id=session_id,
         ))
+
+    # ------------------------------------------------------------------
+    # 4. Static-class cross-image check for unmatched "new" / "disappeared"
+    # ------------------------------------------------------------------
+    static_new_sim = [p for p in pairing_records
+                      if p.status == "new"
+                      and (p.current_object_class or "").lower() in _STATIC_CLASSES]
+    static_dis_sim = [p for p in pairing_records
+                      if p.status == "disappeared"
+                      and (p.past_object_class or "").lower() in _STATIC_CLASSES]
+
+    if static_new_sim or static_dis_sim:
+        cur_img_cache2: Dict[str, Optional] = {}
+        past_img_cache2: Dict[str, Optional] = {}
+        past_image_ids2 = list({d.image_id for d in past_detections if d.image_id})
+        cur_image_ids2  = list({d.detection_id and d.image_id
+                                for d in current_detections if d.image_id})
+
+        def _rec_pil(iid, cache):
+            if iid not in cache:
+                rec = get_image_record_by_id(iid)
+                pil = _load_pil_for_image_id(iid) if rec else None
+                cache[iid] = (rec, pil)
+            return cache[iid]
+
+        # "new" static: past side missing → synthesise in past image
+        for pr in static_new_sim:
+            if pr.current_detection_id is None:
+                continue
+            cur_det = next(
+                (d for d in current_detections if d.detection_id == pr.current_detection_id),
+                None,
+            )
+            if cur_det is None or not cur_det.image_id:
+                continue
+            cur_rec, cur_pil = _rec_pil(cur_det.image_id, cur_img_cache2)
+            if cur_rec is None or cur_pil is None or not past_image_ids2:
+                continue
+            past_iid = past_image_ids2[0]
+            past_rec, past_pil = _rec_pil(past_iid, past_img_cache2)
+            if past_rec is None or past_pil is None:
+                continue
+            synth = _static_cross_check(
+                det=cur_det,
+                img_rec_with=cur_rec,
+                pil_with=cur_pil,
+                img_rec_without=past_rec,
+                pil_without=past_pil,
+                capture_time_without=past_capture_time or current_capture_time,
+                session_id=session_id,
+                source_type=source_type,
+            )
+            if synth is not None:
+                pr.status = "matched"
+                pr.past_detection_id = synth.id
+                pr.past_object_class = synth.object_class
+                pr.past_confidence = synth.confidence
+                pr.past_lat = synth.lat
+                pr.past_lon = synth.lon
+                pr.past_capture_time = synth.detection_time
+                pr.past_bbox = {
+                    "x1": synth.bbox_x1, "y1": synth.bbox_y1,
+                    "x2": synth.bbox_x2, "y2": synth.bbox_y2,
+                }
+
+        # "disappeared" static: current side missing → synthesise in current image
+        for pr in static_dis_sim:
+            if pr.past_detection_id is None:
+                continue
+            past_det = next(
+                (d for d in past_detections if d.id == pr.past_detection_id),
+                None,
+            )
+            if past_det is None or not past_det.image_id:
+                continue
+            past_rec, past_pil = _rec_pil(past_det.image_id, past_img_cache2)
+            if past_rec is None or past_pil is None:
+                continue
+            # current image: get image_id from any current detection
+            cur_iid2 = next(
+                (d.image_id for d in current_detections if d.image_id), None
+            )
+            if cur_iid2 is None:
+                continue
+            cur_rec, cur_pil = _rec_pil(cur_iid2, cur_img_cache2)
+            if cur_rec is None or cur_pil is None:
+                continue
+            synth = _static_cross_check(
+                det=past_det,
+                img_rec_with=past_rec,
+                pil_with=past_pil,
+                img_rec_without=cur_rec,
+                pil_without=cur_pil,
+                capture_time_without=current_capture_time,
+                session_id=session_id,
+                source_type=source_type,
+            )
+            if synth is not None:
+                pr.status = "matched"
+                pr.current_detection_id = synth.id
+                pr.current_object_class = synth.object_class
+                pr.current_confidence = synth.confidence
+                pr.current_lat = synth.lat
+                pr.current_lon = synth.lon
+                pr.current_capture_time = synth.detection_time
+                pr.current_bbox = {
+                    "x1": synth.bbox_x1, "y1": synth.bbox_y1,
+                    "x2": synth.bbox_x2, "y2": synth.bbox_y2,
+                }
 
     logger.info(
         f"[Pairing/similarity] ({region_lat:.4f}, {region_lon:.4f}): "
