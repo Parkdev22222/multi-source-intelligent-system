@@ -51,8 +51,10 @@ def _build_system_prompt(doctrine_context: str = "") -> str:
         "AI 기반 위성/드론 객체 탐지 데이터를 바탕으로 간결하고 공식적인 정보 보고서를 작성하세요. "
         "반드시 한국어로 작성하세요. "
         "표준 섹션 헤더를 사용하고 사실에 근거하여 작성하세요. "
-        "활동 지표인 신규 출현 객체와 소실 객체에만 집중하세요. "
-        "정지 또는 위치 이동 객체는 분석하거나 언급하지 마세요. "
+        "활동 지표인 신규 출현 객체와 소실 객체를 중심으로 분석하되, "
+        "정지·이동 객체의 종류(CLASS_SUMMARY)는 해당 지역 전력 구성 파악 및 위협 평가에 활용하세요. "
+        "각 객체 클래스(TANK, APC, HELICOPTER, artillery, civilian building 등)의 군사적 의미를 반영하세요. "
+        "정지 또는 위치 이동 객체를 변화 분석에서 개별 나열하지는 마세요. "
         "중요: 'DISAPPEARED(소실)'은 과거 영상에서 탐지되었으나 현재(최신) 영상에서 탐지되지 않은 객체를 의미합니다. "
         "객체가 완전히 소멸되거나 파괴되었음을 의미하지 않습니다. "
         "센서 시야 밖으로 이동했거나, 은폐되거나, 위치를 옮겼을 수 있습니다. "
@@ -97,10 +99,11 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     disappeared_objs  = [p for p in pairings if p.status == "disappeared"]
     past_not_inc      = [p for p in pairings if p.status == "past_not_included"]
     cur_not_inc       = [p for p in pairings if p.status == "current_not_included"]
+    matched_objs      = [p for p in pairings if p.status == "matched"]
+    moved_objs        = [p for p in pairings if p.status == "moved"]
 
-    # matched/moved 객체는 보고서에서 제외 — 집계 참고용으로만 카운트
-    n_matched = sum(1 for p in pairings if p.status == "matched")
-    n_moved   = sum(1 for p in pairings if p.status == "moved")
+    n_matched = len(matched_objs)
+    n_moved   = len(moved_objs)
 
     # 현재 프레임 탐지 건수 = new + matched + moved + past_not_included
     n_current_detections = len(new_objs) + n_matched + n_moved + len(past_not_inc)
@@ -131,8 +134,33 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
         "NOTE: Report covers NEW, DISAPPEARED, PAST_NOT_INCLUDED, CURRENT_NOT_INCLUDED objects.",
     ]
 
+    # --- STATIONARY objects (class breakdown only – for threat context) ---
+    if matched_objs:
+        lines.append(
+            f"\n=== STATIONARY OBJECTS (overlap zone, present in BOTH frames — class breakdown for context) ==="
+        )
+        lines.append(f"  CLASS_SUMMARY: {_class_counts(matched_objs)}")
+
+    # --- MOVED objects (class breakdown only – for threat context) ---
+    if moved_objs:
+        lines.append(
+            f"\n=== MOVED OBJECTS (same object, position changed between frames — class breakdown for context) ==="
+        )
+        lines.append(f"  CLASS_SUMMARY: {_class_counts(moved_objs)}")
+        top_moved = sorted(moved_objs, key=lambda p: p.current_confidence or 0, reverse=True)
+        for p in top_moved[:_MAX_DETAIL]:
+            lines.append(
+                f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
+                f" PAST({p.past_lat:.3f},{p.past_lon:.3f})"
+                f" → CURRENT({p.current_lat:.3f},{p.current_lon:.3f})"
+            )
+        if len(moved_objs) > _MAX_DETAIL:
+            lines.append(f"  ... +{len(moved_objs) - _MAX_DETAIL} more: {_class_counts(moved_objs[_MAX_DETAIL:])}")
+
     # --- NEW objects ---
     lines.append(f"\n=== NEW OBJECTS (overlap zone, first observed at CURRENT_OBS: {time_current}) ===")
+    if new_objs:
+        lines.append(f"  CLASS_SUMMARY: {_class_counts(new_objs)}")
     top_new = sorted(new_objs, key=lambda p: p.current_confidence or 0, reverse=True)
     for p in top_new[:_MAX_DETAIL]:
         lines.append(
@@ -150,6 +178,8 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
         f"\n=== DISAPPEARED OBJECTS"
         f" (overlap zone, present at PAST_OBS: {time_past}, NOT observed at CURRENT_OBS: {time_current}) ==="
     )
+    if disappeared_objs:
+        lines.append(f"  CLASS_SUMMARY: {_class_counts(disappeared_objs)}")
     top_gone = sorted(disappeared_objs, key=lambda p: p.past_confidence or 0, reverse=True)
     for p in top_gone[:_MAX_DETAIL]:
         lines.append(
@@ -167,6 +197,8 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
         f"\n=== PAST_NOT_INCLUDED OBJECTS"
         f" (detected CURRENT_OBS: {time_current}, outside past image FOV — unverifiable) ==="
     )
+    if past_not_inc:
+        lines.append(f"  CLASS_SUMMARY: {_class_counts(past_not_inc)}")
     top_pni = sorted(past_not_inc, key=lambda p: p.current_confidence or 0, reverse=True)
     for p in top_pni[:_MAX_DETAIL]:
         lines.append(
@@ -184,6 +216,8 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
         f"\n=== CURRENT_NOT_INCLUDED OBJECTS"
         f" (detected PAST_OBS: {time_past}, outside current image FOV — unverifiable) ==="
     )
+    if cur_not_inc:
+        lines.append(f"  CLASS_SUMMARY: {_class_counts(cur_not_inc)}")
     top_cni = sorted(cur_not_inc, key=lambda p: p.past_confidence or 0, reverse=True)
     for p in top_cni[:_MAX_DETAIL]:
         lines.append(
@@ -204,9 +238,11 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
         " — 신규 활동 여부 미확인'으로 표기.",
         "  3) CURRENT_NOT_INCLUDED(현재 미포함) 객체: '과거 영상에서 탐지되었으나 현재 촬영 범위 밖에 위치"
         " — 현재 상태 불명, 추가 수집 필요'로 표기.",
+        "  4) STATIONARY(정지) 및 MOVED(이동) 객체: 변화 분석 섹션에서 직접 나열하지 말고,"
+        " 탐지된 객체 종류(CLASS_SUMMARY)를 바탕으로 해당 지역의 전력 구성 및 위협 수준 평가에 활용하세요.",
+        "각 객체 종류(TANK, APC, HELICOPTER, civilian building 등)의 군사적 의미를 분석에 반영하세요.",
         "관측 시각은 오늘 날짜가 아닌 PAST_OBS 및 CURRENT_OBS 타임스탬프를 사용하세요.",
         "DISAPPEARED 객체는 '현재 영상에서 더 이상 관측되지 않음'으로 표현하세요.",
-        "정지 또는 이동 객체는 언급하지 마세요.",
         "섹션 구성: 1.분류등급 2.핵심요약 3.상황 4.변화분석"
         " 5.촬영공백구역 6.위협평가 7.정보공백 8.권고조치 9.부록",
     ]
@@ -283,6 +319,7 @@ class _FallbackBackend:
 
             6. 위협평가
             수동 검토 필요. LLM 기반 위협 평가를 사용할 수 없습니다.
+            (탐지 객체 종류 참고: {data_section.split('CLASS_SUMMARY:')[1].split(chr(10))[0].strip() if 'CLASS_SUMMARY:' in data_section else '정보 없음'})
 
             7. 정보공백
             - LLM 위협 분석 미수행 (모델 미로드).
