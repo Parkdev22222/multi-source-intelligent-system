@@ -435,18 +435,35 @@ def pair_by_tracking(
             if _naive(d.detection_time) <= _naive(past_capture_time)
         ]
 
+    # ── 중복 제거: 동일 detection_id가 리스트에 두 번 이상 있으면 다중 pairing 발생 ──
+    _seen_cur: set = set()
+    current_detections = [
+        d for d in current_detections
+        if d.detection_id not in _seen_cur and not _seen_cur.add(d.detection_id)
+    ]
+    _seen_past: set = set()
+    past_detections = [
+        d for d in past_detections
+        if d.id not in _seen_past and not _seen_past.add(d.id)
+    ]
+
     past_by_id = {d.id: d for d in past_detections}
 
     # IDs that Sam3Tracker confirmed are present in the current frame
     tracked_past_ids = {t.past_detection_id for t in tracked_objects}
 
     matched_current_ids: set = set()
+    matched_past_ids: set = set()   # 동일 과거 객체가 여러 TrackedObject에 중복 등장 방지
     pairing_records: List[PairingRecord] = []
 
     # ------------------------------------------------------------------
     # 1. "matched" – tracked by Sam3Tracker
     # ------------------------------------------------------------------
     for tracked in tracked_objects:
+        # 트래커가 동일 past_detection_id를 중복 반환하는 경우 첫 번째만 처리
+        if tracked.past_detection_id in matched_past_ids:
+            continue
+        matched_past_ids.add(tracked.past_detection_id)
         past = past_by_id.get(tracked.past_detection_id)
 
         # Find the current Sam3Model detection with highest IoU overlap
@@ -1063,6 +1080,18 @@ def pair_by_similarity(
             d for d in past_detections
             if _naive(d.detection_time) <= _naive(past_capture_time)
         ]
+
+    # ── 중복 제거: 동일 detection_id가 두 번 이상 있으면 다중 pairing 발생 ──
+    _seen_cur_s: set = set()
+    current_detections = [
+        d for d in current_detections
+        if d.detection_id not in _seen_cur_s and not _seen_cur_s.add(d.detection_id)
+    ]
+    _seen_past_s: set = set()
+    past_detections = [
+        d for d in past_detections
+        if d.id not in _seen_past_s and not _seen_past_s.add(d.id)
+    ]
 
     if not current_detections or not past_detections:
         # Nothing to match – apply FOV check for each unmatched detection
