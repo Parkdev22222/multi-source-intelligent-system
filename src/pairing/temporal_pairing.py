@@ -47,6 +47,7 @@ from src.config import (
     SIMILARITY_SIZE_WEIGHT,
 )
 from src.database.models import DetectionRecord, PairingRecord
+from src.database.pairing_db import delete_older_duplicates_for_generated_pairings
 from src.database.sensor_db import (
     get_image_record_by_id,
     get_most_recent_past_detections,
@@ -1094,6 +1095,9 @@ def pair_by_similarity(
                            "x2": past.bbox_x2, "y2": past.bbox_y2},
                 status=s, source_type=source_type, session_id=session_id,
             ))
+        delete_older_duplicates_for_generated_pairings(
+            pairing_records, session_id=session_id, source_type=source_type
+        )
         return pairing_records
 
     # ------------------------------------------------------------------
@@ -1487,5 +1491,8 @@ def pair_by_similarity(
         f"{sum(1 for p in pairing_records if p.status == 'moved')} moved  "
         f"{sum(1 for p in pairing_records if p.status == 'new')} new  "
         f"{sum(1 for p in pairing_records if p.status == 'disappeared')} disappeared"
+    )
+    delete_older_duplicates_for_generated_pairings(
+        pairing_records, session_id=session_id, source_type=source_type
     )
     return pairing_records
