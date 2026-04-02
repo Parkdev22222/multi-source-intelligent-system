@@ -149,24 +149,45 @@ def _tile_coords(img_w: int, img_h: int,
                  tile_size: int, overlap: int) -> List[Tuple[int, int, int, int]]:
     """슬라이딩 윈도우 타일 좌표 목록 (x1, y1, x2, y2) 반환.
 
-    stride = tile_size - overlap 으로 이동하며 이미지 전체를 커버한다.
-    마지막 타일이 경계를 넘으면 이미지 끝에 맞춰 클리핑.
+    SAM3 입력 비율(1:1 / 1008×1008) 유지를 위해 모든 타일을
+    tile_size × tile_size 정방형으로 고정한다.
+    경계에 걸리는 마지막 타일은 클리핑하지 않고 시작점을 안쪽으로
+    당겨(shift-back) 정방형을 유지한다.
+    이미지 자체가 tile_size 보다 작으면 전체 이미지를 단일 타일로 반환.
     """
+    # 이미지가 타일보다 작은 경우 전체를 단일 타일로
+    if img_w <= tile_size and img_h <= tile_size:
+        return [(0, 0, img_w, img_h)]
+
     stride = max(tile_size - overlap, 1)
+    seen: set = set()
     tiles: List[Tuple[int, int, int, int]] = []
+
     y = 0
-    while y < img_h:
+    while True:
+        # shift-back: 하단 경계를 넘지 않도록 y1 조정 → 항상 tile_size 높이 유지
+        y1 = min(y, max(0, img_h - tile_size))
+        y2 = y1 + tile_size
+
         x = 0
-        while x < img_w:
-            x2 = min(x + tile_size, img_w)
-            y2 = min(y + tile_size, img_h)
-            tiles.append((x, y, x2, y2))
-            if x2 == img_w:
+        while True:
+            # shift-back: 우측 경계를 넘지 않도록 x1 조정 → 항상 tile_size 너비 유지
+            x1 = min(x, max(0, img_w - tile_size))
+            x2 = x1 + tile_size
+
+            coord = (x1, y1, x2, y2)
+            if coord not in seen:
+                seen.add(coord)
+                tiles.append(coord)
+
+            if x + tile_size >= img_w:
                 break
             x += stride
+
         if y + tile_size >= img_h:
             break
         y += stride
+
     return tiles
 
 
