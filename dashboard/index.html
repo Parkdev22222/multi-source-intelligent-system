@@ -2005,7 +2005,8 @@ let _edDrag    = null;   // {sx,sy,ex,ey} — world pixel 좌표 (zoom/pan 역�
 let _edZoom    = 1;      // 현재 줌 배율
 let _edPanX    = 0;      // 뷰포트 이동 X (canvas 내부 px)
 let _edPanY    = 0;      // 뷰포트 이동 Y (canvas 내부 px)
-let _edPanDrag = null;   // 미들 마우스 팬 상태 {startX,startY,startPanX,startPanY}
+let _edPanDrag = null;   // 팬 드래그 상태 {startX,startY,startPanX,startPanY}
+let _edSpaceDown = false; // Space 키 누름 여부 (Space+드래그 = pan)
 let _edImgEl   = new Image();
 
 const _edCanvas = document.getElementById('det-canvas');
@@ -2147,8 +2148,8 @@ function _edRenderList() {
 }
 
 _edCanvas.addEventListener('mousedown', e => {
-  // 미들 마우스: 팬(이동) 시작
-  if (e.button === 1) {
+  // 미들 마우스 또는 Space+좌클릭: 팬(이동) 시작
+  if (e.button === 1 || (e.button === 0 && _edSpaceDown)) {
     e.preventDefault();
     const raw = _rawCanvasCoords(e);
     _edPanDrag = { startX: raw.x, startY: raw.y, startPanX: _edPanX, startPanY: _edPanY };
@@ -2197,10 +2198,10 @@ _edCanvas.addEventListener('mousemove', e => {
 });
 
 _edCanvas.addEventListener('mouseup', e => {
-  // 미들 마우스 팬 종료
-  if (e.button === 1) {
+  // 미들 마우스 또는 Space+좌클릭 팬 종료
+  if (e.button === 1 || (e.button === 0 && _edPanDrag)) {
     _edPanDrag = null;
-    _edCanvas.style.cursor = 'crosshair';
+    _edCanvas.style.cursor = _edSpaceDown ? 'grab' : 'crosshair';
     return;
   }
   if (!_edDrag) return;
@@ -2224,7 +2225,7 @@ _edCanvas.addEventListener('mouseup', e => {
 });
 
 _edCanvas.addEventListener('mouseleave', () => {
-  if (_edPanDrag) { _edPanDrag = null; _edCanvas.style.cursor = 'crosshair'; }
+  if (_edPanDrag) { _edPanDrag = null; _edCanvas.style.cursor = _edSpaceDown ? 'grab' : 'crosshair'; }
   if (_edDrag) { _edDrag = null; _edDraw(); }
 });
 
@@ -2240,6 +2241,24 @@ _edCanvas.addEventListener('wheel', e => {
   _edZoom = newZoom;
   _edDraw();
 }, { passive: false });
+
+// Space: pan 모드 진입 (Space+드래그 = 이미지 이동)
+document.addEventListener('keydown', e => {
+  const modal = document.getElementById('det-editor-modal');
+  if (!modal.classList.contains('open')) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space' && !_edSpaceDown) {
+    e.preventDefault();
+    _edSpaceDown = true;
+    _edCanvas.style.cursor = 'grab';
+  }
+});
+document.addEventListener('keyup', e => {
+  if (e.code === 'Space') {
+    _edSpaceDown = false;
+    if (!_edPanDrag) _edCanvas.style.cursor = 'crosshair';
+  }
+});
 
 // Delete / Backspace: 선택된 박스 삭제
 document.addEventListener('keydown', e => {
