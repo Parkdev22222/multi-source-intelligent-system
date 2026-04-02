@@ -39,14 +39,20 @@ SAM3_INFERENCE_SIZE = 1008
 TILE_ENABLED    = os.getenv("TILE_ENABLED",    "true").lower() == "true"
 # 타일 크기 (픽셀). SAM3 입력 해상도(1008)와 맞추는 것이 권장.
 TILE_SIZE       = int(os.getenv("TILE_SIZE",   "1008"))
-# 인접 타일 간 겹치는 픽셀 수. 경계 객체 누락 방지용.
-TILE_OVERLAP    = int(os.getenv("TILE_OVERLAP", "200"))
+# 인접 타일 간 겹치는 픽셀 수.
+# 값이 클수록 타일 경계에 걸친 객체가 최소 한 타일에 완전히 포함될 가능성이 높아짐.
+# 군사 이미지에서 대형 건물/차량은 최대 400~500px 수준이므로 400으로 설정.
+TILE_OVERLAP    = int(os.getenv("TILE_OVERLAP", "400"))
 # 타일 NMS IoU 임계값 (타일 병합 시 중복 제거).
 TILE_NMS_IOU    = float(os.getenv("TILE_NMS_IOU", "0.3"))
 # IoMin 임계값: 교집합 / min(두 박스 면적).
 # 멀티스케일에서 크기가 다른 두 박스가 같은 객체를 중복 탐지할 때
 # IoU가 낮아 NMS를 통과하는 문제를 보완. IoU OR IoMin 중 하나라도 초과하면 억제.
-TILE_NMS_IOMIN  = float(os.getenv("TILE_NMS_IOMIN", "0.6"))
+TILE_NMS_IOMIN  = float(os.getenv("TILE_NMS_IOMIN", "0.5"))
+# 인접 박스 병합 임계값 (픽셀).
+# NMS 이후에도 타일 경계에서 쪼개진 박스(간격이 작거나 0인 같은 클래스 박스)를
+# union bbox로 병합한다. 0으로 설정하면 병합 비활성화.
+TILE_MERGE_GAP  = int(os.getenv("TILE_MERGE_GAP", "32"))
 # 멀티스케일: 타일 탐지와 함께 전체 이미지 탐지도 병행 → 큰 객체 누락 방지.
 # TILE_ENABLED=true 일 때만 적용. false 면 타일 탐지만 실행.
 TILE_MULTISCALE = os.getenv("TILE_MULTISCALE", "true").lower() == "true"
@@ -54,7 +60,7 @@ TILE_MULTISCALE = os.getenv("TILE_MULTISCALE", "true").lower() == "true"
 # TILE_SIZE의 2배 크기 타일로 중형 객체(차량, 건물 등) 탐지 향상.
 TILE_MEDIUM_SCALE   = os.getenv("TILE_MEDIUM_SCALE",   "true").lower() == "true"
 TILE_MEDIUM_SIZE    = int(os.getenv("TILE_MEDIUM_SIZE",    str(1008 * 2)))   # 기본 2016px
-TILE_MEDIUM_OVERLAP = int(os.getenv("TILE_MEDIUM_OVERLAP", str(200  * 2)))   # 기본 400px
+TILE_MEDIUM_OVERLAP = int(os.getenv("TILE_MEDIUM_OVERLAP", str(400  * 2)))   # 기본 800px
 
 # --- Military Object Classes (aerial/satellite imagery) ---
 MILITARY_OBJECT_CLASSES = [

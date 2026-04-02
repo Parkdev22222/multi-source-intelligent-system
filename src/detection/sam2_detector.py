@@ -44,6 +44,7 @@ from src.config import (
     TILE_OVERLAP,
     TILE_NMS_IOU,
     TILE_NMS_IOMIN,
+    TILE_MERGE_GAP,
     TILE_MULTISCALE,
     TILE_MEDIUM_SCALE,
     TILE_MEDIUM_SIZE,
@@ -228,6 +229,51 @@ def _nms_detections(
         if not suppress:
             kept.append(candidate)
     return kept
+
+
+def _merge_adjacent_detections(
+    results: List[DetectionResult],
+    gap_threshold: int,
+) -> List[DetectionResult]:
+    """타일 경계에서 쪼개진 동일 클래스 박스를 union bbox로 병합한다.
+
+    두 박스가 같은 클래스이고 수평/수직 방향 간격이 gap_threshold 이하면
+    하나의 union bbox로 합친다(신뢰도는 두 박스 중 최대값 사용).
+    gap_threshold=0이면 맞닿은 박스만, 양수면 약간의 간격도 허용.
+    """
+    if gap_threshold <= 0 or not results:
+        return results
+
+    merged = True
+    detections = list(results)
+    while merged:
+        merged = False
+        kept: List[DetectionResult] = []
+        used = [False] * len(detections)
+        for i, a in enumerate(detections):
+            if used[i]:
+                continue
+            for j in range(i + 1, len(detections)):
+                b = detections[j]
+                if used[j]:
+                    continue
+                if a.object_class.lower() != b.object_class.lower():
+                    continue
+                # 두 박스가 gap_threshold 이내로 인접하는지 확인
+                gap_x = max(0.0, max(a.bbox_x1, b.bbox_x1) - min(a.bbox_x2, b.bbox_x2))
+                gap_y = max(0.0, max(a.bbox_y1, b.bbox_y1) - min(a.bbox_y2, b.bbox_y2))
+                if gap_x <= gap_threshold and gap_y <= gap_threshold:
+                    # union bbox로 병합, 신뢰도는 최대값
+                    a.bbox_x1 = min(a.bbox_x1, b.bbox_x1)
+                    a.bbox_y1 = min(a.bbox_y1, b.bbox_y1)
+                    a.bbox_x2 = max(a.bbox_x2, b.bbox_x2)
+                    a.bbox_y2 = max(a.bbox_y2, b.bbox_y2)
+                    a.confidence = max(a.confidence, b.confidence)
+                    used[j] = True
+                    merged = True
+            kept.append(a)
+        detections = kept
+    return detections
 
 
 def _iou(box_a: Tuple, box_b: Tuple) -> float:
@@ -614,6 +660,8 @@ class SAM3Detector:
             iou_threshold=TILE_NMS_IOU if TILE_ENABLED else NMS_IOU_THRESHOLD,
             iomin_threshold=TILE_NMS_IOMIN if TILE_ENABLED else 0.6,
         )
+        if TILE_ENABLED and TILE_MERGE_GAP > 0:
+            final = _merge_adjacent_detections(final, TILE_MERGE_GAP)
         logger.info(
             f"[SAM3Detector] {len(all_results)} raw → {len(final)} after NMS "
             f"(image_id={image_id[:8]})"
