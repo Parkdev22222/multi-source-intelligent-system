@@ -46,6 +46,11 @@ TILE_NMS_IOU    = float(os.getenv("TILE_NMS_IOU", "0.3"))
 # 멀티스케일: 타일 탐지와 함께 전체 이미지 탐지도 병행 → 큰 객체 누락 방지.
 # TILE_ENABLED=true 일 때만 적용. false 면 타일 탐지만 실행.
 TILE_MULTISCALE = os.getenv("TILE_MULTISCALE", "true").lower() == "true"
+# 중간 크기 타일 탐지 (TILE_MULTISCALE=true 일 때만 적용).
+# TILE_SIZE의 2배 크기 타일로 중형 객체(차량, 건물 등) 탐지 향상.
+TILE_MEDIUM_SCALE   = os.getenv("TILE_MEDIUM_SCALE",   "true").lower() == "true"
+TILE_MEDIUM_SIZE    = int(os.getenv("TILE_MEDIUM_SIZE",    str(1008 * 2)))   # 기본 2016px
+TILE_MEDIUM_OVERLAP = int(os.getenv("TILE_MEDIUM_OVERLAP", str(200  * 2)))   # 기본 400px
 
 # --- Military Object Classes (aerial/satellite imagery) ---
 MILITARY_OBJECT_CLASSES = [

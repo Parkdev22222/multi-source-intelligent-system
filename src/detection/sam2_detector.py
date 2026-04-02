@@ -43,6 +43,9 @@ from src.config import (
     TILE_OVERLAP,
     TILE_NMS_IOU,
     TILE_MULTISCALE,
+    TILE_MEDIUM_SCALE,
+    TILE_MEDIUM_SIZE,
+    TILE_MEDIUM_OVERLAP,
 )
 from src.detection.image_loader import ImageMeta, LoadedImage, pixel_to_geo
 
@@ -496,9 +499,9 @@ class SAM3Detector:
         all_results: List[DetectionResult] = []
 
         if TILE_ENABLED:
-            # ── 멀티스케일: 전체 이미지 탐지 (큰 객체) ──────────────────────
+            # ── [스케일 1] 전체 이미지 탐지 — 대형 객체 ─────────────────────
             if TILE_MULTISCALE:
-                logger.info("[SAM3Detector] 멀티스케일: 전체 이미지 탐지 (큰 객체용)")
+                logger.info("[SAM3Detector] 스케일1(대형): 전체 이미지 탐지")
                 for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
                     try:
                         all_results.extend(
@@ -509,16 +512,34 @@ class SAM3Detector:
                         )
                     except Exception as exc:
                         logger.warning(
-                            f"[SAM3Detector] 전체이미지 class '{class_name}': {exc}"
+                            f"[SAM3Detector] 스케일1 class '{class_name}': {exc}"
                         )
 
-            # ── 타일 탐지 (작은 객체) ────────────────────────────────────────
+            # ── [스케일 2] 중간 크기 타일 탐지 — 중형 객체 ──────────────────
+            if TILE_MULTISCALE and TILE_MEDIUM_SCALE:
+                med_tiles = _tile_coords(orig_w, orig_h, TILE_MEDIUM_SIZE, TILE_MEDIUM_OVERLAP)
+                logger.info(
+                    f"[SAM3Detector] 스케일2(중형): {len(med_tiles)}개 타일 "
+                    f"(size={TILE_MEDIUM_SIZE}, overlap={TILE_MEDIUM_OVERLAP})"
+                )
+                for idx, (tx1, ty1, tx2, ty2) in enumerate(med_tiles):
+                    tw, th = tx2 - tx1, ty2 - ty1
+                    logger.debug(f"  중형타일 {idx+1}/{len(med_tiles)}  "
+                                 f"({tx1},{ty1})→({tx2},{ty2})")
+                    all_results.extend(
+                        self._detect_on_tile(
+                            pil_image, tx1, ty1, tw, th,
+                            orig_w, orig_h, now, image_id, meta,
+                        )
+                    )
+
+            # ── [스케일 3] 소형 타일 탐지 — 소형 객체 ───────────────────────
             tiles = _tile_coords(orig_w, orig_h, TILE_SIZE, TILE_OVERLAP)
-            logger.info(f"[SAM3Detector] 슬라이딩 윈도우: {len(tiles)}개 타일 "
+            logger.info(f"[SAM3Detector] 스케일3(소형): {len(tiles)}개 타일 "
                         f"(size={TILE_SIZE}, overlap={TILE_OVERLAP})")
             for idx, (tx1, ty1, tx2, ty2) in enumerate(tiles):
                 tw, th = tx2 - tx1, ty2 - ty1
-                logger.debug(f"  타일 {idx+1}/{len(tiles)}  "
+                logger.debug(f"  소형타일 {idx+1}/{len(tiles)}  "
                              f"({tx1},{ty1})→({tx2},{ty2})")
                 all_results.extend(
                     self._detect_on_tile(
