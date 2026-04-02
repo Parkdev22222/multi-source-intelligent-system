@@ -701,6 +701,121 @@ def pair_by_tracking(
                     "x2": synth.bbox_x2, "y2": synth.bbox_y2,
                 }
 
+    # ------------------------------------------------------------------
+    # 5. Movable-class cross-image check for "new" and "disappeared"
+    #    Same crop-and-compare logic as static cross-check, but applied to
+    #    non-building classes (tanks, vehicles, aircraft, etc.).
+    # ------------------------------------------------------------------
+    movable_new        = [p for p in pairing_records
+                          if p.status == "new"
+                          and (p.current_object_class or "").lower() not in _STATIC_CLASSES]
+    movable_disappeared = [p for p in pairing_records
+                           if p.status == "disappeared"
+                           and (p.past_object_class or "").lower() not in _STATIC_CLASSES]
+
+    if movable_new or movable_disappeared:
+        mov_cur_img_cache: Dict[str, Optional] = {}
+        mov_past_img_cache: Dict[str, Optional] = {}
+
+        def _get_mov_img_rec_pil_cur(iid: str):
+            if iid not in mov_cur_img_cache:
+                rec = get_image_record_by_id(iid)
+                pil = _load_pil_for_image_id(iid) if rec else None
+                mov_cur_img_cache[iid] = (rec, pil)
+            return mov_cur_img_cache[iid]
+
+        def _get_mov_img_rec_pil_past(iid: str):
+            if iid not in mov_past_img_cache:
+                rec = get_image_record_by_id(iid)
+                pil = _load_pil_for_image_id(iid) if rec else None
+                mov_past_img_cache[iid] = (rec, pil)
+            return mov_past_img_cache[iid]
+
+        mov_cur_image_ids  = list({d.image_id for d in current_detections if d.image_id})
+        mov_past_image_ids = list({d.image_id for d in past_detections if d.image_id})
+
+        for pr in movable_new:
+            if pr.current_detection_id is None:
+                continue
+            cur_det = next(
+                (d for d in current_detections if d.detection_id == pr.current_detection_id),
+                None,
+            )
+            if cur_det is None or not cur_det.image_id:
+                continue
+            cur_rec, cur_pil = _get_mov_img_rec_pil_cur(cur_det.image_id)
+            if cur_rec is None or cur_pil is None:
+                continue
+            if not mov_past_image_ids:
+                continue
+            past_iid = mov_past_image_ids[0]
+            past_rec, past_pil = _get_mov_img_rec_pil_past(past_iid)
+            if past_rec is None or past_pil is None:
+                continue
+            synth = _static_cross_check(
+                det=cur_det,
+                img_rec_with=cur_rec,
+                pil_with=cur_pil,
+                img_rec_without=past_rec,
+                pil_without=past_pil,
+                capture_time_without=past_capture_time or current_capture_time,
+                session_id=session_id,
+                source_type=source_type,
+            )
+            if synth is not None:
+                pr.status = "matched"
+                pr.past_detection_id = synth.id
+                pr.past_object_class = synth.object_class
+                pr.past_confidence = synth.confidence
+                pr.past_lat = synth.lat
+                pr.past_lon = synth.lon
+                pr.past_capture_time = synth.detection_time
+                pr.past_bbox = {
+                    "x1": synth.bbox_x1, "y1": synth.bbox_y1,
+                    "x2": synth.bbox_x2, "y2": synth.bbox_y2,
+                }
+
+        for pr in movable_disappeared:
+            if pr.past_detection_id is None:
+                continue
+            past_det = next(
+                (d for d in past_detections if d.id == pr.past_detection_id),
+                None,
+            )
+            if past_det is None or not past_det.image_id:
+                continue
+            past_rec, past_pil = _get_mov_img_rec_pil_past(past_det.image_id)
+            if past_rec is None or past_pil is None:
+                continue
+            if not mov_cur_image_ids:
+                continue
+            cur_iid = mov_cur_image_ids[0]
+            cur_rec, cur_pil = _get_mov_img_rec_pil_cur(cur_iid)
+            if cur_rec is None or cur_pil is None:
+                continue
+            synth = _static_cross_check(
+                det=past_det,
+                img_rec_with=past_rec,
+                pil_with=past_pil,
+                img_rec_without=cur_rec,
+                pil_without=cur_pil,
+                capture_time_without=current_capture_time,
+                session_id=session_id,
+                source_type=source_type,
+            )
+            if synth is not None:
+                pr.status = "matched"
+                pr.current_detection_id = synth.id
+                pr.current_object_class = synth.object_class
+                pr.current_confidence = synth.confidence
+                pr.current_lat = synth.lat
+                pr.current_lon = synth.lon
+                pr.current_capture_time = synth.detection_time
+                pr.current_bbox = {
+                    "x1": synth.bbox_x1, "y1": synth.bbox_y1,
+                    "x2": synth.bbox_x2, "y2": synth.bbox_y2,
+                }
+
     logger.info(
         f"[Pairing/tracker] ({region_lat:.4f}, {region_lon:.4f}): "
         f"{sum(1 for p in pairing_records if p.status == 'matched')} matched  "
@@ -1226,6 +1341,121 @@ def pair_by_similarity(
             if cur_iid2 is None:
                 continue
             cur_rec, cur_pil = _rec_pil(cur_iid2, cur_img_cache2)
+            if cur_rec is None or cur_pil is None:
+                continue
+            synth = _static_cross_check(
+                det=past_det,
+                img_rec_with=past_rec,
+                pil_with=past_pil,
+                img_rec_without=cur_rec,
+                pil_without=cur_pil,
+                capture_time_without=current_capture_time,
+                session_id=session_id,
+                source_type=source_type,
+            )
+            if synth is not None:
+                pr.status = "matched"
+                pr.current_detection_id = synth.id
+                pr.current_object_class = synth.object_class
+                pr.current_confidence = synth.confidence
+                pr.current_lat = synth.lat
+                pr.current_lon = synth.lon
+                pr.current_capture_time = synth.detection_time
+                pr.current_bbox = {
+                    "x1": synth.bbox_x1, "y1": synth.bbox_y1,
+                    "x2": synth.bbox_x2, "y2": synth.bbox_y2,
+                }
+
+    # ------------------------------------------------------------------
+    # 5. Movable-class cross-image check for "new" and "disappeared"
+    #    Same crop-and-compare logic as static cross-check, but applied to
+    #    non-building classes (tanks, vehicles, aircraft, etc.).
+    # ------------------------------------------------------------------
+    mov_new2        = [p for p in pairing_records
+                       if p.status == "new"
+                       and (p.current_object_class or "").lower() not in _STATIC_CLASSES]
+    mov_disappeared2 = [p for p in pairing_records
+                        if p.status == "disappeared"
+                        and (p.past_object_class or "").lower() not in _STATIC_CLASSES]
+
+    if mov_new2 or mov_disappeared2:
+        mov_cur_img_cache2: Dict[str, Optional] = {}
+        mov_past_img_cache2: Dict[str, Optional] = {}
+
+        def _rec_pil_mov_cur(iid: str):
+            if iid not in mov_cur_img_cache2:
+                rec = get_image_record_by_id(iid)
+                pil = _load_pil_for_image_id(iid) if rec else None
+                mov_cur_img_cache2[iid] = (rec, pil)
+            return mov_cur_img_cache2[iid]
+
+        def _rec_pil_mov_past(iid: str):
+            if iid not in mov_past_img_cache2:
+                rec = get_image_record_by_id(iid)
+                pil = _load_pil_for_image_id(iid) if rec else None
+                mov_past_img_cache2[iid] = (rec, pil)
+            return mov_past_img_cache2[iid]
+
+        mov2_cur_image_ids  = list({d.image_id for d in current_detections if d.image_id})
+        mov2_past_image_ids = list({d.image_id for d in past_detections if d.image_id})
+
+        for pr in mov_new2:
+            if pr.current_detection_id is None:
+                continue
+            cur_det = next(
+                (d for d in current_detections if d.detection_id == pr.current_detection_id),
+                None,
+            )
+            if cur_det is None or not cur_det.image_id:
+                continue
+            cur_rec, cur_pil = _rec_pil_mov_cur(cur_det.image_id)
+            if cur_rec is None or cur_pil is None:
+                continue
+            if not mov2_past_image_ids:
+                continue
+            past_iid = mov2_past_image_ids[0]
+            past_rec, past_pil = _rec_pil_mov_past(past_iid)
+            if past_rec is None or past_pil is None:
+                continue
+            synth = _static_cross_check(
+                det=cur_det,
+                img_rec_with=cur_rec,
+                pil_with=cur_pil,
+                img_rec_without=past_rec,
+                pil_without=past_pil,
+                capture_time_without=past_capture_time or current_capture_time,
+                session_id=session_id,
+                source_type=source_type,
+            )
+            if synth is not None:
+                pr.status = "matched"
+                pr.past_detection_id = synth.id
+                pr.past_object_class = synth.object_class
+                pr.past_confidence = synth.confidence
+                pr.past_lat = synth.lat
+                pr.past_lon = synth.lon
+                pr.past_capture_time = synth.detection_time
+                pr.past_bbox = {
+                    "x1": synth.bbox_x1, "y1": synth.bbox_y1,
+                    "x2": synth.bbox_x2, "y2": synth.bbox_y2,
+                }
+
+        for pr in mov_disappeared2:
+            if pr.past_detection_id is None:
+                continue
+            past_det = next(
+                (d for d in past_detections if d.id == pr.past_detection_id),
+                None,
+            )
+            if past_det is None or not past_det.image_id:
+                continue
+            past_rec, past_pil = _rec_pil_mov_past(past_det.image_id)
+            if past_rec is None or past_pil is None:
+                continue
+            if not mov2_cur_image_ids:
+                continue
+            cur_iid2 = mov2_cur_image_ids[0]
+            cur_rec, cur_pil = _rec_pil_mov_cur(cur_iid2)
             if cur_rec is None or cur_pil is None:
                 continue
             synth = _static_cross_check(
