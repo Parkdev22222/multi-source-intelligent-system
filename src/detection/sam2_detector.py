@@ -19,6 +19,7 @@ SAM3 Installation:
   hf auth login  # HuggingFace 접근 토큰 필요
 """
 
+import gc
 import json
 import logging
 import tempfile
@@ -514,6 +515,11 @@ class SAM3Detector:
                         logger.warning(
                             f"[SAM3Detector] 스케일1 class '{class_name}': {exc}"
                         )
+                # 스케일1 완료 후 GPU 캐시 해제 — 다음 스케일 실행 전 VRAM 확보
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    logger.debug("[SAM3Detector] 스케일1 완료: GPU 캐시 해제")
 
             # ── [스케일 2] 중간 크기 타일 탐지 — 중형 객체 ──────────────────
             if TILE_MULTISCALE and TILE_MEDIUM_SCALE:
@@ -532,6 +538,11 @@ class SAM3Detector:
                             orig_w, orig_h, now, image_id, meta,
                         )
                     )
+                    # 타일마다 GPU 캐시 해제 — 중형 타일은 개수가 많아 점진적으로 해제
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                logger.debug("[SAM3Detector] 스케일2 완료: GPU 캐시 해제")
 
             # ── [스케일 3] 소형 타일 탐지 — 소형 객체 ───────────────────────
             tiles = _tile_coords(orig_w, orig_h, TILE_SIZE, TILE_OVERLAP)
@@ -547,6 +558,11 @@ class SAM3Detector:
                         orig_w, orig_h, now, image_id, meta,
                     )
                 )
+                # 타일마다 GPU 캐시 해제 — 소형 타일은 개수가 가장 많으므로 타일 단위 해제
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            logger.debug("[SAM3Detector] 스케일3 완료: GPU 캐시 해제")
         else:
             for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
                 try:
