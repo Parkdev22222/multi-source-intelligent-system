@@ -43,6 +43,10 @@ TILE_SIZE       = int(os.getenv("TILE_SIZE",   "1008"))
 TILE_OVERLAP    = int(os.getenv("TILE_OVERLAP", "200"))
 # 타일 NMS IoU 임계값 (타일 병합 시 중복 제거).
 TILE_NMS_IOU    = float(os.getenv("TILE_NMS_IOU", "0.3"))
+# IoMin 임계값: 교집합 / min(두 박스 면적).
+# 멀티스케일에서 크기가 다른 두 박스가 같은 객체를 중복 탐지할 때
+# IoU가 낮아 NMS를 통과하는 문제를 보완. IoU OR IoMin 중 하나라도 초과하면 억제.
+TILE_NMS_IOMIN  = float(os.getenv("TILE_NMS_IOMIN", "0.6"))
 # 멀티스케일: 타일 탐지와 함께 전체 이미지 탐지도 병행 → 큰 객체 누락 방지.
 # TILE_ENABLED=true 일 때만 적용. false 면 타일 탐지만 실행.
 TILE_MULTISCALE = os.getenv("TILE_MULTISCALE", "true").lower() == "true"

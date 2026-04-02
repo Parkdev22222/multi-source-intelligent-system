@@ -43,6 +43,7 @@ from src.config import (
     TILE_SIZE,
     TILE_OVERLAP,
     TILE_NMS_IOU,
+    TILE_NMS_IOMIN,
     TILE_MULTISCALE,
     TILE_MEDIUM_SCALE,
     TILE_MEDIUM_SIZE,
@@ -192,8 +193,17 @@ def _tile_coords(img_w: int, img_h: int,
 
 
 def _nms_detections(
-    results: List[DetectionResult], iou_threshold: float
+    results: List[DetectionResult],
+    iou_threshold: float,
+    iomin_threshold: float = 0.6,
 ) -> List[DetectionResult]:
+    """NMS with IoU + IoMin suppression.
+
+    IoU 만으로는 크기가 크게 다른 두 박스(예: 스케일1 대형 vs 스케일3 소형)가
+    동일 객체를 중복 탐지할 때 제거가 안 된다.
+    IoMin = intersection / min(area_a, area_b) 를 함께 사용해
+    한 박스가 다른 박스 안에 충분히 포함되면 낮은 신뢰도 쪽을 억제한다.
+    """
     if not results:
         return results
     results = sorted(results, key=lambda r: r.confidence, reverse=True)
@@ -210,8 +220,9 @@ def _nms_detections(
                 continue
             area_c = (candidate.bbox_x2 - candidate.bbox_x1) * (candidate.bbox_y2 - candidate.bbox_y1)
             area_k = (kept_r.bbox_x2 - kept_r.bbox_x1) * (kept_r.bbox_y2 - kept_r.bbox_y1)
-            iou = inter / (area_c + area_k - inter + 1e-6)
-            if iou > iou_threshold:
+            iou   = inter / (area_c + area_k - inter + 1e-6)
+            iomin = inter / (min(area_c, area_k) + 1e-6)
+            if iou > iou_threshold or iomin > iomin_threshold:
                 suppress = True
                 break
         if not suppress:
@@ -598,8 +609,11 @@ class SAM3Detector:
                         f"[SAM3Detector] Error on class '{class_name}': {exc}"
                     )
 
-        final = _nms_detections(all_results, TILE_NMS_IOU if TILE_ENABLED
-                                             else NMS_IOU_THRESHOLD)
+        final = _nms_detections(
+            all_results,
+            iou_threshold=TILE_NMS_IOU if TILE_ENABLED else NMS_IOU_THRESHOLD,
+            iomin_threshold=TILE_NMS_IOMIN if TILE_ENABLED else 0.6,
+        )
         logger.info(
             f"[SAM3Detector] {len(all_results)} raw → {len(final)} after NMS "
             f"(image_id={image_id[:8]})"
