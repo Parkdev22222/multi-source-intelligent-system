@@ -47,31 +47,28 @@ logger = logging.getLogger(__name__)
 
 def _build_system_prompt(doctrine_context: str = "") -> str:
     base = (
-        "You are a military IMINT analyst. Produce a concise formal intelligence report "
-        "from AI-based satellite/drone object detection data. "
-        "Use standard section headers. Be factual. "
-        "Focus exclusively on newly appeared and disappeared objects as indicators of activity. "
-        "Do not analyse or comment on stationary or repositioned objects. "
-        "IMPORTANT: 'DISAPPEARED' means the object was observed in the PAST imagery but was "
-        "NOT detected in the CURRENT (most recent) imagery. It does NOT mean the object is "
-        "confirmed destroyed or permanently gone — it may have moved outside the sensor FOV, "
-        "be obscured, or relocated. Always qualify disappearance as 'no longer observed in "
-        "current imagery' rather than implying confirmed destruction or elimination. "
-        "IMPORTANT: 'PAST_NOT_INCLUDED' means a current detection falls outside the geographic "
-        "coverage of the past imagery — the past sensor did not image that area, so we cannot "
-        "determine whether the object existed previously. Treat these as unverifiable observations "
-        "requiring additional collection, NOT as confirmed new activity. "
-        "IMPORTANT: 'CURRENT_NOT_INCLUDED' means a past detection falls outside the geographic "
-        "coverage of the current imagery — the current sensor did not image that area, so we "
-        "cannot determine whether the object still exists. Treat these as coverage gaps, "
-        "NOT as confirmed disappearances."
+        "당신은 군사 IMINT(영상정보) 분석관입니다. "
+        "AI 기반 위성/드론 객체 탐지 데이터를 바탕으로 간결하고 공식적인 정보 보고서를 작성하세요. "
+        "반드시 한국어로 작성하세요. "
+        "표준 섹션 헤더를 사용하고 사실에 근거하여 작성하세요. "
+        "활동 지표인 신규 출현 객체와 소실 객체에만 집중하세요. "
+        "정지 또는 위치 이동 객체는 분석하거나 언급하지 마세요. "
+        "중요: 'DISAPPEARED(소실)'은 과거 영상에서 탐지되었으나 현재(최신) 영상에서 탐지되지 않은 객체를 의미합니다. "
+        "객체가 완전히 소멸되거나 파괴되었음을 의미하지 않습니다. "
+        "센서 시야 밖으로 이동했거나, 은폐되거나, 위치를 옮겼을 수 있습니다. "
+        "소실 표현 시 반드시 '현재 영상에서 더 이상 관측되지 않음'으로 표현하세요. "
+        "중요: 'PAST_NOT_INCLUDED(과거 미포함)'은 현재 탐지 객체가 과거 영상의 촬영 범위 밖에 위치함을 의미합니다. "
+        "과거 센서가 해당 지역을 촬영하지 않아 객체의 이전 존재 여부를 확인할 수 없습니다. "
+        "이러한 객체는 확인된 신규 활동이 아닌 추가 수집이 필요한 미검증 관측으로 취급하세요. "
+        "중요: 'CURRENT_NOT_INCLUDED(현재 미포함)'은 과거 탐지 객체가 현재 영상의 촬영 범위 밖에 위치함을 의미합니다. "
+        "현재 센서가 해당 지역을 촬영하지 않아 객체의 현재 존재 여부를 확인할 수 없습니다. "
+        "이러한 객체는 확인된 소실이 아닌 촬영 공백으로 취급하세요."
     )
     if doctrine_context:
         base += (
-            "\n\nThe following excerpts from military doctrine documents are provided as "
-            "reference. Use them to inform threat assessment, rules of engagement, and "
-            "recommended actions where relevant. Do not quote doctrine verbatim — "
-            "integrate the principles naturally into your analysis.\n\n"
+            "\n\n다음은 참고용으로 제공된 군사 교리 문서 발췌문입니다. "
+            "위협 평가, 교전 규칙, 권고 조치 수립 시 관련 내용을 참고하세요. "
+            "교리 내용을 직접 인용하지 말고 분석에 자연스럽게 통합하세요.\n\n"
             + doctrine_context
         )
     return base
@@ -200,19 +197,18 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
         lines.append("  (none)")
 
     lines += [
-        "\n=== TASK ===",
-        "Write a military intelligence report covering:",
-        "  1) NEW and DISAPPEARED objects (confirmed change in the overlap zone).",
-        "  2) PAST_NOT_INCLUDED objects — flag as 'detected in current imagery but outside"
-        " past sensor coverage; cannot confirm recency of activity'.",
-        "  3) CURRENT_NOT_INCLUDED objects — flag as 'detected in past imagery but outside"
-        " current sensor coverage; status unknown — additional collection required'.",
-        "Use PAST_OBS and CURRENT_OBS timestamps (not today's date) as the observation times.",
-        "For DISAPPEARED objects, state 'no longer observed in current imagery'.",
-        "Do NOT mention stationary or repositioned/moved objects.",
-        "Sections: 1.CLASSIFICATION 2.EXECUTIVE SUMMARY 3.SITUATION 4.CHANGE ANALYSIS"
-        " 5.COVERAGE GAPS 6.THREAT ASSESSMENT 7.INTELLIGENCE GAPS"
-        " 8.RECOMMENDED ACTIONS 9.APPENDIX",
+        "\n=== 작성 지시 ===",
+        "위 데이터를 바탕으로 군사 정보 보고서를 한국어로 작성하세요.",
+        "  1) NEW(신규) 및 DISAPPEARED(소실) 객체: 두 영상의 공통 촬영 구역에서 확인된 변화.",
+        "  2) PAST_NOT_INCLUDED(과거 미포함) 객체: '현재 영상에서 탐지되었으나 과거 촬영 범위 밖에 위치"
+        " — 신규 활동 여부 미확인'으로 표기.",
+        "  3) CURRENT_NOT_INCLUDED(현재 미포함) 객체: '과거 영상에서 탐지되었으나 현재 촬영 범위 밖에 위치"
+        " — 현재 상태 불명, 추가 수집 필요'로 표기.",
+        "관측 시각은 오늘 날짜가 아닌 PAST_OBS 및 CURRENT_OBS 타임스탬프를 사용하세요.",
+        "DISAPPEARED 객체는 '현재 영상에서 더 이상 관측되지 않음'으로 표현하세요.",
+        "정지 또는 이동 객체는 언급하지 마세요.",
+        "섹션 구성: 1.분류등급 2.핵심요약 3.상황 4.변화분석"
+        " 5.촬영공백구역 6.위협평가 7.정보공백 8.권고조치 9.부록",
     ]
 
     return "\n".join(lines)
@@ -266,36 +262,38 @@ class _FallbackBackend:
 
     def generate(self, system_prompt: str, user_prompt: str,
                  max_tokens: Optional[int] = None) -> str:
-        # Extract the data section from the user_prompt (everything before INSTRUCTIONS)
-        data_section = user_prompt.split("=== INSTRUCTIONS ===")[0].strip()
+        # Extract the data section from the user_prompt (everything before 작성 지시)
+        data_section = user_prompt.split("=== 작성 지시 ===")[0].strip()
         return textwrap.dedent(f"""
-            1. CLASSIFICATION: UNCLASSIFIED // FOR OFFICIAL USE ONLY (AUTO-GENERATED)
+            1. 분류등급: 비밀해제 // 공무상 사용 (자동 생성)
 
-            2. EXECUTIVE SUMMARY
-            This report was generated by the rule-based fallback engine because no LLM
-            backend (HuggingFace / Ollama) was available. The raw detection pairing data
-            is reproduced verbatim below for manual analysis.
+            2. 핵심요약
+            LLM 백엔드(vLLM / Ollama)를 사용할 수 없어 규칙 기반 폴백 엔진으로 보고서가 생성되었습니다.
+            정밀 분석을 위해 아래의 원시 탐지 페어링 데이터를 수동으로 검토하세요.
 
-            3. SITUATION
-            AI-based object detection and temporal pairing have completed successfully.
-            Refer to the CHANGE ANALYSIS section for object-level status breakdown.
+            3. 상황
+            AI 기반 객체 탐지 및 시계열 페어링이 정상 완료되었습니다.
+            객체별 상태 분류는 아래 변화 분석 섹션을 참고하세요.
 
-            4. CHANGE ANALYSIS
+            4. 변화분석
             {data_section}
 
-            5. THREAT ASSESSMENT
-            Manual review required. LLM-based threat assessment unavailable.
+            5. 촬영공백구역
+            LLM 기반 촬영 공백 분석 미수행.
 
-            6. INTELLIGENCE GAPS
-            - LLM threat analysis not performed (model not loaded).
-            - Install transformers + EXAONE model or configure Ollama for full analysis.
+            6. 위협평가
+            수동 검토 필요. LLM 기반 위협 평가를 사용할 수 없습니다.
 
-            7. RECOMMENDED ACTIONS
-            - Review moved/new/disappeared objects in the pairing database.
-            - Configure LLM backend and re-run for full intelligence assessment.
+            7. 정보공백
+            - LLM 위협 분석 미수행 (모델 미로드).
+            - 전체 분석을 위해 transformers + EXAONE 모델을 설치하거나 Ollama를 설정하세요.
 
-            8. APPENDIX
-            See pairing database (data/db/object_pairings.db) for complete object inventory.
+            8. 권고조치
+            - 페어링 데이터베이스의 이동/신규/소실 객체를 검토하세요.
+            - LLM 백엔드를 설정하고 재실행하여 전체 정보 평가를 수행하세요.
+
+            9. 부록
+            전체 객체 목록은 페어링 데이터베이스(data/db/object_pairings.db)를 참고하세요.
         """).strip()
 
 
@@ -369,16 +367,14 @@ class _SafeBackend:
 
 def _build_translation_system_prompt() -> str:
     return (
-        "You are a professional Korean translator specializing in military intelligence documents. "
-        "Translate the following English report into Korean. "
-        "Rules:\n"
-        "1. Preserve every section header exactly as-is (e.g. '1. CLASSIFICATION', "
-        "'2. EXECUTIVE SUMMARY', etc.).\n"
-        "2. Preserve all coordinates, timestamps, confidence scores, object class names "
-        "(TANK, APC, etc.), and proper nouns without translation.\n"
-        "3. Translate all narrative, analytical, and descriptive text faithfully into Korean.\n"
-        "4. Do NOT add, omit, or re-interpret any content — translate only.\n"
-        "5. Output ONLY the translated text; do not include any preamble or explanation."
+        "당신은 군사 정보 문서를 전문으로 하는 한국어 번역가입니다. "
+        "아래 보고서가 이미 한국어로 작성된 경우 그대로 출력하세요. "
+        "영어로 작성된 경우 한국어로 번역하세요. "
+        "규칙:\n"
+        "1. 좌표, 타임스탬프, 신뢰도 점수, 객체 클래스명(TANK, APC 등), 고유명사는 번역하지 말고 원문 그대로 유지.\n"
+        "2. 서술·분석·설명 텍스트는 충실하게 한국어로 번역.\n"
+        "3. 내용을 추가·생략·재해석하지 마세요 — 번역만 수행.\n"
+        "4. 번역된 텍스트만 출력하고, 서문이나 설명은 포함하지 마세요."
     )
 
 

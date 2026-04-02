@@ -1641,13 +1641,29 @@ async function openReportById(id, fname) {
    페어링 매칭 도시 모달 (Pairing Visualization Modal)
    ══════════════════════════════════════════════════ */
 const PVIZ_COLORS = {
-  matched:    '#00ff88',
-  moved:      '#ffb300',
-  new:        '#40aaff',
-  disappeared:'#ff4040',
+  matched:              '#00ff88',
+  moved:                '#ffb300',
+  new:                  '#40aaff',
+  disappeared:          '#ff4040',
+  past_not_included:    '#c084fc',   // 보라 — 현재 탐지, 과거 촬영 범위 밖
+  current_not_included: '#fb923c',   // 주황 — 과거 탐지, 현재 촬영 범위 밖
 };
-const PVIZ_STATUS_LBL = { matched:'동일·정지', moved:'동일·이동', new:'신규 출현', disappeared:'소실' };
-const PVIZ_STATUS_ICO = { matched:'●', moved:'▶', new:'★', disappeared:'✕' };
+const PVIZ_STATUS_LBL = {
+  matched:              '동일·정지',
+  moved:                '동일·이동',
+  new:                  '신규 출현',
+  disappeared:          '소실',
+  past_not_included:    '과거 미포함',
+  current_not_included: '현재 미포함',
+};
+const PVIZ_STATUS_ICO = {
+  matched:              '●',
+  moved:                '▶',
+  new:                  '★',
+  disappeared:          '✕',
+  past_not_included:    '◈',
+  current_not_included: '◇',
+};
 
 /* 모달 닫기 */
 document.getElementById('pviz-modal-close').addEventListener('click', () => {
@@ -1722,13 +1738,15 @@ async function _openPvizModal(reportId) {
     _pvizRenderList(listEl, pData.pairs, pastC, currC, pastImgData, currImgData);
 
     /* 요약 헤더 */
-    const cnt = { matched:0, moved:0, new:0, disappeared:0 };
+    const cnt = { matched:0, moved:0, new:0, disappeared:0, past_not_included:0, current_not_included:0 };
     pData.pairs.forEach(p => { if (cnt[p.status] !== undefined) cnt[p.status]++; });
     const parts = [];
-    if (cnt.matched)     parts.push(`동일·정지 ${cnt.matched}`);
-    if (cnt.moved)       parts.push(`동일·이동 ${cnt.moved}`);
-    if (cnt.new)         parts.push(`신규 ${cnt.new}`);
-    if (cnt.disappeared) parts.push(`소실 ${cnt.disappeared}`);
+    if (cnt.matched)              parts.push(`동일·정지 ${cnt.matched}`);
+    if (cnt.moved)                parts.push(`동일·이동 ${cnt.moved}`);
+    if (cnt.new)                  parts.push(`신규 ${cnt.new}`);
+    if (cnt.disappeared)          parts.push(`소실 ${cnt.disappeared}`);
+    if (cnt.past_not_included)    parts.push(`과거미포함 ${cnt.past_not_included}`);
+    if (cnt.current_not_included) parts.push(`현재미포함 ${cnt.current_not_included}`);
     stats.textContent = `총 ${pData.pairs.length}건 | ${parts.join(' | ')}`;
 
   } catch(e) {
@@ -1750,9 +1768,9 @@ function _pvizRenderList(listEl, pairs, pastC, currC, pastImgData, currImgData) 
     const pastConf = p.past_conf    != null ? `${(p.past_conf   *100).toFixed(0)}%` : '';
 
     let subLine;
-    if (p.status === 'new')
+    if (p.status === 'new' || p.status === 'past_not_included')
       subLine = `현재: ${currCls} ${currConf}`;
-    else if (p.status === 'disappeared')
+    else if (p.status === 'disappeared' || p.status === 'current_not_included')
       subLine = `이전: ${pastCls} ${pastConf}`;
     else
       subLine = `이전 ${pastCls} ${pastConf} → 현재 ${currCls} ${currConf}`;
@@ -1813,8 +1831,8 @@ function _pvizDrawCanvas(canvas, imgData, pairs, side, hoveredId) {
       pairs.forEach(p => {
         const bbox = side === 'current' ? p.current_bbox : p.past_bbox;
         if (!bbox) return;
-        if (side === 'current' && p.status === 'disappeared') return;
-        if (side === 'past'    && p.status === 'new')         return;
+        if (side === 'current' && (p.status === 'disappeared' || p.status === 'current_not_included')) return;
+        if (side === 'past'    && (p.status === 'new'         || p.status === 'past_not_included'))    return;
 
         const isHov = hoveredId === p.id;
         const dim   = anyHover && !isHov;
