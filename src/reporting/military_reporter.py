@@ -29,6 +29,7 @@ from src.config import (
     LLM_MAX_MODEL_LEN,
     LLM_MAX_NEW_TOKENS,
     LLM_MODEL_NAME,
+    LLM_TENSOR_PARALLEL_SIZE,
     LLM_TEMPERATURE,
     LLM_TRANSLATE_MAX_TOKENS,
     LLM_TRANSLATE_TO_KOREAN,
@@ -268,6 +269,7 @@ class _VllmBackend:
             dtype="float16",
             gpu_memory_utilization=LLM_GPU_MEMORY_UTILIZATION,
             max_model_len=LLM_MAX_MODEL_LEN,
+            tensor_parallel_size=LLM_TENSOR_PARALLEL_SIZE,
         )
         logger.info(f"[Reporter] {LLM_MODEL_NAME} loaded.")
 
