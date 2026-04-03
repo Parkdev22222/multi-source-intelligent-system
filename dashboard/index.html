@@ -151,8 +151,12 @@
     .rpt-filter-input:focus { border-color:var(--amber); }
     .rpt-filter-input::placeholder { color:#3a5068; }
     .rpt-filter-date { width:116px; }
-    .rpt-filter-country-input { width:90px; }
     .rpt-filter-sep { color:var(--dim); font-size:9px; padding:0 1px; }
+    .rpt-filter-cb-wrap { display:flex; flex-wrap:wrap; gap:3px; align-items:center; }
+    .rpt-filter-cb-label { display:flex; align-items:center; gap:3px; cursor:pointer; font-size:9px; color:var(--dim); padding:2px 6px; border-radius:10px; border:1px solid var(--border); background:transparent; transition:all .12s; white-space:nowrap; }
+    .rpt-filter-cb-label:hover { border-color:var(--amber); color:var(--amber); }
+    .rpt-filter-cb-label input[type=checkbox] { display:none; }
+    .rpt-filter-cb-label.checked { background:var(--amber); border-color:var(--amber); color:#000; font-weight:bold; }
     .rpt-list { overflow-y:auto; max-height:160px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; padding:0 8px 6px; }
     .rpt-item { padding:5px 8px; border:1px solid var(--border); border-radius:2px; margin-top:4px; cursor:pointer; transition:background .12s, border-color .12s; }
     .rpt-item:hover { background:#152030; border-color:var(--amber); }
@@ -452,12 +456,8 @@
         </div>
         <!-- 지역 필터 -->
         <div class="rpt-filter-row" id="rpt-filter-region"></div>
-        <!-- 국가 필터: 직접 입력 -->
-        <div class="rpt-filter-row" id="rpt-filter-country">
-          <span class="rpt-filter-lbl">국가</span>
-          <input type="text" id="rpt-country-input" class="rpt-filter-input rpt-filter-country-input"
-                 placeholder="국가명 입력..." autocomplete="off">
-        </div>
+        <!-- 국가 필터: 체크박스 (동적 생성) -->
+        <div class="rpt-filter-row" id="rpt-filter-country"></div>
       </div>
       <div class="rpt-list" id="rpt-list">
         <div class="dp-empty">로딩 중...</div>
@@ -1240,7 +1240,9 @@ function renderRptList() {
   const list        = document.getElementById('rpt-list');
   const dateFrom    = document.getElementById('rpt-date-from')?.value || '';
   const dateTo      = document.getElementById('rpt-date-to')?.value   || '';
-  const countryKw   = (document.getElementById('rpt-country-input')?.value || '').trim().toLowerCase();
+  const checkedCountries = Array.from(
+    document.querySelectorAll('#rpt-filter-country input[type=checkbox]:checked')
+  ).map(cb => cb.value);
 
   // 지역 버튼 활성화 상태 갱신
   document.querySelectorAll('#rpt-filter-region .rpt-filter-btn').forEach(btn => {
@@ -1257,10 +1259,10 @@ function renderRptList() {
     const dt = r.report_time ? new Date(r.report_time) : null;
     if (dtFrom && (!dt || dt < dtFrom)) return false;
     if (dtTo   && (!dt || dt > dtTo))   return false;
-    // 국가 키워드
-    if (countryKw) {
+    // 국가 체크박스
+    if (checkedCountries.length > 0) {
       const label = (r._countryLabel || r.country_name || '').toLowerCase();
-      if (!label.includes(countryKw)) return false;
+      if (!checkedCountries.includes(label)) return false;
     }
     return true;
   });
@@ -1301,14 +1303,12 @@ function renderRptList() {
   });
 }
 
-// 날짜·국가 입력 이벤트 연결 (DOM 준비 후 한 번만)
+// 날짜 입력 이벤트 연결 (DOM 준비 후 한 번만)
 function _bindRptFilterInputs() {
   const dateFrom = document.getElementById('rpt-date-from');
   const dateTo   = document.getElementById('rpt-date-to');
-  const countryIn = document.getElementById('rpt-country-input');
-  if (dateFrom)  dateFrom.addEventListener('input',  renderRptList);
-  if (dateTo)    dateTo.addEventListener('input',    renderRptList);
-  if (countryIn) countryIn.addEventListener('input', renderRptList);
+  if (dateFrom) dateFrom.addEventListener('input', renderRptList);
+  if (dateTo)   dateTo.addEventListener('input',   renderRptList);
 }
 
 async function loadAllReports() {
@@ -1358,6 +1358,37 @@ async function loadAllReports() {
       btn.addEventListener('click', () => { _rptRegion = btn.dataset.region; renderRptList(); });
     });
     if (!regionTabs.includes(_rptRegion)) _rptRegion = '전체';
+
+    // ── 국가 필터 행 ─────────────────────────────────────────────────
+    const countryRow = document.getElementById('rpt-filter-country');
+    const countryCounts = {};
+    _rptData.forEach(r => {
+      const key = (r._countryLabel || r.country_name || '기타').toLowerCase();
+      countryCounts[key] = (countryCounts[key] || 0) + 1;
+    });
+    const sortedCountries = Object.keys(countryCounts).sort((a, b) => countryCounts[b] - countryCounts[a]);
+    if (sortedCountries.length > 0) {
+      countryRow.innerHTML =
+        `<span class="rpt-filter-lbl">국가</span>` +
+        `<div class="rpt-filter-cb-wrap">` +
+        sortedCountries.map(c =>
+          `<label class="rpt-filter-cb-label" title="${c}">` +
+          `<input type="checkbox" value="${c}">` +
+          `${c} <span style="opacity:.6">${countryCounts[c]}</span>` +
+          `</label>`
+        ).join('') +
+        `</div>`;
+      countryRow.querySelectorAll('.rpt-filter-cb-label').forEach(lbl => {
+        lbl.addEventListener('click', () => {
+          const cb = lbl.querySelector('input');
+          cb.checked = !cb.checked;
+          lbl.classList.toggle('checked', cb.checked);
+          renderRptList();
+        });
+      });
+    } else {
+      countryRow.innerHTML = '';
+    }
 
     filterWrap.style.display = 'flex';
     renderRptList();
