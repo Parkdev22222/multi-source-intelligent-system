@@ -463,6 +463,9 @@ class MavenPipeline:
             insert_pairings_bulk(pairing_records)
             logger.info(f"[Rerun] Inserted {len(pairing_records)} pairing records.")
 
+        # SAM3 모델을 GPU에서 해제 — vLLM 로딩 전 VRAM 확보
+        self.detector.unload()
+
         # ── 7. 기존 보고서 삭제 ──────────────────────────────────────────────
         delete_reports_by_session(session_id)
 
@@ -514,6 +517,9 @@ class MavenPipeline:
         logger.info("[Pipeline] Step 2/3 – Temporal object pairing")
         n_pairings = self._pair_and_store(metadata_json, session_id)
         logger.info(f"[Pipeline] Created {n_pairings} pairing records.")
+
+        # SAM3 모델을 GPU에서 해제 — vLLM 로딩 전 VRAM 확보
+        self.detector.unload()
 
         # --- Step 3: Reporting ---
         logger.info("[Pipeline] Step 3/3 – Military report generation (EXAONE4-32b)")

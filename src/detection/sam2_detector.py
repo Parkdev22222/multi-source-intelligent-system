@@ -316,6 +316,17 @@ class SAM3Detector:
         self._tracker_load_attempted = False
         self._device = SAM3_DEVICE if torch.cuda.is_available() else "cpu"
 
+    def unload(self) -> None:
+        """모델 가중치를 GPU에서 해제하고 VRAM을 반환한다."""
+        self._model = None
+        self._processor = None
+        self._video_predictor = None
+        self._tracker_load_attempted = False
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        logger.info("[SAM3Detector] 모델 언로드 완료 — VRAM 반환")
+
     # ------------------------------------------------------------------
     # Model loaders
     # ------------------------------------------------------------------
