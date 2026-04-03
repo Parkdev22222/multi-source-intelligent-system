@@ -147,6 +147,12 @@
     .rpt-filter-btn.active { background:var(--amber); border-color:var(--amber); color:#000; font-weight:bold; }
     .rpt-filter-btn.active-blue { background:#40aaff; border-color:#40aaff; color:#000; font-weight:bold; }
     .rpt-filter-btn.active-blue:hover { background:#40aaff; }
+    .rpt-filter-input { font-size:9px; padding:2px 6px; border-radius:3px; border:1px solid var(--border); background:#0b1520; color:var(--text); font-family:var(--font-mono); outline:none; min-width:0; transition:border-color .12s; }
+    .rpt-filter-input:focus { border-color:var(--amber); }
+    .rpt-filter-input::placeholder { color:#3a5068; }
+    .rpt-filter-date { width:116px; }
+    .rpt-filter-country-input { width:90px; }
+    .rpt-filter-sep { color:var(--dim); font-size:9px; padding:0 1px; }
     .rpt-list { overflow-y:auto; max-height:160px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; padding:0 8px 6px; }
     .rpt-item { padding:5px 8px; border:1px solid var(--border); border-radius:2px; margin-top:4px; cursor:pointer; transition:background .12s, border-color .12s; }
     .rpt-item:hover { background:#152030; border-color:var(--amber); }
@@ -437,9 +443,21 @@
         <span class="dp-sec-count" id="rpt-count">—</span>
       </div>
       <div class="rpt-filter-wrap" id="rpt-filter-wrap">
-        <div class="rpt-filter-row" id="rpt-filter-time"></div>
+        <!-- 시간 필터: 빠른 선택 버튼 + 날짜 범위 직접 입력 -->
+        <div class="rpt-filter-row" id="rpt-filter-time">
+          <span class="rpt-filter-lbl">시간</span>
+          <input type="date" id="rpt-date-from" class="rpt-filter-input rpt-filter-date" title="시작일">
+          <span class="rpt-filter-sep">~</span>
+          <input type="date" id="rpt-date-to"   class="rpt-filter-input rpt-filter-date" title="종료일">
+        </div>
+        <!-- 지역 필터 -->
         <div class="rpt-filter-row" id="rpt-filter-region"></div>
-        <div class="rpt-filter-row" id="rpt-filter-country"></div>
+        <!-- 국가 필터: 직접 입력 -->
+        <div class="rpt-filter-row" id="rpt-filter-country">
+          <span class="rpt-filter-lbl">국가</span>
+          <input type="text" id="rpt-country-input" class="rpt-filter-input rpt-filter-country-input"
+                 placeholder="국가명 입력..." autocomplete="off">
+        </div>
       </div>
       <div class="rpt-list" id="rpt-list">
         <div class="dp-empty">로딩 중...</div>
@@ -1215,51 +1233,37 @@ function getAlertLabel(countryName) {
 /* ══════════════════════════════════════════════════
    판독 보고서 목록 로드 (DB)
    ══════════════════════════════════════════════════ */
-let _rptData = [];          // 전체 보고서 캐시
-let _rptRegion  = '전체';   // 지역 필터
-let _rptTime    = 'all';    // 시간 필터: all | today | 7d | 30d
-let _rptCountry = '전체';   // 국가 필터
-
-const _RPT_TIME_OPTS = [
-  { key: 'all',   label: '전체기간' },
-  { key: 'today', label: '오늘' },
-  { key: '7d',    label: '7일' },
-  { key: '30d',   label: '30일' },
-];
-
-function _rptTimeMatch(r) {
-  if (_rptTime === 'all') return true;
-  const dt = r.report_time ? new Date(r.report_time) : null;
-  if (!dt) return false;
-  const now = new Date();
-  const diff = now - dt;
-  if (_rptTime === 'today') {
-    return dt.toDateString() === now.toDateString();
-  }
-  if (_rptTime === '7d')  return diff <= 7  * 86400e3;
-  if (_rptTime === '30d') return diff <= 30 * 86400e3;
-  return true;
-}
+let _rptData   = [];      // 전체 보고서 캐시
+let _rptRegion = '전체';  // 지역 필터
 
 function renderRptList() {
-  const list = document.getElementById('rpt-list');
+  const list        = document.getElementById('rpt-list');
+  const dateFrom    = document.getElementById('rpt-date-from')?.value || '';
+  const dateTo      = document.getElementById('rpt-date-to')?.value   || '';
+  const countryKw   = (document.getElementById('rpt-country-input')?.value || '').trim().toLowerCase();
 
-  // 필터 버튼 활성화 상태 갱신
+  // 지역 버튼 활성화 상태 갱신
   document.querySelectorAll('#rpt-filter-region .rpt-filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.region === _rptRegion);
   });
-  document.querySelectorAll('#rpt-filter-time .rpt-filter-btn').forEach(btn => {
-    btn.classList.toggle('active-blue', btn.dataset.time === _rptTime);
-  });
-  document.querySelectorAll('#rpt-filter-country .rpt-filter-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.country === _rptCountry);
-  });
 
-  const filtered = _rptData.filter(r =>
-    (_rptRegion  === '전체' || r._region       === _rptRegion)  &&
-    (_rptCountry === '전체' || r._countryLabel === _rptCountry) &&
-    _rptTimeMatch(r)
-  );
+  const dtFrom = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+  const dtTo   = dateTo   ? new Date(dateTo   + 'T23:59:59') : null;
+
+  const filtered = _rptData.filter(r => {
+    // 지역
+    if (_rptRegion !== '전체' && r._region !== _rptRegion) return false;
+    // 날짜 범위
+    const dt = r.report_time ? new Date(r.report_time) : null;
+    if (dtFrom && (!dt || dt < dtFrom)) return false;
+    if (dtTo   && (!dt || dt > dtTo))   return false;
+    // 국가 키워드
+    if (countryKw) {
+      const label = (r._countryLabel || r.country_name || '').toLowerCase();
+      if (!label.includes(countryKw)) return false;
+    }
+    return true;
+  });
 
   if (filtered.length === 0) {
     list.innerHTML = `<div class="dp-empty">조건에 맞는 보고서 없음</div>`;
@@ -1297,9 +1301,19 @@ function renderRptList() {
   });
 }
 
+// 날짜·국가 입력 이벤트 연결 (DOM 준비 후 한 번만)
+function _bindRptFilterInputs() {
+  const dateFrom = document.getElementById('rpt-date-from');
+  const dateTo   = document.getElementById('rpt-date-to');
+  const countryIn = document.getElementById('rpt-country-input');
+  if (dateFrom)  dateFrom.addEventListener('input',  renderRptList);
+  if (dateTo)    dateTo.addEventListener('input',    renderRptList);
+  if (countryIn) countryIn.addEventListener('input', renderRptList);
+}
+
 async function loadAllReports() {
-  const list      = document.getElementById('rpt-list');
-  const count     = document.getElementById('rpt-count');
+  const list       = document.getElementById('rpt-list');
+  const count      = document.getElementById('rpt-count');
   const filterWrap = document.getElementById('rpt-filter-wrap');
   list.innerHTML = '<div class="dp-empty">로딩 중...</div>';
   try {
@@ -1318,7 +1332,7 @@ async function loadAllReports() {
     // 각 보고서에 지역·파일명·국가 레이블 메타 캐시
     _rptData = reports.map(r => {
       const dt = r.report_time ? new Date(r.report_time) : null;
-      const countryLabel = getAlertLabel(r.country_name) || (r.country_name ? r.country_name : null);
+      const countryLabel = getAlertLabel(r.country_name) || r.country_name || null;
       return {
         ...r,
         _fname: dt
@@ -1327,17 +1341,6 @@ async function loadAllReports() {
         _region:       getRegion(r.lat_center, r.lon_center),
         _countryLabel: countryLabel,
       };
-    });
-
-    // ── 시간 필터 행 ───────────────────────────────────────────────
-    const timeRow = document.getElementById('rpt-filter-time');
-    timeRow.innerHTML =
-      `<span class="rpt-filter-lbl">시간</span>` +
-      _RPT_TIME_OPTS.map(o =>
-        `<button class="rpt-filter-btn${o.key === _rptTime ? ' active-blue' : ''}" data-time="${o.key}">${o.label}</button>`
-      ).join('');
-    timeRow.querySelectorAll('.rpt-filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => { _rptTime = btn.dataset.time; renderRptList(); });
     });
 
     // ── 지역 필터 행 ───────────────────────────────────────────────
@@ -1356,31 +1359,8 @@ async function loadAllReports() {
     });
     if (!regionTabs.includes(_rptRegion)) _rptRegion = '전체';
 
-    // ── 국가 필터 행 (경보 국가 + 전체) ───────────────────────────
-    const countryRow = document.getElementById('rpt-filter-country');
-    const presentCountries = [...new Set(
-      _rptData.map(r => r._countryLabel).filter(Boolean)
-    )].sort();
-    if (presentCountries.length > 0) {
-      countryRow.innerHTML =
-        `<span class="rpt-filter-lbl">국가</span>` +
-        [`전체`, ...presentCountries].map(c =>
-          `<button class="rpt-filter-btn${c === _rptCountry ? ' active' : ''}" data-country="${c}">${c}</button>`
-        ).join('');
-      countryRow.querySelectorAll('.rpt-filter-btn').forEach(btn => {
-        btn.addEventListener('click', () => { _rptCountry = btn.dataset.country; renderRptList(); });
-      });
-      countryRow.style.display = 'flex';
-    } else {
-      countryRow.style.display = 'none';
-      _rptCountry = '전체';
-    }
-    if (!['전체', ...presentCountries].includes(_rptCountry)) _rptCountry = '전체';
-
     filterWrap.style.display = 'flex';
     renderRptList();
-
-    // 지도 마커 갱신
     renderReportMarkers();
   } catch(e) { console.warn('[loadAllReports]', e); }
 }
@@ -2780,6 +2760,7 @@ setInterval(async () => {
     loadAllImages();
     loadAllDetections();
     loadAllReports();
+    _bindRptFilterInputs();
     pollSimStatus();
     setupSSE();
   } else if (retry > 0) {
@@ -2809,6 +2790,7 @@ setInterval(async () => {
     loadAllImages();
     loadAllDetections();
     loadAllReports();
+    _bindRptFilterInputs();
     pollSimStatus();
     setupSSE();
   }
