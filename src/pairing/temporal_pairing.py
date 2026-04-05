@@ -457,23 +457,80 @@ def pair_by_tracking(
     pairing_records: List[PairingRecord] = []
 
     # ------------------------------------------------------------------
-    # 1. "matched" – tracked by Sam3Tracker
+    # 0. Static class geo-based pre-matching
+    #    건물류(static classes)는 물리적으로 이동 불가이므로 SAM3 tracker(픽셀 IoU)
+    #    보다 먼저 위경도 근접도 기준으로 매칭한다.
+    #    같은 클래스이고 geo 거리 ≤ MOVE_DISTANCE_THRESHOLD_DEG 인 쌍 중 가장
+    #    가까운 쌍부터 greedy 할당. 일치 시 "matched" (절대 "moved" 아님).
     # ------------------------------------------------------------------
+    static_cur_list  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
+    static_past_list = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
+
+    if static_cur_list and static_past_list:
+        geo_candidates = []
+        for ci, cur in enumerate(static_cur_list):
+            for pi, past in enumerate(static_past_list):
+                if cur.object_class.lower() != past.object_class.lower():
+                    continue
+                dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
+                if dist <= MOVE_DISTANCE_THRESHOLD_DEG:
+                    geo_candidates.append((dist, ci, pi))
+        geo_candidates.sort()          # 가장 가까운 쌍부터
+        geo_matched_ci: set = set()
+        geo_matched_pi: set = set()
+        for dist, ci, pi in geo_candidates:
+            if ci in geo_matched_ci or pi in geo_matched_pi:
+                continue
+            cur  = static_cur_list[ci]
+            past = static_past_list[pi]
+            geo_matched_ci.add(ci)
+            geo_matched_pi.add(pi)
+            matched_current_ids.add(cur.detection_id)
+            matched_past_ids.add(past.id)
+            pairing_records.append(PairingRecord(
+                pairing_time=now,
+                lat_center=region_lat, lon_center=region_lon,
+                current_detection_id=cur.detection_id,
+                current_object_class=cur.object_class,
+                current_confidence=cur.confidence,
+                current_lat=cur.lat, current_lon=cur.lon,
+                current_capture_time=current_capture_time,
+                current_bbox={"x1": cur.bbox_x1, "y1": cur.bbox_y1,
+                              "x2": cur.bbox_x2, "y2": cur.bbox_y2},
+                past_detection_id=past.id,
+                past_object_class=past.object_class,
+                past_confidence=past.confidence,
+                past_lat=past.lat, past_lon=past.lon,
+                past_capture_time=past_capture_time,
+                past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
+                           "x2": past.bbox_x2, "y2": past.bbox_y2},
+                status="matched",   # 건물류 → 절대 "moved" 아님
+                source_type=source_type,
+                session_id=session_id,
+            ))
+
+
     for tracked in tracked_objects:
         # 트래커가 동일 past_detection_id를 중복 반환하는 경우 첫 번째만 처리
         if tracked.past_detection_id in matched_past_ids:
             continue
-        matched_past_ids.add(tracked.past_detection_id)
         past = past_by_id.get(tracked.past_detection_id)
-
-        # Find the current Sam3Model detection with highest IoU overlap
-        best_current: Optional[DetectionResult] = None
-        best_iou = IOU_MATCH_THRESHOLD
 
         # 비교 기준 클래스: past DB 레코드가 있으면 그 클래스, 없으면 tracker가 기억한 클래스
         expected_cls = (
             past.object_class if past else tracked.past_object_class or ""
         ).lower()
+
+        # 건물류(static)는 Step 0에서 geo 기반으로 이미 매칭 완료.
+        # 트래커의 픽셀 IoU 매칭을 적용하지 않는다.
+        if expected_cls in _STATIC_CLASSES:
+            continue
+
+        matched_past_ids.add(tracked.past_detection_id)
+
+        # Find the current Sam3Model detection with highest IoU overlap
+        best_current: Optional[DetectionResult] = None
+        best_iou = IOU_MATCH_THRESHOLD
 
         for cur in current_detections:
             if cur.detection_id in matched_current_ids:
