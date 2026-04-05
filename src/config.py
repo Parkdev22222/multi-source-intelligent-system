@@ -71,6 +71,7 @@ MILITARY_OBJECT_CLASSES = [
     "fighter aircraft",
     "helicopter",
     "military ship",
+    "civilian ship",
     "missile launcher",
     "artillery",
     "military building",
@@ -126,8 +127,8 @@ NMS_IOU_THRESHOLD = float(os.getenv("NMS_IOU", "0.3"))
 
 # --- BBox Size Constraints ---
 # 텍스트 프롬프트 마스크가 과도하게 넓어지는 것을 방지.
-# 위성/항공 이미지에서 군사 객체는 이미지 전체 면적의 15% 이하가 정상.
-MAX_BBOX_AREA_RATIO = float(os.getenv("MAX_BBOX_AREA_RATIO", "0.15"))
+# 선박·활주로 등 대형 객체는 타일 면적의 50% 이상을 차지할 수 있으므로 0.5로 설정.
+MAX_BBOX_AREA_RATIO = float(os.getenv("MAX_BBOX_AREA_RATIO", "0.5"))
 # SAM3 마스크 세그멘테이션 전용 신뢰도 임계값 (post_process_instance_segmentation)
 SAM3_MASK_SCORE_THRESHOLD = float(os.getenv("SAM3_MASK_SCORE", "0.5"))
 
