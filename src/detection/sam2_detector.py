@@ -33,7 +33,9 @@ import torch
 
 from src.config import (
     DETECTION_CONFIDENCE_THRESHOLD,
+    LARGE_OBJECT_CLASSES,
     MAX_BBOX_AREA_RATIO,
+    MAX_BBOX_AREA_RATIO_LARGE,
     MILITARY_OBJECT_CLASSES,
     NMS_IOU_THRESHOLD,
     SAM3_DEVICE,
@@ -470,7 +472,8 @@ class SAM3Detector:
         boxes_out  = np.asarray(boxes_out)
         scores_out = np.asarray(scores_out).flatten()
 
-        max_area = MAX_BBOX_AREA_RATIO * orig_w * orig_h
+        ratio    = MAX_BBOX_AREA_RATIO_LARGE if class_name in LARGE_OBJECT_CLASSES else MAX_BBOX_AREA_RATIO
+        max_area = ratio * orig_w * orig_h
         detections: List[DetectionResult] = []
 
         for i, confidence in enumerate(scores_out):

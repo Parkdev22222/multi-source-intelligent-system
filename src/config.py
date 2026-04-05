@@ -126,9 +126,14 @@ DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE", "0.3"))
 NMS_IOU_THRESHOLD = float(os.getenv("NMS_IOU", "0.3"))
 
 # --- BBox Size Constraints ---
-# 텍스트 프롬프트 마스크가 과도하게 넓어지는 것을 방지.
-# 선박·활주로 등 대형 객체는 타일 면적의 50% 이상을 차지할 수 있으므로 0.5로 설정.
-MAX_BBOX_AREA_RATIO = float(os.getenv("MAX_BBOX_AREA_RATIO", "0.5"))
+# 일반 객체(건물·차량·탱크 등)는 타일 면적의 15% 이하.
+MAX_BBOX_AREA_RATIO = float(os.getenv("MAX_BBOX_AREA_RATIO", "0.15"))
+# 대형 객체(선박·활주로·도로)는 타일 면적의 70%까지 허용.
+MAX_BBOX_AREA_RATIO_LARGE = float(os.getenv("MAX_BBOX_AREA_RATIO_LARGE", "0.7"))
+# 위 비율을 적용할 대형 클래스 목록 (소문자, 공백 포함).
+LARGE_OBJECT_CLASSES: frozenset = frozenset({
+    "military ship", "civilian ship", "runway", "road",
+})
 # SAM3 마스크 세그멘테이션 전용 신뢰도 임계값 (post_process_instance_segmentation)
 SAM3_MASK_SCORE_THRESHOLD = float(os.getenv("SAM3_MASK_SCORE", "0.5"))
 
