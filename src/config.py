@@ -50,9 +50,9 @@ TILE_NMS_IOU    = float(os.getenv("TILE_NMS_IOU", "0.3"))
 # IoU가 낮아 NMS를 통과하는 문제를 보완. IoU OR IoMin 중 하나라도 초과하면 억제.
 TILE_NMS_IOMIN  = float(os.getenv("TILE_NMS_IOMIN", "0.5"))
 # 인접 박스 병합 임계값 (픽셀).
-# NMS 이후에도 타일 경계에서 쪼개진 박스(간격이 작거나 0인 같은 클래스 박스)를
-# union bbox로 병합한다. 0으로 설정하면 병합 비활성화.
-TILE_MERGE_GAP  = int(os.getenv("TILE_MERGE_GAP", "32"))
+# 0 = 비활성화. TILE_OVERLAP=400 + IoMin NMS로 타일 경계 분리는 이미 처리되므로
+# TILE_MERGE_GAP을 켜두면 도심 밀집 지역에서 인접 건물들이 하나로 묶히는 부작용이 생긴다.
+TILE_MERGE_GAP  = int(os.getenv("TILE_MERGE_GAP", "0"))
 # 멀티스케일: 타일 탐지와 함께 전체 이미지 탐지도 병행 → 큰 객체 누락 방지.
 # TILE_ENABLED=true 일 때만 적용. false 면 타일 탐지만 실행.
 TILE_MULTISCALE = os.getenv("TILE_MULTISCALE", "true").lower() == "true"
