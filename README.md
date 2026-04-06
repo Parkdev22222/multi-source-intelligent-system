@@ -9,6 +9,11 @@ Project Maven-inspired aerial imagery intelligence pipeline that performs:
 
 ## Architecture
 
+![System Architecture](docs/architecture.png)
+
+<details>
+<summary>Text diagram (ASCII)</summary>
+
 ```
 SENSORS (Satellite / Drone)
          │  imagery + GPS metadata
@@ -46,6 +51,8 @@ PAIRING DB (SQLite)
 REPORTING LAYER  ──►  EXAONE4-32b LLM
                        → Military change-detection intelligence report
 ```
+
+</details>
 
 ---
 
