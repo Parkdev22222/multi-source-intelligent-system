@@ -71,12 +71,12 @@ SAM3 비디오 예측기를 이용한 ID-기반 추적.
 - 장점: 카메라 각도 변화·조명 변화에 강건
 - 단점: SAM3 비디오 세션 오버헤드, GPU 메모리 추가 소모
 
-### Mode B: `similarity` (SAM mask crop + CLIP embedding)
+### Mode B: `similarity` (SAM mask crop + VIT embedding)
 
 ```
 현재/과거 프레임 각 detection
     ├─ SAM mask_rle로 배경 마스킹 (없으면 bbox crop fallback)
-    └─ CLIP 임베딩 → cosine similarity matrix (N × M)
+    └─ VIT 임베딩 → cosine similarity matrix (N × M)
 
 score = SIMILARITY_CLIP_WEIGHT × clip_sim
       + (1 − SIMILARITY_CLIP_WEIGHT) × geo_score
