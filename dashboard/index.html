@@ -355,6 +355,56 @@
     .rpt-act-btn.pviz { border-color:#8040cc; color:#a868ff; }
     .rpt-act-btn.pviz:hover { background:#8040cc22; border-color:#a060dd; }
     .rpt-act-btn.pviz.active { background:#8040cc2a; border-color:#c090ff; color:#d0b0ff; }
+
+    /* ══════════════════════════════════════════════════
+       모바일 반응형 (≤ 768px)
+       데스크톱: 사이드바(좌) + 지도(중) + 상세패널(우) 3열 유지
+       모바일: 사이드바 → 지도 → 상세패널 세로 스택
+       ══════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      html, body { overflow-y: auto; height: auto; }
+
+      #app { flex-direction: column; height: auto; min-height: 100dvh; overflow: visible; }
+
+      /* ── 사이드바: 전체 폭, 높이 자동 ── */
+      #sidebar { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+      #sat-list { flex: none; max-height: 130px; overflow-y: auto; }
+
+      /* ── 지도: 화면 폭 × 56vw 고정 ── */
+      #map-wrap { flex: none; width: 100%; height: 56vw; min-height: 260px; }
+
+      /* ── 우측 상세패널: 전체 폭, 높이 자동 ── */
+      #detail-panel { width: 100%; min-width: 0; border-left: none; border-top: 1px solid var(--border); flex-shrink: 0; height: auto; }
+      .db-list { max-height: 100px; }
+      .rpt-list { max-height: 110px; }
+      #dp-hint { font-size: 9px; padding: 4px 10px; }
+
+      /* ── 보고서 모달: 전체 화면 ── */
+      #report-modal { align-items: flex-start; }
+      #report-box { width: 100%; max-width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 0; border: none; }
+      #rpt-sep-panels { flex-direction: column; }
+
+      /* ── 호버 팝업: 모바일 폭 제한 ── */
+      #db-popup { max-width: 96vw; min-width: 0; left: 2vw !important; right: 2vw !important; }
+      #db-popup.det-mode { max-width: 96vw; min-width: 0; }
+      #db-popup .det-popup-wrap { flex-direction: column; }
+      #db-popup .det-popup-img-panel { flex: none; border-right: none; border-bottom: 1px solid var(--border); }
+      #db-popup .det-popup-img-panel img { height: 160px; }
+
+      /* ── 탐지 편집기: 세로 분할 ── */
+      #det-editor-body { flex-direction: column; }
+      #det-canvas-wrap { flex: none; height: 45vw; min-height: 200px; padding: 8px; }
+      #det-sidebar { width: 100%; height: 240px; border-left: none; border-top: 1px solid var(--border); }
+
+      /* ── 페어링 도시 모달: 세로 분할 ── */
+      #pviz-modal-body { flex-direction: column; }
+      #pviz-img-area { flex-direction: column; height: 55vw; min-height: 220px; }
+      #pviz-mid-gap { width: 0; height: 20px; }
+      #pviz-list { width: 100%; height: 220px; border-left: none; border-top: 1px solid var(--border); }
+
+      /* ── 필터 행 글자 크기 ── */
+      .rpt-filter-date { width: 100px; }
+    }
   </style>
 </head>
 <body>
@@ -2826,6 +2876,13 @@ setInterval(async () => {
     setupSSE();
   }
 })(50);
+
+// 모바일: 화면 크기 변경 시 Leaflet 지도 재계산
+window.addEventListener('resize', function() {
+  if (typeof map !== 'undefined' && map) {
+    map.invalidateSize();
+  }
+});
 </script>
 </body>
 </html>
