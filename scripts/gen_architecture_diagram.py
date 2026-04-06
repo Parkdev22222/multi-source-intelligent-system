@@ -6,10 +6,9 @@ from PIL import Image, ImageDraw, ImageFont
 import os
 
 # ─── Canvas ───────────────────────────────────────────────────────────────────
-W, H = 1800, 1280
-bg   = (10, 14, 22)      # #0a0e14
-
-img  = Image.new("RGB", (W, H), bg)
+W, H = 1920, 1480
+BG   = (10, 14, 22)
+img  = Image.new("RGB", (W, H), BG)
 draw = ImageDraw.Draw(img)
 
 # ─── Fonts ────────────────────────────────────────────────────────────────────
@@ -17,279 +16,313 @@ FONT_BASE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 def fnt(size, bold=False):
-    path = FONT_BOLD if bold else FONT_BASE
     try:
-        return ImageFont.truetype(path, size)
+        return ImageFont.truetype(FONT_BOLD if bold else FONT_BASE, size)
     except Exception:
         return ImageFont.load_default()
 
-F_TITLE  = fnt(28, bold=True)
-F_SECT   = fnt(17, bold=True)
-F_BODY   = fnt(14)
-F_SMALL  = fnt(12)
-F_TINY   = fnt(11)
+F_TITLE = fnt(30, bold=True)
+F_SECT  = fnt(17, bold=True)
+F_BODY  = fnt(14)
+F_SMALL = fnt(12)
+F_TINY  = fnt(11)
 
-# ─── Colour palette ───────────────────────────────────────────────────────────
-C_INPUT   = (34,  197, 94)   # green-500   — sensors / input
-C_DETECT  = (16,  185, 129)  # emerald-500 — detection
-C_DB      = (99,  102, 241)  # indigo-500  — databases
-C_PAIR    = (6,   182, 212)  # cyan-500    — pairing
-C_LLM     = (168,  85, 247)  # purple-500  — LLM / reporting
-C_API     = (20,  184, 166)  # teal-500    — web API
-C_UI      = (59,  130, 246)  # blue-500    — dashboard / UI
-C_CFG     = (245, 158, 11)   # amber-500   — config / RAG
-C_ARROW   = (100, 116, 139)  # slate-500
-C_TXT     = (226, 232, 240)  # slate-200
-C_DIM     = (100, 116, 139)  # slate-500
-C_BORDER  = (30,  41,  59)   # slate-800
-C_BG_BOX  = (15,  23,  42)   # slate-900   — box fill
+# ─── Palette ──────────────────────────────────────────────────────────────────
+C_INPUT  = ( 34, 197,  94)   # green    — sensors / input
+C_DETECT = ( 16, 185, 129)   # emerald  — detection / SR
+C_DB     = ( 99, 102, 241)   # indigo   — databases
+C_PAIR   = (  6, 182, 212)   # cyan     — pairing
+C_LLM    = (168,  85, 247)   # purple   — LLM / reporting
+C_API    = ( 20, 184, 166)   # teal     — web API
+C_UI     = ( 59, 130, 246)   # blue     — dashboard
+C_CFG    = (245, 158,  11)   # amber    — config / RAG
+C_ARROW  = (148, 163, 184)   # slate-400
+C_TXT    = (226, 232, 240)   # slate-200
+C_DIM    = (100, 116, 139)   # slate-500
+C_LINE   = ( 30,  41,  59)   # slate-800
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-def rounded_rect(d, xy, r=10, fill=C_BG_BOX, outline=C_BORDER, width=2):
-    x0,y0,x1,y1 = xy
-    d.rounded_rectangle([x0,y0,x1,y1], radius=r, fill=fill, outline=outline, width=width)
+# ─── Drawing helpers ──────────────────────────────────────────────────────────
+def box(xy, fill, outline, r=10, bw=2):
+    draw.rounded_rectangle(xy, radius=r, fill=fill, outline=outline, width=bw)
 
-def center_text(d, cx, cy, text, font, fill=C_TXT):
-    bb = d.textbbox((0,0), text, font=font)
-    tw = bb[2]-bb[0]; th = bb[3]-bb[1]
-    d.text((cx-tw//2, cy-th//2), text, font=font, fill=fill)
+def ctext(cx, cy, text, font, color=C_TXT):
+    bb = draw.textbbox((0, 0), text, font=font)
+    tw, th = bb[2]-bb[0], bb[3]-bb[1]
+    draw.text((cx - tw//2, cy - th//2), text, font=font, fill=color)
 
-def arrow_v(d, x, y0, y1, color=C_ARROW):
-    """Vertical arrow from y0 to y1."""
-    d.line([(x, y0), (x, y1)], fill=color, width=2)
-    # arrowhead
-    d.polygon([(x-6, y1-10), (x+6, y1-10), (x, y1)], fill=color)
+def arrow_down(x, y0, y1, color=C_ARROW):
+    """Vertical arrow pointing downward from y0 to y1."""
+    draw.line([(x, y0), (x, y1)], fill=color, width=2)
+    # arrowhead pointing down
+    draw.polygon([(x-7, y1-12), (x+7, y1-12), (x, y1)], fill=color)
 
-def arrow_h(d, x0, x1, y, color=C_ARROW):
-    """Horizontal arrow from x0 to x1."""
-    d.line([(x0, y), (x1, y)], fill=color, width=2)
-    d.polygon([(x1-10, y-6), (x1-10, y+6), (x1, y)], fill=color)
+def arrow_left(x0, x1, y, color=C_ARROW):
+    """Horizontal arrow pointing LEFT: from x0 → x1 (x1 < x0)."""
+    draw.line([(x0, y), (x1, y)], fill=color, width=2)
+    # arrowhead pointing left: tip at (x1, y), base at (x1+12, y±7)
+    draw.polygon([(x1+12, y-7), (x1+12, y+7), (x1, y)], fill=color)
 
-# ─── Title ────────────────────────────────────────────────────────────────────
-center_text(draw, W//2, 34, "Multi-Source Intelligent System (MSIS)  —  Architecture", F_TITLE, C_TXT)
-draw.line([(60, 60), (W-60, 60)], fill=C_BORDER, width=1)
+def hline(y, color=C_LINE):
+    draw.line([(60, y), (W-60, y)], fill=color, width=1)
 
-# ─── Layout constants ─────────────────────────────────────────────────────────
-# Column centres  (left pipeline / right side panels)
-CX_MAIN   = 540
-CX_DB_L   = 200          # Sensor DB
-CX_DB_R   = 900          # Pairing DB / Reports DB
-CX_CFG    = 1180         # Config / RAG
-CX_CLIP   = 1400         # CLIP tracker
-CX_API    = 1180         # Web API (lower)
-CX_DASH   = 1400         # Dashboard (lower)
+def vline(x, y0, y1, color=C_LINE):
+    draw.line([(x, y0), (x, y1)], fill=color, width=1)
 
-BW  = 320   # standard box width
-SBW = 220   # side box width
-BH  = 56    # standard box height
+# ─── Main pipeline dimensions ─────────────────────────────────────────────────
+CX   = 430          # main pipeline centre x
+BW   = 360          # box width  (x: 250 → 610)
+BH   = 60           # standard box half-height  (box y span: cy-BH//2 → cy+BH//2)
+LX   = CX - BW//2  # left  edge of main boxes = 250
+RX   = CX + BW//2  # right edge of main boxes = 610
 
-# Row Y centres  (main pipeline flows down)
-ROW = {}
-ROW["ingest"]   = 110
-ROW["detect"]   = 220
-ROW["sensordb"] = 330
-ROW["pair"]     = 460
-ROW["pairdb"]   = 570
-ROW["report"]   = 700
-ROW["reportdb"] = 810
-ROW["webapi"]   = 920
-ROW["dash"]     = 1050
+# Right panels
+CXR  = 1380         # right column centre x
+BWR  = 480          # right panel width  (x: 1140 → 1620)
+LXR  = CXR - BWR//2 # left  edge of right panels = 1140
+RXR  = CXR + BWR//2 # right edge               = 1620
 
+# Arrow corridor: x ∈ [RX+4, LXR-4]  →  [614, 1136]
+# Horizontal arrows go from LXR to RX (pointing left)
 
-# ─── SECTION LABELS ───────────────────────────────────────────────────────────
-def section_label(d, x, y, txt, color):
-    bb = d.textbbox((0,0), txt, font=F_SECT)
-    tw = bb[2]-bb[0]
-    d.text((x - tw//2, y), txt, font=F_SECT, fill=color)
+DIVIDER_X = 870
 
-# ─── 1. INPUT SOURCES  (row 0)  y~110 ─────────────────────────────────────────
-input_boxes = [
-    (80,   "Satellite\nImagery",     C_INPUT),
-    (300,  "Drone\nImagery",         C_INPUT),
-    (520,  "GPS /\nMetadata",        C_INPUT),
-    (740,  "Manual\nUpload",         C_INPUT),
-]
-for bx, label, col in input_boxes:
-    x0,y0 = bx, ROW["ingest"]-30
-    x1,y1 = bx+170, ROW["ingest"]+30
-    rounded_rect(draw, [x0,y0,x1,y1], fill=(20,28,44), outline=col, width=2)
-    cy = (y0+y1)//2
-    lines = label.split("\n")
-    if len(lines)==2:
-        bb0 = draw.textbbox((0,0), lines[0], font=F_BODY); h0 = bb0[3]-bb0[1]
-        bb1 = draw.textbbox((0,0), lines[1], font=F_BODY); h1 = bb1[3]-bb1[1]
-        center_text(draw, (x0+x1)//2, cy-h0//2-1, lines[0], F_BODY, col)
-        center_text(draw, (x0+x1)//2, cy+h1//2+1, lines[1], F_BODY, col)
+# ─── Row Y centres for main pipeline ─────────────────────────────────────────
+Y = {
+    "title"   :  38,
+    "input"   : 130,  # 4 input boxes
+    "detect"  : 268,  # SAM3 Detection
+    "sensdb"  : 398,  # Sensor DB
+    "pair"    : 540,  # Temporal Pairing (taller)
+    "pairdb"  : 668,  # Pairing DB
+    "report"  : 798,  # Reporting Layer (taller)
+    "repdb"   : 928,  # Reports DB
+    "webapi"  :1050,  # Web API
+    "dash"    :1180,  # Dashboard
+}
+
+# ─── Right panel Y centres ────────────────────────────────────────────────────
+YR = {
+    "sr"      : 268,  # Super-Resolution  (aligned with detect)
+    "config"  : 480,  # Config            (spans detect→pair)
+    "clip"    : 700,  # CLIP Tracker      (aligned with pair/pairdb)
+    "rag"     : 900,  # Doctrine RAG      (aligned with report)
+}
+
+# ─── Helper: draw a main-pipeline box ─────────────────────────────────────────
+def main_box(cy, half_h, fill_rgb, outline, title, subtitles=()):
+    y0, y1 = cy - half_h, cy + half_h
+    box([LX, y0, RX, y1], fill=fill_rgb, outline=outline)
+    if subtitles:
+        ctext(CX, y0 + 22, title, F_SECT, outline)
+        for i, s in enumerate(subtitles):
+            ctext(CX, y0 + 44 + i*20, s, F_SMALL, C_DIM)
     else:
-        center_text(draw, (x0+x1)//2, cy, label, F_BODY, col)
+        ctext(CX, cy, title, F_SECT, outline)
+    return y0, y1
 
-# merge arrow down
-arrow_v(draw, CX_MAIN, ROW["ingest"]+32, ROW["detect"]-34)
+# ─── Helper: draw a right-side panel ──────────────────────────────────────────
+def right_panel(cy, height, outline, fill_rgb, title, lines=()):
+    y0, y1 = cy - height//2, cy + height//2
+    box([LXR, y0, RXR, y1], fill=fill_rgb, outline=outline)
+    ctext(CXR, y0 + 20, title, F_SECT, outline)
+    for i, l in enumerate(lines):
+        ctext(CXR, y0 + 46 + i*20, l, F_SMALL, C_DIM)
+    return y0, y1, (y0+y1)//2
 
-# ─── 2. DETECTION LAYER  y~220 ────────────────────────────────────────────────
-x0,y0 = CX_MAIN-BW//2, ROW["detect"]-34
-x1,y1 = CX_MAIN+BW//2, ROW["detect"]+34
-rounded_rect(draw, [x0,y0,x1,y1], fill=(14,30,22), outline=C_DETECT, width=2)
-center_text(draw, CX_MAIN, ROW["detect"]-12, "SAM3  (facebook/sam3)", F_SECT, C_DETECT)
-center_text(draw, CX_MAIN, ROW["detect"]+12, "Text-prompted concept segmentation", F_SMALL, C_DIM)
+# ═══════════════════════════════════════════════════════════════════════════════
+# TITLE
+# ═══════════════════════════════════════════════════════════════════════════════
+ctext(W//2, Y["title"], "Multi-Source Intelligent System (MSIS)  —  Architecture", F_TITLE, C_TXT)
+hline(64)
 
-# ─── 3. SENSOR DB  y~330 ──────────────────────────────────────────────────────
-arrow_v(draw, CX_MAIN, ROW["detect"]+36, ROW["sensordb"]-34)
-x0,y0 = CX_MAIN-BW//2, ROW["sensordb"]-34
-x1,y1 = CX_MAIN+BW//2, ROW["sensordb"]+34
-rounded_rect(draw, [x0,y0,x1,y1], fill=(17,20,50), outline=C_DB, width=2)
-center_text(draw, CX_MAIN, ROW["sensordb"]-12, "Sensor DB  (SQLite)", F_SECT, C_DB)
-center_text(draw, CX_MAIN, ROW["sensordb"]+12, "image_records · detection_records", F_SMALL, C_DIM)
+# ─── Column headers ───────────────────────────────────────────────────────────
+ctext(CX,  76, "Main Pipeline", F_SMALL, C_DIM)
+ctext(CXR, 76, "Supporting Components", F_SMALL, C_DIM)
+vline(DIVIDER_X, 64, H-80)
 
-# ─── 4. TEMPORAL PAIRING  y~460 ───────────────────────────────────────────────
-arrow_v(draw, CX_MAIN, ROW["sensordb"]+36, ROW["pair"]-44)
-x0,y0 = CX_MAIN-BW//2, ROW["pair"]-44
-x1,y1 = CX_MAIN+BW//2, ROW["pair"]+44
-rounded_rect(draw, [x0,y0,x1,y1], fill=(8,34,40), outline=C_PAIR, width=2)
-center_text(draw, CX_MAIN, ROW["pair"]-24, "Temporal Pairing Engine", F_SECT, C_PAIR)
-center_text(draw, CX_MAIN, ROW["pair"],     "Mode A: SAM3 video predictor tracker", F_SMALL, C_DIM)
-center_text(draw, CX_MAIN, ROW["pair"]+20,  "Mode B: CLIP cosine + geo proximity",  F_SMALL, C_DIM)
+# ═══════════════════════════════════════════════════════════════════════════════
+# INPUT SOURCES  (4 boxes, centred on CX)
+# ═══════════════════════════════════════════════════════════════════════════════
+input_items = [
+    ("Satellite\nImagery", C_INPUT),
+    ("Drone\nImagery",     C_INPUT),
+    ("GPS /\nMetadata",    C_INPUT),
+    ("Manual\nUpload",     C_INPUT),
+]
+ibw, igap = 148, 16   # box width, gap between boxes
+total_in  = len(input_items) * ibw + (len(input_items)-1) * igap   # =636
+ix_start  = CX - total_in//2                                        # =112
 
-# ─── 5. PAIRING DB  y~570 ─────────────────────────────────────────────────────
-arrow_v(draw, CX_MAIN, ROW["pair"]+46, ROW["pairdb"]-34)
-x0,y0 = CX_MAIN-BW//2, ROW["pairdb"]-34
-x1,y1 = CX_MAIN+BW//2, ROW["pairdb"]+34
-rounded_rect(draw, [x0,y0,x1,y1], fill=(17,20,50), outline=C_DB, width=2)
-center_text(draw, CX_MAIN, ROW["pairdb"]-12, "Pairing DB  (SQLite)", F_SECT, C_DB)
-center_text(draw, CX_MAIN, ROW["pairdb"]+12, "new · matched · moved · disappeared", F_SMALL, C_DIM)
+in_tops = []
+for k, (label, col) in enumerate(input_items):
+    ix0 = ix_start + k * (ibw + igap)
+    ix1 = ix0 + ibw
+    iy0, iy1 = Y["input"]-28, Y["input"]+28
+    in_tops.append((ix0, ix1))
+    box([ix0, iy0, ix1, iy1], fill=(20, 28, 44), outline=col, bw=2)
+    lines = label.split("\n")
+    cy_box = (iy0+iy1)//2
+    if len(lines) == 2:
+        ctext((ix0+ix1)//2, cy_box - 9, lines[0], F_BODY, col)
+        ctext((ix0+ix1)//2, cy_box + 9, lines[1], F_BODY, col)
+    else:
+        ctext((ix0+ix1)//2, cy_box, label, F_BODY, col)
 
-# ─── 6. REPORTING LAYER  y~700 ────────────────────────────────────────────────
-arrow_v(draw, CX_MAIN, ROW["pairdb"]+36, ROW["report"]-44)
-x0,y0 = CX_MAIN-BW//2, ROW["report"]-44
-x1,y1 = CX_MAIN+BW//2, ROW["report"]+44
-rounded_rect(draw, [x0,y0,x1,y1], fill=(26,14,46), outline=C_LLM, width=2)
-center_text(draw, CX_MAIN, ROW["report"]-22, "Reporting Layer", F_SECT, C_LLM)
-center_text(draw, CX_MAIN, ROW["report"]+2,   "EXAONE4-32b  (vLLM / Ollama)",     F_BODY, C_LLM)
-center_text(draw, CX_MAIN, ROW["report"]+24,  "Intelligence report + KO translation", F_SMALL, C_DIM)
+# Funnel: vertical lines from each input box down to collecting horizontal bar,
+# then single arrow down to Detection box.
+COLLECT_Y = Y["input"] + 44
+for ix0, ix1 in in_tops:
+    icx = (ix0+ix1)//2
+    draw.line([(icx, Y["input"]+28), (icx, COLLECT_Y)], fill=C_ARROW, width=2)
 
-# ─── 7. REPORTS DB  y~810 ─────────────────────────────────────────────────────
-arrow_v(draw, CX_MAIN, ROW["report"]+46, ROW["reportdb"]-34)
-x0,y0 = CX_MAIN-BW//2, ROW["reportdb"]-34
-x1,y1 = CX_MAIN+BW//2, ROW["reportdb"]+34
-rounded_rect(draw, [x0,y0,x1,y1], fill=(17,20,50), outline=C_DB, width=2)
-center_text(draw, CX_MAIN, ROW["reportdb"]-12, "Reports DB  (SQLite)", F_SECT, C_DB)
-center_text(draw, CX_MAIN, ROW["reportdb"]+12, "report_records · analysis sessions", F_SMALL, C_DIM)
+# Horizontal collecting bar
+bar_x0 = (in_tops[0][0] + in_tops[0][1])//2
+bar_x1 = (in_tops[-1][0] + in_tops[-1][1])//2
+draw.line([(bar_x0, COLLECT_Y), (bar_x1, COLLECT_Y)], fill=C_ARROW, width=2)
 
-# ─── 8. WEB API  y~920 ────────────────────────────────────────────────────────
-arrow_v(draw, CX_MAIN, ROW["reportdb"]+36, ROW["webapi"]-34)
-x0,y0 = CX_MAIN-BW//2, ROW["webapi"]-34
-x1,y1 = CX_MAIN+BW//2, ROW["webapi"]+34
-rounded_rect(draw, [x0,y0,x1,y1], fill=(6,28,30), outline=C_API, width=2)
-center_text(draw, CX_MAIN, ROW["webapi"]-12, "Web API  (Flask + aiohttp)", F_SECT, C_API)
-center_text(draw, CX_MAIN, ROW["webapi"]+12, "REST /api/*  ·  /stream  ·  /ws", F_SMALL, C_DIM)
+# Single arrow from centre of collecting bar down to Detection box
+arrow_down(CX, COLLECT_Y, Y["detect"] - 32)
 
-# ─── 9. DASHBOARD  y~1050 ─────────────────────────────────────────────────────
-arrow_v(draw, CX_MAIN, ROW["webapi"]+36, ROW["dash"]-44)
-x0,y0 = CX_MAIN-BW//2, ROW["dash"]-44
-x1,y1 = CX_MAIN+BW//2, ROW["dash"]+44
-rounded_rect(draw, [x0,y0,x1,y1], fill=(6,18,42), outline=C_UI, width=2)
-center_text(draw, CX_MAIN, ROW["dash"]-22, "Dashboard  (HTML / JS)", F_SECT, C_UI)
-center_text(draw, CX_MAIN, ROW["dash"]+2,   "Leaflet map  ·  Report viewer",   F_BODY, C_UI)
-center_text(draw, CX_MAIN, ROW["dash"]+24,  "Matching visualizer  ·  Mobile UI", F_SMALL, C_DIM)
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN PIPELINE BOXES
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# ─── RIGHT SIDE PANELS ────────────────────────────────────────────────────────
-# Panel helper
-def side_box(cx, cy, w, h, title, lines, col, fill_col=None):
-    fc = fill_col or (16,16,32)
-    x0,y0 = cx-w//2, cy-h//2
-    x1,y1 = cx+w//2, cy+h//2
-    rounded_rect(draw, [x0,y0,x1,y1], fill=fc, outline=col, width=2)
-    lh = (h-22)//max(len(lines),1)
-    ty = y0+14
-    bb = draw.textbbox((0,0), title, font=F_SECT)
-    tw = bb[2]-bb[0]
-    draw.text((cx-tw//2, ty), title, font=F_SECT, fill=col)
-    ty += 24
-    for l in lines:
-        bb2 = draw.textbbox((0,0), l, font=F_TINY)
-        tw2 = bb2[2]-bb2[0]
-        draw.text((cx-tw2//2, ty), l, font=F_TINY, fill=C_DIM)
-        ty += 18
+# 1. SAM3 Detection
+_, det_y1 = main_box(Y["detect"], 30,
+    fill_rgb=(12, 28, 20), outline=C_DETECT,
+    title="SAM3  (facebook/sam3)",
+    subtitles=("Text-prompted concept segmentation",))
+arrow_down(CX, det_y1, Y["sensdb"] - 32)
 
-# ─── Config panel (right, aligned with pairing) ──────────────────────────────
-CX_R1 = 1200; CY_R1 = (ROW["detect"] + ROW["pair"])//2 - 20
-side_box(CX_R1, CY_R1, 440, 250, "Config  (src/config.py)",
+# 2. Sensor DB
+_, sdb_y1 = main_box(Y["sensdb"], 30,
+    fill_rgb=(16, 18, 48), outline=C_DB,
+    title="Sensor DB  (SQLite)",
+    subtitles=("image_records · detection_records",))
+arrow_down(CX, sdb_y1, Y["pair"] - 42)
+
+# 3. Temporal Pairing
+_, pair_y1 = main_box(Y["pair"], 40,
+    fill_rgb=(6, 28, 36), outline=C_PAIR,
+    title="Temporal Pairing Engine",
+    subtitles=("Mode A: SAM3 video predictor tracker",
+               "Mode B: CLIP cosine + geo proximity"))
+arrow_down(CX, pair_y1, Y["pairdb"] - 32)
+
+# 4. Pairing DB
+_, pdb_y1 = main_box(Y["pairdb"], 30,
+    fill_rgb=(16, 18, 48), outline=C_DB,
+    title="Pairing DB  (SQLite)",
+    subtitles=("new · matched · moved · disappeared",))
+arrow_down(CX, pdb_y1, Y["report"] - 40)
+
+# 5. Reporting
+_, rep_y1 = main_box(Y["report"], 40,
+    fill_rgb=(24, 12, 44), outline=C_LLM,
+    title="Reporting Layer",
+    subtitles=("EXAONE4-32b  (vLLM / Ollama)",
+               "Intelligence report + KO translation"))
+arrow_down(CX, rep_y1, Y["repdb"] - 32)
+
+# 6. Reports DB
+_, rdb_y1 = main_box(Y["repdb"], 30,
+    fill_rgb=(16, 18, 48), outline=C_DB,
+    title="Reports DB  (SQLite)",
+    subtitles=("report_records · analysis sessions",))
+arrow_down(CX, rdb_y1, Y["webapi"] - 32)
+
+# 7. Web API
+_, wapi_y1 = main_box(Y["webapi"], 30,
+    fill_rgb=(6, 26, 28), outline=C_API,
+    title="Web API  (Flask + aiohttp)",
+    subtitles=("REST /api/*  ·  /stream  ·  /ws",))
+arrow_down(CX, wapi_y1, Y["dash"] - 40)
+
+# 8. Dashboard
+main_box(Y["dash"], 40,
+    fill_rgb=(6, 16, 40), outline=C_UI,
+    title="Dashboard  (HTML / JS)",
+    subtitles=("Leaflet map  ·  Report viewer",
+               "Matching visualizer  ·  Mobile-responsive"))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RIGHT PANELS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Super-Resolution ──────────────────────────────────────────────────────────
+sr_y0, sr_y1, sr_cy = right_panel(
+    YR["sr"], 100, C_DETECT, (10, 24, 16),
+    "Super-Resolution  (pre-processing)",
+    ["Real-ESRGAN  →  PIL LANCZOS fallback",
+     "Target: 8 000 × 6 000 px before SAM3"])
+# Arrow: SR → Detection (horizontal left)
+arrow_left(LXR, RX + 2, sr_cy, C_DETECT)
+
+# ── Config ────────────────────────────────────────────────────────────────────
+cfg_y0, cfg_y1, cfg_cy = right_panel(
+    YR["config"], 280, C_CFG, (22, 16, 6),
+    "Config  (src/config.py)",
     ["SAM3_MODEL_NAME  ·  SAM3_DEVICE",
      "TILE_ENABLED · TILE_SIZE · TILE_OVERLAP",
      "MAX_BBOX_AREA_RATIO  (0.15 / 0.70)",
      "TRACKING_MODE  (sam3_tracker | similarity)",
      "LLM_BACKEND  (vllm | ollama)",
-     "COORDINATE_MATCH_RADIUS · MOVE_THRESHOLD",
-     "DOCTRINE_ENABLED  ·  DOCTRINE_TOP_K"],
-    C_CFG, fill_col=(22,16,6))
+     "COORD_MATCH_RADIUS · MOVE_THRESHOLD",
+     "DOCTRINE_ENABLED  ·  DOCTRINE_TOP_K",
+     "LLM_TENSOR_PARALLEL_SIZE"])
+# Arrow: Config → Sensor DB level (horizontal left)
+arrow_left(LXR, RX + 2, cfg_cy, C_CFG)
 
-# Arrow: Config → Detection
-arrow_h(draw, CX_R1-220, CX_MAIN+BW//2+2, ROW["detect"], C_CFG)
-
-# ─── Doctrine RAG panel ───────────────────────────────────────────────────────
-CX_R2 = 1200; CY_R2 = ROW["report"]
-side_box(CX_R2, CY_R2, 440, 170, "Doctrine RAG  (FAISS)",
-    ["Military doctrine documents",
-     "FAISS vector index  ·  SBERT embeddings",
-     "Top-K chunks → LLM prompt context",
-     "build_doctrine_vectordb.py"],
-    C_CFG, fill_col=(22,16,6))
-
-# Arrow: DocRAG → Reporting
-arrow_h(draw, CX_R2-220, CX_MAIN+BW//2+2, ROW["report"], C_CFG)
-
-# ─── SR panel (Super-Resolution) ─────────────────────────────────────────────
-CX_SR = 1200; CY_SR = ROW["ingest"]
-side_box(CX_SR, CY_SR, 440, 110, "Super-Resolution",
-    ["Real-ESRGAN  (optional)  →  PIL LANCZOS fallback",
-     f"Target: 8000×6000 px before SAM3"],
-    C_DETECT, fill_col=(10,24,18))
-
-# Arrow: SR → Detection (horizontal)
-arrow_h(draw, CX_SR-220, CX_MAIN+BW//2+2, ROW["detect"]-18, C_DETECT)
-
-# ─── CLIP / Similarity panel ─────────────────────────────────────────────────
-CX_CL = 1200; CY_CL = ROW["pairdb"]
-side_box(CX_CL, CY_CL, 440, 140, "Similarity Tracker  (Mode B)",
+# ── CLIP / Similarity Tracker ─────────────────────────────────────────────────
+clip_y0, clip_y1, clip_cy = right_panel(
+    YR["clip"], 160, C_PAIR, (6, 24, 32),
+    "Similarity Tracker  (Mode B)",
     ["CLIP  openai/clip-vit-base-patch16",
      "Mask-crop → image embedding",
      "cosine sim · geo proximity · size sim",
-     "Static class geo pre-matching (Step 0)"],
-    C_PAIR, fill_col=(8,26,34))
+     "Static class geo pre-matching (Step 0)"])
+# Arrow: CLIP panel → Pairing box (horizontal left)
+arrow_left(LXR, RX + 2, clip_cy, C_PAIR)
 
-# Arrow: CLIP → Pairing
-arrow_h(draw, CX_CL-220, CX_MAIN+BW//2+2, ROW["pair"]+10, C_PAIR)
+# ── Doctrine RAG ──────────────────────────────────────────────────────────────
+rag_y0, rag_y1, rag_cy = right_panel(
+    YR["rag"], 160, C_CFG, (22, 16, 6),
+    "Doctrine RAG  (FAISS)",
+    ["Military doctrine documents",
+     "FAISS vector index  ·  SBERT embeddings",
+     "Top-K chunks → LLM prompt context",
+     "build_doctrine_vectordb.py"])
+# Arrow: Doctrine RAG → Reporting (horizontal left)
+arrow_left(LXR, RX + 2, rag_cy, C_CFG)
 
-# ─── Divider line between left pipeline and right panels ──────────────────────
-draw.line([(930, 75), (930, H-40)], fill=C_BORDER, width=1)
-
-# ─── Title labels for right section ─────────────────────────────────────────
-section_label(draw, 1200, 76, "Support Components & Configuration", C_DIM)
-
-# ─── LEGEND ──────────────────────────────────────────────────────────────────
-legend_items = [
-    ("Input / Sensors",      C_INPUT),
-    ("Detection (SAM3)",     C_DETECT),
-    ("Database (SQLite)",    C_DB),
-    ("Pairing Engine",       C_PAIR),
-    ("LLM / Reporting",      C_LLM),
-    ("Web API",              C_API),
-    ("Dashboard / UI",       C_UI),
-    ("Config / RAG",         C_CFG),
+# ═══════════════════════════════════════════════════════════════════════════════
+# LEGEND
+# ═══════════════════════════════════════════════════════════════════════════════
+hline(H - 80)
+legend = [
+    ("Input / Sensors",   C_INPUT),
+    ("Detection (SAM3)",  C_DETECT),
+    ("Database (SQLite)", C_DB),
+    ("Pairing Engine",    C_PAIR),
+    ("LLM / Reporting",   C_LLM),
+    ("Web API",           C_API),
+    ("Dashboard / UI",    C_UI),
+    ("Config / RAG",      C_CFG),
 ]
-lx = 70; ly = H - 55
-draw.text((lx, ly-18), "Legend:", font=F_SMALL, fill=C_DIM)
-for i, (label, color) in enumerate(legend_items):
-    bx = lx + i * 198
-    draw.rounded_rectangle([bx, ly, bx+14, ly+14], radius=3, fill=color)
-    draw.text((bx+18, ly), label, font=F_TINY, fill=C_TXT)
+ly = H - 56
+draw.text((60, ly - 18), "Legend:", font=F_SMALL, fill=C_DIM)
+spc = (W - 140) // len(legend)
+for i, (lbl, col) in enumerate(legend):
+    lx = 60 + i * spc
+    draw.rounded_rectangle([lx, ly, lx+13, ly+13], radius=3, fill=col)
+    draw.text((lx + 18, ly), lbl, font=F_TINY, fill=C_TXT)
 
-# ─── Bottom line ─────────────────────────────────────────────────────────────
-draw.line([(60, H-70), (W-60, H-70)], fill=C_BORDER, width=1)
-draw.text((60, H-62), "github.com/Parkdev22222/multi-source-intelligent-system", font=F_TINY, fill=C_DIM)
+draw.text((W - 620, H - 28),
+          "github.com/Parkdev22222/multi-source-intelligent-system",
+          font=F_TINY, fill=C_DIM)
 
 # ─── Save ─────────────────────────────────────────────────────────────────────
-out_dir = os.path.join(os.path.dirname(__file__), "..", "docs")
+out_dir  = os.path.join(os.path.dirname(__file__), "..", "docs")
 os.makedirs(out_dir, exist_ok=True)
 out_path = os.path.join(out_dir, "architecture.png")
 img.save(out_path, "PNG", optimize=True)
