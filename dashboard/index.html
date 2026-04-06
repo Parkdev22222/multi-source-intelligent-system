@@ -382,7 +382,35 @@
       /* ── 보고서 모달: 전체 화면 ── */
       #report-modal { align-items: flex-start; }
       #report-box { width: 100%; max-width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 0; border: none; }
-      #rpt-sep-panels { flex-direction: column; }
+
+      /* 헤더: 제목 위 / 버튼 아래 2행 */
+      #report-hdr { flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 12px; }
+      #report-hdr h2 { font-size: 12px; }
+      #report-hdr-actions { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; align-items: center; }
+      .rpt-act-btn { font-size: 9px; padding: 3px 7px; letter-spacing: 0; white-space: nowrap; }
+      /* ✕ 닫기 버튼을 오른쪽 끝에 고정 */
+      #report-hdr-close { margin-left: auto; font-size: 20px; line-height: 1; padding: 2px 4px; }
+
+      /* 메타 정보 */
+      #report-meta { font-size: 9px; padding: 5px 12px; }
+
+      /* 이미지 행: 좁게 */
+      #report-img-row { padding: 6px 10px; }
+      #rpt-img-mode-bar { gap: 4px; margin-bottom: 5px; }
+      .img-mode-btn { font-size: 9px; padding: 2px 7px; }
+
+      /* 두 이미지 패널: 세로 스택, 이미지 높이 제한 */
+      #rpt-sep-panels { flex-direction: column; gap: 6px; }
+      .rpt-img-wrap img { max-height: 120px; }
+      .rpt-img-wrap { min-height: 60px; }
+
+      /* 크롭 편집기 */
+      #crop-toolbar { gap: 4px; }
+      #crop-canvas { max-height: 150px; }
+
+      /* 보고서 본문 */
+      #report-body { padding: 10px 12px; }
+      #report-content { font-size: 10px; line-height: 1.6; }
 
       /* ── 호버 팝업: 모바일 폭 제한 ── */
       #db-popup { max-width: 96vw; min-width: 0; left: 2vw !important; right: 2vw !important; }
