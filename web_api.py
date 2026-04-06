@@ -289,7 +289,8 @@ threading.Thread(target=_db_poll_worker,  daemon=True, name="DBPollThread").star
 
 def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
     """이미지 파일(TIFF 포함)을 PNG로 변환 후 base64 반환."""
-    from PIL import Image
+    from PIL import Image, ImageFile
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
     with Image.open(image_path) as img:
         img.thumbnail((max_size, max_size))
         if img.mode not in ("RGB", "RGBA", "L"):
@@ -321,7 +322,8 @@ def _image_with_detections_b64(
     det_height: int | None = None,
 ) -> str:
     """이미지에 탐지 결과 바운딩박스를 그린 뒤 base64 PNG 반환."""
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont, ImageFile
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
     with Image.open(image_path) as img:
         file_w, file_h = img.size
         det_w, det_h = _det_space(file_w, file_h, det_width, det_height)
@@ -840,6 +842,8 @@ def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
         img_path = _images_dir / rec.image_path
     if not img_path.exists():
         raise HTTPException(status_code=404, detail="이미지 파일 없음")
+    from PIL import ImageFile as _PilIF
+    _PilIF.LOAD_TRUNCATED_IMAGES = True
     with PilImage.open(img_path) as img:
         file_w, file_h = img.size
         # orig_width/orig_height = bbox 좌표 기준 공간.
