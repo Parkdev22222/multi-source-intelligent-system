@@ -139,6 +139,13 @@ def _load_missions_from_file():
             _missions.update(data)
         except Exception:
             pass
+    # 서버 재시작 시 running 상태로 고착된 임무/웨이포인트를 failed 로 초기화
+    for m in _missions.values():
+        if m.get("status") == "running":
+            m["status"] = "failed"
+        for wp in m.get("waypoints", []):
+            if wp.get("status") == "running":
+                wp["status"] = "failed"
 
 
 def _save_missions_to_file():
@@ -1310,10 +1317,13 @@ def api_execute_mission(mission_id: str):
 @app.delete("/api/mission/{mission_id}")
 def api_delete_mission(mission_id: str):
     """임무 삭제."""
+    global _active_mission_id
     with _mission_lock:
         if mission_id not in _missions:
             raise HTTPException(status_code=404, detail="임무 없음")
         del _missions[mission_id]
+    if _active_mission_id == mission_id:
+        _active_mission_id = None
     _save_missions_to_file()
     return {"status": "deleted"}
 
