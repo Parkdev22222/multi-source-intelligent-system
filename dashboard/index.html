@@ -638,6 +638,51 @@
 
     #mission-empty { text-align: center; color: var(--dim); font-size: 12px; padding: 40px 0; }
 
+    /* 웨이포인트 추가 버튼 행 */
+    .mission-wp-add-row {
+      display: flex; gap: 6px; margin-bottom: 10px;
+    }
+    .mission-wp-add-row button {
+      flex: 1; background: #0b1c34; border: 1px dashed #2a4a6a;
+      border-radius: 4px; color: #5a8ab0; font-size: 12px; padding: 7px;
+      cursor: pointer;
+    }
+    .mission-wp-add-row button:hover { border-color: #7dd3fc; color: #7dd3fc; }
+    #mission-pick-map-btn { border-color: #d97706 !important; color: #f59e0b !important; }
+    #mission-pick-map-btn:hover { border-color: #f59e0b !important; color: #fcd34d !important; background: #1c1000 !important; }
+    #mission-pick-map-btn.active {
+      background: #2c1800 !important; border-style: solid !important;
+      border-color: #f59e0b !important; color: #fcd34d !important;
+    }
+
+    /* 지도 선택 모드 배너 */
+    #mission-pick-banner {
+      display: none; position: fixed; top: 14px; left: 50%;
+      transform: translateX(-50%); z-index: 3000;
+      background: #f59e0b; color: #1a0a00; border-radius: 6px;
+      padding: 10px 18px; font-weight: 700; font-size: 13px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.7);
+      align-items: center; gap: 14px; white-space: nowrap;
+    }
+    #mission-pick-banner.active { display: flex; }
+    #mission-pick-cancel {
+      background: rgba(0,0,0,.2); border: 1px solid rgba(0,0,0,.3);
+      border-radius: 4px; color: #1a0a00; font-size: 11px;
+      padding: 3px 10px; cursor: pointer; font-weight: 700;
+    }
+    #mission-pick-cancel:hover { background: rgba(0,0,0,.35); }
+
+    /* 선택 모드 중 모달 페이드 + 지도 커서 */
+    #mission-modal-overlay.pick-mode {
+      pointer-events: none;
+      background: rgba(0,0,0,.08);
+    }
+    #mission-modal-overlay.pick-mode #mission-modal {
+      opacity: 0.15;
+    }
+    body.mission-pick-cursor #map { cursor: crosshair !important; }
+    body.mission-pick-cursor #map * { cursor: crosshair !important; }
+
     /* 사이드바 임무계획 버튼 */
     #mission-plan-btn {
       display: block; width: calc(100% - 24px); margin: 8px 12px 4px;
@@ -767,6 +812,12 @@
     <div id="dp-hint">영상·탐지 더블클릭 → 해당 위치 보고서 | 탐지 목록 더블클릭 → 탐지 수정 | 보고서 목록 더블클릭 → 직접 열기</div>
   </div>
 
+  <!-- 지도 선택 모드 배너 (모달 밖, 항상 최상위) -->
+  <div id="mission-pick-banner">
+    <span>📍 지도를 클릭하여 웨이포인트 위치를 선택하세요</span>
+    <button id="mission-pick-cancel">취소 (ESC)</button>
+  </div>
+
   <!-- ══════════════════════════════════════════
        임무계획 모달
        ══════════════════════════════════════════ -->
@@ -784,9 +835,11 @@
           <input id="mission-name-input" type="text" placeholder="예: 북부 해안 감시 #1">
 
           <label>웨이포인트 목록</label>
-          <div class="mission-map-hint">지도를 클릭하면 웨이포인트가 자동 추가됩니다</div>
           <div id="mission-wp-list"></div>
-          <button id="mission-add-wp-btn">+ 웨이포인트 수동 추가</button>
+          <div class="mission-wp-add-row">
+            <button id="mission-add-wp-btn">+ 수동 입력</button>
+            <button id="mission-pick-map-btn">📍 지도에서 선택</button>
+          </div>
 
           <button id="mission-create-btn">임무 생성</button>
         </div>
@@ -3177,32 +3230,107 @@ window.addEventListener('resize', function() {
    임무계획 (Mission Planning)
    ══════════════════════════════════════════════════════════════════ */
 
-let _missionMapClickActive = false;   // 지도 클릭으로 WP 추가 여부
-let _missionPollTimer      = null;    // 실행 중 임무 폴링 타이머
+let _missionPollTimer = null;   // 실행 중 임무 폴링 타이머
+let _pickMode         = false;  // 지도 선택 모드 여부
 
-/* ── 모달 열기/닫기 ── */
-document.getElementById('mission-plan-btn').addEventListener('click', () => {
-  document.getElementById('mission-modal-overlay').classList.add('open');
-  _missionMapClickActive = true;
-  loadMissionList();
-});
-document.getElementById('mission-modal-close').addEventListener('click', () => {
-  document.getElementById('mission-modal-overlay').classList.remove('open');
-  _missionMapClickActive = false;
-});
-document.getElementById('mission-modal-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('mission-modal-overlay')) {
-    document.getElementById('mission-modal-overlay').classList.remove('open');
-    _missionMapClickActive = false;
+/* ═══ 웨이포인트 마커 관리 ═══════════════════════════════════════════ */
+const _wpMarkers = [];  // [{ item: DOM, marker: L.marker|null }]
+
+function _missionMarkerIcon(seq) {
+  const el = document.createElement('div');
+  el.style.cssText =
+    'width:26px;height:26px;border-radius:50%;background:#f59e0b;border:2px solid #fff;' +
+    'color:#1a0a00;font-size:11px;font-weight:800;display:flex;align-items:center;' +
+    'justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.7);';
+  el.textContent = seq;
+  return L.divIcon({ html: el, className: '', iconSize: [26, 26], iconAnchor: [13, 13] });
+}
+
+function _addMarkerForItem(item, lat, lon) {
+  if (typeof map === 'undefined' || !map) return;
+  if (isNaN(lat) || isNaN(lon)) return;
+
+  const entry = _wpMarkers.find(e => e.item === item);
+  const seq   = Array.from(document.querySelectorAll('#mission-wp-list .mission-wp-item'))
+                     .indexOf(item) + 1;
+
+  if (entry && entry.marker) {
+    // 이미 마커 있음 → 위치만 갱신
+    entry.marker.setLatLng([lat, lon]);
+    entry.marker.setIcon(_missionMarkerIcon(seq));
+  } else {
+    // 새 마커 생성
+    const marker = L.marker([lat, lon], {
+      icon: _missionMarkerIcon(seq),
+      zIndexOffset: 1000,
+      draggable: true,
+    }).addTo(map);
+
+    // 드래그 종료 → 입력값 동기화
+    marker.on('dragend', () => {
+      const pos = marker.getLatLng();
+      item.querySelector('.wp-lat').value = pos.lat.toFixed(6);
+      item.querySelector('.wp-lon').value = pos.lng.toFixed(6);
+      _refreshTooltip(marker, item);
+    });
+
+    _refreshTooltip(marker, item);
+    if (entry) {
+      entry.marker = marker;
+    } else {
+      _wpMarkers.push({ item, marker });
+    }
   }
-});
+  // 지도 중심 이동 (부드럽게)
+  map.panTo([lat, lon], { animate: true, duration: 0.4 });
+}
 
-/* ── 웨이포인트 추가 헬퍼 ── */
+function _refreshTooltip(marker, item) {
+  const name = item.querySelector('.mission-wp-name-input').value.trim() || 'WP';
+  const lat  = parseFloat(item.querySelector('.wp-lat').value);
+  const lon  = parseFloat(item.querySelector('.wp-lon').value);
+  if (!isNaN(lat) && !isNaN(lon)) {
+    marker.bindTooltip(
+      `<b>${name}</b><br>${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+      { direction: 'top', offset: [0, -16], opacity: 0.92 }
+    );
+  }
+}
+
+function _removeMarkerForItem(item) {
+  const idx = _wpMarkers.findIndex(e => e.item === item);
+  if (idx < 0) return;
+  const { marker } = _wpMarkers[idx];
+  if (marker && typeof map !== 'undefined' && map) map.removeLayer(marker);
+  _wpMarkers.splice(idx, 1);
+}
+
+function _clearAllWpMarkers() {
+  _wpMarkers.forEach(({ marker }) => {
+    if (marker && typeof map !== 'undefined' && map) map.removeLayer(marker);
+  });
+  _wpMarkers.length = 0;
+}
+
+function _refreshWpSeq() {
+  const items = document.querySelectorAll('#mission-wp-list .mission-wp-item');
+  items.forEach((item, i) => {
+    item.querySelector('.mission-wp-seq').textContent = i + 1;
+    const entry = _wpMarkers.find(e => e.item === item);
+    if (entry && entry.marker) entry.marker.setIcon(_missionMarkerIcon(i + 1));
+  });
+}
+
+/* ═══ 웨이포인트 행 생성 ═════════════════════════════════════════════ */
 function _addWpRow(lat, lon, name) {
   const list  = document.getElementById('mission-wp-list');
   const idx   = list.children.length + 1;
   const item  = document.createElement('div');
   item.className = 'mission-wp-item';
+
+  const latVal = (lat !== undefined && !isNaN(lat)) ? lat.toFixed(6) : '';
+  const lonVal = (lon !== undefined && !isNaN(lon)) ? lon.toFixed(6) : '';
+
   item.innerHTML = `
     <div class="mission-wp-seq">${idx}</div>
     <div class="mission-wp-fields">
@@ -3211,58 +3339,108 @@ function _addWpRow(lat, lon, name) {
                placeholder="위치 이름" value="${name || ''}">
       </div>
       <div class="mission-wp-coord-row">
-        <input class="mission-wp-coord-input wp-lat" type="number" step="0.0001"
-               placeholder="위도" value="${lat !== undefined ? lat.toFixed(4) : ''}">
-        <input class="mission-wp-coord-input wp-lon" type="number" step="0.0001"
-               placeholder="경도" value="${lon !== undefined ? lon.toFixed(4) : ''}">
+        <input class="mission-wp-coord-input wp-lat" type="number" step="0.000001"
+               placeholder="위도" value="${latVal}">
+        <input class="mission-wp-coord-input wp-lon" type="number" step="0.000001"
+               placeholder="경도" value="${lonVal}">
       </div>
       <textarea class="mission-wp-desc-input wp-desc"
                 placeholder="표적 설명 (예: 북부 항구 군사시설, 잠수함 기지 의심 구역 등)"></textarea>
     </div>
     <button class="mission-wp-del" title="삭제">✕</button>`;
+
+  // 삭제 버튼
   item.querySelector('.mission-wp-del').addEventListener('click', () => {
+    _removeMarkerForItem(item);
     item.remove();
     _refreshWpSeq();
   });
+
+  // 좌표 변경 → 마커 갱신
+  const latInput = item.querySelector('.wp-lat');
+  const lonInput = item.querySelector('.wp-lon');
+  function onCoordChange() {
+    const la = parseFloat(latInput.value);
+    const lo = parseFloat(lonInput.value);
+    if (!isNaN(la) && !isNaN(lo)) _addMarkerForItem(item, la, lo);
+  }
+  latInput.addEventListener('change', onCoordChange);
+  lonInput.addEventListener('change', onCoordChange);
+
+  // 이름 변경 → 툴팁 갱신
+  item.querySelector('.mission-wp-name-input').addEventListener('input', () => {
+    const entry = _wpMarkers.find(e => e.item === item);
+    if (entry && entry.marker) _refreshTooltip(entry.marker, item);
+  });
+
   list.appendChild(item);
+  _wpMarkers.push({ item, marker: null }); // 마커는 이후 추가
+
+  // 좌표 있으면 즉시 마커 생성
+  if (latVal && lonVal) _addMarkerForItem(item, parseFloat(latVal), parseFloat(lonVal));
   _refreshWpSeq();
 }
 
-function _refreshWpSeq() {
-  document.querySelectorAll('#mission-wp-list .mission-wp-seq').forEach((el, i) => {
-    el.textContent = i + 1;
-  });
+/* ═══ 모달 열기/닫기 ════════════════════════════════════════════════ */
+function _openMissionModal() {
+  document.getElementById('mission-modal-overlay').classList.add('open');
+  loadMissionList();
 }
+function _closeMissionModal() {
+  _exitPickMode();
+  document.getElementById('mission-modal-overlay').classList.remove('open');
+}
+
+document.getElementById('mission-plan-btn').addEventListener('click', _openMissionModal);
+document.getElementById('mission-modal-close').addEventListener('click', _closeMissionModal);
+document.getElementById('mission-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('mission-modal-overlay')) _closeMissionModal();
+});
+
+/* ═══ 지도 선택 모드 ════════════════════════════════════════════════ */
+function _enterPickMode() {
+  _pickMode = true;
+  document.getElementById('mission-modal-overlay').classList.add('pick-mode');
+  document.getElementById('mission-pick-banner').classList.add('active');
+  document.getElementById('mission-pick-map-btn').classList.add('active');
+  document.body.classList.add('mission-pick-cursor');
+}
+function _exitPickMode() {
+  _pickMode = false;
+  document.getElementById('mission-modal-overlay').classList.remove('pick-mode');
+  document.getElementById('mission-pick-banner').classList.remove('active');
+  document.getElementById('mission-pick-map-btn').classList.remove('active');
+  document.body.classList.remove('mission-pick-cursor');
+}
+
+document.getElementById('mission-pick-map-btn').addEventListener('click', () => {
+  if (_pickMode) _exitPickMode();
+  else _enterPickMode();
+});
+document.getElementById('mission-pick-cancel').addEventListener('click', _exitPickMode);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && _pickMode) _exitPickMode(); });
+
+/* ── 지도에서 WP 추가 (Leaflet 초기화 후 바인딩) ── */
+(function waitMapForMission(n) {
+  if (typeof map !== 'undefined' && map) {
+    map.on('click', function(e) {
+      if (!_pickMode) return;
+      _addWpRow(e.latlng.lat, e.latlng.lng, '');
+      _exitPickMode();
+      // 모달이 열려있지 않으면 다시 열기
+      document.getElementById('mission-modal-overlay').classList.add('open');
+    });
+  } else if (n > 0) {
+    setTimeout(() => waitMapForMission(n - 1), 200);
+  }
+})(50);
 
 /* ── 수동 WP 추가 버튼 ── */
 document.getElementById('mission-add-wp-btn').addEventListener('click', () => {
   _addWpRow(undefined, undefined, '');
 });
 
-/* ── 지도 클릭 → WP 추가 ── */
-document.addEventListener('map-ready', () => {
-  // initMap() 완료 후 이벤트로 알림 (아래 initMap 패치 참조)
-});
-// initMap이 실행된 뒤 map 객체에 click 이벤트 바인딩
-function _bindMissionMapClick() {
-  if (typeof map === 'undefined' || !map) return;
-  map.on('click', function(e) {
-    if (!_missionMapClickActive) return;
-    const overlay = document.getElementById('mission-modal-overlay');
-    if (!overlay.classList.contains('open')) return;
-    _addWpRow(e.latlng.lat, e.latlng.lng, '');
-  });
-}
-// 지도가 초기화된 후 바인딩 (boot 이후 100ms 폴링)
-(function waitMap(n) {
-  if (typeof map !== 'undefined' && map) {
-    _bindMissionMapClick();
-  } else if (n > 0) {
-    setTimeout(() => waitMap(n - 1), 200);
-  }
-})(50);
-
-/* ── 임무 생성 ── */
+/* ═══ 임무 생성 ══════════════════════════════════════════════════════ */
 document.getElementById('mission-create-btn').addEventListener('click', async () => {
   const name = document.getElementById('mission-name-input').value.trim();
   if (!name) { alert('임무명을 입력하세요'); return; }
@@ -3273,8 +3451,8 @@ document.getElementById('mission-create-btn').addEventListener('click', async ()
   const waypoints = [];
   let valid = true;
   wpItems.forEach((item, i) => {
-    const lat  = parseFloat(item.querySelector('.wp-lat').value);
-    const lon  = parseFloat(item.querySelector('.wp-lon').value);
+    const lat   = parseFloat(item.querySelector('.wp-lat').value);
+    const lon   = parseFloat(item.querySelector('.wp-lon').value);
     const wname = item.querySelector('.mission-wp-name-input').value.trim() || `WP${i+1}`;
     const wdesc = item.querySelector('.wp-desc').value.trim();
     if (isNaN(lat) || isNaN(lon)) { valid = false; }
@@ -3291,9 +3469,10 @@ document.getElementById('mission-create-btn').addEventListener('click', async ()
       body: JSON.stringify({ name, waypoints }),
     });
     if (!res.ok) throw new Error(await res.text());
-    // 입력 초기화
+    // 입력 초기화 + 마커 정리
     document.getElementById('mission-name-input').value = '';
     document.getElementById('mission-wp-list').innerHTML = '';
+    _clearAllWpMarkers();
     loadMissionList();
   } catch(e) {
     alert('임무 생성 실패: ' + e.message);
@@ -3420,8 +3599,7 @@ function _buildMissionCard(m) {
     el.addEventListener('click', e => {
       e.stopPropagation();
       const rptId = el.dataset.reportId;
-      document.getElementById('mission-modal-overlay').classList.remove('open');
-      _missionMapClickActive = false;
+      _closeMissionModal();
       openReportById(rptId, null);
     });
   });
