@@ -131,6 +131,24 @@ _MISSIONS_FILE = Path(__file__).parent / "data" / "missions.json"
 _missions: dict = {}   # mission_id → mission dict
 _mission_lock = threading.Lock()
 
+# ── 위성별 임무계획 ────────────────────────────────────────────────────────
+_SAT_MISSIONS_FILE = Path(__file__).parent / "data" / "sat_missions.json"
+_sat_missions: dict = {}   # sat_id → {sat_id, sat_name, waypoints, assigned_at}
+_sat_lock = threading.Lock()
+
+# ── 캠페인 (전체 위성 일괄 실행) 상태 ────────────────────────────────────
+_campaign: dict = {
+    "status":       "idle",   # idle | running | complete | failed
+    "started_at":   None,
+    "finished_at":  None,
+    "queue":        [],        # [{sat_id, sat_name, wp_id, wp_name}] 남은 작업
+    "current":      None,      # {sat_id, sat_name, wp_name, lat, lon}
+    "total":        0,
+    "done":         0,
+    "failed_count": 0,
+}
+_camp_lock = threading.Lock()
+
 
 def _load_missions_from_file():
     if _MISSIONS_FILE.exists():
@@ -159,6 +177,31 @@ def _save_missions_to_file():
 
 
 _load_missions_from_file()
+
+
+def _load_sat_missions():
+    if _SAT_MISSIONS_FILE.exists():
+        try:
+            data = json.loads(_SAT_MISSIONS_FILE.read_text(encoding="utf-8"))
+            _sat_missions.update(data)
+        except Exception:
+            pass
+    # 서버 재시작 시 running 고착 WP → failed 초기화
+    for sm in _sat_missions.values():
+        for wp in sm.get("waypoints", []):
+            if wp.get("status") == "running":
+                wp["status"] = "failed"
+
+
+def _save_sat_missions():
+    _SAT_MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with _sat_lock:
+        _SAT_MISSIONS_FILE.write_text(
+            json.dumps(_sat_missions, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+
+_load_sat_missions()
 
 # 위성영상 정적 파일
 _images_dir = Path(IMAGES_DIR)
@@ -233,8 +276,9 @@ def _auto_sim_worker():
     자동 시뮬레이션 백그라운드 스레드.
 
     우선순위:
-      1. 활성 임무(_active_mission_id)가 있으면 → 다음 pending 웨이포인트 실행
-      2. 없으면 → 위성 궤도 위치에서 일반 시뮬레이션
+      1. 캠페인 실행 중 → 다음 위성 WP 실행
+      2. 활성 임무(_active_mission_id)가 있으면 → 다음 pending 웨이포인트 실행
+      3. 없으면 → 위성 궤도 위치에서 일반 시뮬레이션
     """
     global _active_mission_id
     logger.info("[AutoSim] 백그라운드 스레드 시작 (%.1fs 간격)", AUTO_SIM_POLL_SEC)
@@ -242,6 +286,98 @@ def _auto_sim_worker():
 
     while True:
         try:
+            # ── 캠페인 모드 (최우선) ──────────────────────────────────────
+            with _camp_lock:
+                camp_running = (_campaign["status"] == "running")
+
+            if camp_running:
+                if _auto_state["running"]:
+                    _time.sleep(AUTO_SIM_POLL_SEC)
+                    continue
+
+                # 다음 WP 꺼내기
+                with _camp_lock:
+                    if not _campaign["queue"]:
+                        _campaign["status"]      = "complete"
+                        _campaign["finished_at"] = datetime.utcnow().isoformat()
+                        logger.info("[Campaign] 캠페인 완료 (total=%d, failed=%d)",
+                                    _campaign["total"], _campaign["failed_count"])
+                        _time.sleep(AUTO_SIM_POLL_SEC)
+                        continue
+                    item = _campaign["queue"].pop(0)
+                    _campaign["current"] = {
+                        "sat_id":   item["sat_id"],
+                        "sat_name": item["sat_name"],
+                        "wp_name":  item["wp_name"],
+                    }
+
+                sat_id = item["sat_id"]
+                wp_id  = item["wp_id"]
+
+                # sat_missions 에서 WP 레퍼런스 찾기
+                with _sat_lock:
+                    sm     = _sat_missions.get(sat_id, {})
+                    wp_ref = next((w for w in sm.get("waypoints", []) if w["id"] == wp_id), None)
+
+                if not wp_ref:
+                    logger.warning("[Campaign] WP 없음: sat=%s wp=%s", sat_id, wp_id)
+                    with _camp_lock:
+                        _campaign["done"]         += 1
+                        _campaign["failed_count"] += 1
+                        _campaign["current"]       = None
+                    continue
+
+                wp_ref["status"] = "running"
+                _save_sat_missions()
+
+                logger.info("[Campaign] WP 실행: %s / %s (lat=%.4f lon=%.4f)",
+                            item["sat_name"], wp_ref["name"], wp_ref["lat"], wp_ref["lon"])
+
+                with _auto_lock:
+                    _auto_state["running"] = True
+                try:
+                    from simulator_runner import run_step_at
+                    result = run_step_at(
+                        lat=wp_ref["lat"],
+                        lon=wp_ref["lon"],
+                        name=item["sat_name"],
+                        target_description=wp_ref.get("target_description", ""),
+                    )
+                    _finish_wp(wp_ref, result)
+                    _auto_state["run_count"]   += 1
+                    _auto_state["last_run"]     = datetime.utcnow().isoformat()
+                    _auto_state["last_success"] = result["success"]
+                    _auto_state["last_elapsed"] = result["elapsed_s"]
+                    _auto_state["last_images"]  = result.get("images", [])
+                    _auto_state["last_active"]  = {
+                        "name": item["sat_name"],
+                        "lat":  wp_ref["lat"],
+                        "lon":  wp_ref["lon"],
+                    }
+                    if not result["success"]:
+                        with _camp_lock:
+                            _campaign["failed_count"] += 1
+                except Exception as exc:
+                    wp_ref["status"] = "failed"
+                    wp_ref["error"]  = str(exc)[:300]
+                    logger.error("[Campaign] WP 오류: %s", exc)
+                    with _camp_lock:
+                        _campaign["failed_count"] += 1
+                finally:
+                    with _camp_lock:
+                        _campaign["done"]    += 1
+                        _campaign["current"]  = None
+                    _save_sat_missions()
+                    _notify_db_updated(
+                        run_count=_auto_state["run_count"],
+                        success=_auto_state.get("last_success", False),
+                        elapsed=_auto_state.get("last_elapsed", 0),
+                        changed=["reports", "detections"],
+                    )
+                    with _auto_lock:
+                        _auto_state["running"] = False
+                continue   # 다음 WP로
+
             # auto 비활성 + 임무도 없으면 아무것도 하지 않음
             has_mission = bool(_active_mission_id)
             if not (_auto_state["enabled"] or has_mission):
@@ -516,6 +652,16 @@ def api_simulator_status():
                 "wp_done":     completed,
                 "current_wp":  running_wp["name"] if running_wp else None,
             }
+    with _camp_lock:
+        camp_info = {
+            "status":       _campaign["status"],
+            "total":        _campaign["total"],
+            "done":         _campaign["done"],
+            "failed_count": _campaign["failed_count"],
+            "current":      _campaign["current"],
+            "started_at":   _campaign["started_at"],
+            "finished_at":  _campaign["finished_at"],
+        }
     return {
         "auto_enabled":  _auto_state["enabled"],
         "running":       _auto_state["running"],
@@ -526,6 +672,7 @@ def api_simulator_status():
         "last_images":   _auto_state["last_images"],
         "last_active":   _auto_state["last_active"],
         "active_mission": mission_info,
+        "campaign":      camp_info,
     }
 
 
@@ -1326,6 +1473,157 @@ def api_delete_mission(mission_id: str):
         _active_mission_id = None
     _save_missions_to_file()
     return {"status": "deleted"}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 위성별 임무계획 API
+# ══════════════════════════════════════════════════════════════════════════
+
+class _SatWaypointIn(BaseModel):
+    name:               str = ""
+    lat:                float
+    lon:                float
+    target_description: str = ""
+
+
+class _SatMissionIn(BaseModel):
+    waypoints: List[_SatWaypointIn]
+
+
+@app.get("/api/sat-missions")
+def api_get_sat_missions():
+    """위성별 임무계획 전체 반환."""
+    from src.satellite.simulator import SATELLITES as _SATS
+    result = {}
+    with _sat_lock:
+        for cfg in _SATS:
+            sid = cfg["id"]
+            sm  = _sat_missions.get(sid)
+            result[sid] = {
+                "sat_id":      sid,
+                "sat_name":    cfg["name"],
+                "waypoints":   sm["waypoints"]   if sm else [],
+                "assigned_at": sm.get("assigned_at") if sm else None,
+            }
+    return result
+
+
+@app.put("/api/sat-mission/{sat_id}")
+def api_set_sat_mission(sat_id: str, body: _SatMissionIn):
+    """위성에 웨이포인트 목록 할당 (기존 임무 덮어쓰기)."""
+    from src.satellite.simulator import SATELLITES as _SATS
+    sat_cfg = next((s for s in _SATS if s["id"] == sat_id), None)
+    if not sat_cfg:
+        raise HTTPException(status_code=404, detail="위성 없음")
+
+    waypoints = [
+        {
+            "id":                 str(_uuid.uuid4()),
+            "seq":                i,
+            "name":               wp.name or f"WP{i+1}",
+            "lat":                wp.lat,
+            "lon":                wp.lon,
+            "target_description": wp.target_description,
+            "status":             "pending",
+            "report_id":          None,
+            "elapsed_s":          None,
+            "error":              None,
+        }
+        for i, wp in enumerate(body.waypoints)
+    ]
+
+    with _sat_lock:
+        _sat_missions[sat_id] = {
+            "sat_id":      sat_id,
+            "sat_name":    sat_cfg["name"],
+            "assigned_at": datetime.utcnow().isoformat(),
+            "waypoints":   waypoints,
+        }
+    _save_sat_missions()
+    return _sat_missions[sat_id]
+
+
+@app.delete("/api/sat-mission/{sat_id}")
+def api_clear_sat_mission(sat_id: str):
+    """위성 임무계획 초기화."""
+    with _sat_lock:
+        _sat_missions.pop(sat_id, None)
+    _save_sat_missions()
+    return {"status": "cleared"}
+
+
+@app.post("/api/campaign/start")
+def api_campaign_start():
+    """모든 위성 임무계획 일괄 실행 시작."""
+    from src.satellite.simulator import SATELLITES as _SATS
+    with _camp_lock:
+        if _campaign["status"] == "running":
+            raise HTTPException(status_code=409, detail="캠페인 이미 실행 중입니다.")
+
+    queue: list = []
+    with _sat_lock:
+        for cfg in _SATS:
+            sid = cfg["id"]
+            sm  = _sat_missions.get(sid)
+            if not sm or not sm.get("waypoints"):
+                continue
+            # 웨이포인트 상태 초기화
+            for wp in sm["waypoints"]:
+                wp["status"]    = "pending"
+                wp["report_id"] = None
+                wp["elapsed_s"] = None
+                wp["error"]     = None
+            # 큐에 추가 (위성별 WP 순서대로)
+            for wp in sm["waypoints"]:
+                queue.append({
+                    "sat_id":   sid,
+                    "sat_name": cfg["name"],
+                    "wp_id":    wp["id"],
+                    "wp_name":  wp["name"],
+                })
+
+    if not queue:
+        raise HTTPException(
+            status_code=400,
+            detail="설정된 임무가 없습니다. 위성별 웨이포인트를 먼저 설정하세요.",
+        )
+
+    _save_sat_missions()
+
+    with _camp_lock:
+        _campaign["status"]       = "running"
+        _campaign["started_at"]   = datetime.utcnow().isoformat()
+        _campaign["finished_at"]  = None
+        _campaign["queue"]        = queue
+        _campaign["current"]      = None
+        _campaign["total"]        = len(queue)
+        _campaign["done"]         = 0
+        _campaign["failed_count"] = 0
+
+    logger.info("[Campaign] 시작: %d WP", len(queue))
+    return {"status": "started", "total": len(queue)}
+
+
+@app.delete("/api/campaign")
+def api_campaign_cancel():
+    """캠페인 취소 / 상태 초기화."""
+    with _camp_lock:
+        _campaign["status"]       = "idle"
+        _campaign["queue"]        = []
+        _campaign["current"]      = None
+        _campaign["total"]        = 0
+        _campaign["done"]         = 0
+        _campaign["failed_count"] = 0
+        _campaign["finished_at"]  = None
+    # 실행 중인 WP의 status는 failed로 유지 (이미 _auto_sim_worker 가 처리 중)
+    return {"status": "cancelled"}
+
+
+@app.get("/api/campaign/status")
+def api_campaign_status():
+    """캠페인 실행 상태 조회."""
+    with _camp_lock:
+        return dict(_campaign)
 
 
 def _report_dict(r) -> dict:

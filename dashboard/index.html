@@ -465,7 +465,7 @@
     }
 
     /* ══════════════════════════════════════════
-       임무계획 모달
+       위성별 임무계획 모달
        ══════════════════════════════════════════ */
     #mission-modal-overlay {
       display: none; position: fixed; inset: 0;
@@ -476,15 +476,15 @@
 
     #mission-modal {
       background: #0d1421; border: 1px solid #1e3a5f;
-      border-radius: 8px; width: 860px; max-width: 98vw;
+      border-radius: 8px; width: 940px; max-width: 98vw;
       max-height: 92vh; display: flex; flex-direction: column;
-      color: var(--txt); font-size: 13px;
+      color: var(--text); font-size: 13px;
     }
-
     #mission-modal-hdr {
       display: flex; align-items: center; justify-content: space-between;
       padding: 14px 18px; border-bottom: 1px solid #1e3a5f;
       font-size: 15px; font-weight: 700; letter-spacing: .6px; color: #7dd3fc;
+      flex-shrink: 0;
     }
     #mission-modal-hdr span { cursor: pointer; color: var(--dim); font-size: 18px; }
 
@@ -492,168 +492,167 @@
       display: flex; flex: 1; overflow: hidden; min-height: 0;
     }
 
-    /* ── 왼쪽: 임무 생성 패널 ── */
-    #mission-create-panel {
-      width: 340px; flex-shrink: 0; display: flex; flex-direction: column;
-      border-right: 1px solid #1e3a5f; overflow-y: auto; padding: 14px 16px;
+    /* ── 왼쪽: 위성 목록 ── */
+    #sat-mission-list-panel {
+      width: 220px; flex-shrink: 0; border-right: 1px solid #1e3a5f;
+      display: flex; flex-direction: column; overflow: hidden;
     }
-    #mission-create-panel label {
-      font-size: 10px; letter-spacing: .8px; text-transform: uppercase;
-      color: var(--dim); margin-bottom: 4px; display: block;
+    #sat-mission-list-panel .panel-label {
+      padding: 8px 12px; font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--dim); border-bottom: 1px solid #1e3a5f; background: #0b1520;
     }
-    #mission-name-input {
-      width: 100%; box-sizing: border-box; background: #07101f;
-      border: 1px solid #2a4a6a; border-radius: 4px;
-      color: var(--txt); font-size: 13px; padding: 6px 10px; margin-bottom: 12px;
+    #sat-mission-items { flex: 1; overflow-y: auto; }
+
+    .sat-mission-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; border-bottom: 1px solid #0d1520;
+      cursor: pointer; transition: background .1s;
     }
-    #mission-wp-list {
-      flex: 1; overflow-y: auto; margin-bottom: 10px;
+    .sat-mission-item:hover { background: #122030; }
+    .sat-mission-item.active { background: #152a40; border-left: 3px solid var(--blue); }
+    .sat-mission-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+      background: var(--dim); transition: background .3s;
     }
+    .sat-mission-dot.has-wp  { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .sat-mission-dot.running { background: var(--amber); box-shadow: 0 0 5px var(--amber); animation: pulse .8s infinite alternate; }
+    .sat-mission-dot.complete{ background: #00ff88; box-shadow: 0 0 5px #00ff88; }
+    .sat-mission-dot.failed  { background: var(--red); box-shadow: 0 0 5px var(--red); }
+    .sat-mission-info { flex: 1; min-width: 0; }
+    .sat-mission-name { font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sat-mission-id   { font-size: 9px; color: var(--dim); margin-top: 1px; }
+    .sat-mission-wpcount { font-size: 9px; color: var(--blue); margin-top: 2px; font-weight: 600; }
+
+    /* ── 오른쪽: WP 편집 패널 ── */
+    #wp-edit-panel {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    }
+    #wp-edit-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-bottom: 1px solid #1e3a5f; background: #0b1520;
+      flex-shrink: 0;
+    }
+    #wp-edit-sat-name { font-size: 13px; font-weight: 700; color: var(--blue); }
+    #wp-edit-sat-id   { font-size: 10px; color: var(--dim); margin-left: 6px; }
+    #wp-clear-sat-btn {
+      background: none; border: 1px solid #3a1a1a; border-radius: 3px;
+      color: #f88; font-size: 10px; padding: 3px 8px; cursor: pointer;
+    }
+    #wp-clear-sat-btn:hover { background: #2a0a0a; }
+
+    #wp-edit-list {
+      flex: 1; overflow-y: auto; padding: 10px 12px;
+    }
+    #wp-edit-hint {
+      padding: 40px; text-align: center; color: var(--dim); font-size: 12px;
+    }
+
+    /* WP 편집 행 */
     .mission-wp-item {
       background: #0b1830; border: 1px solid #1e3a5f; border-radius: 4px;
       padding: 8px 10px; margin-bottom: 6px; display: flex;
       align-items: flex-start; gap: 8px;
     }
+    .mission-wp-item.wp-running { border-color: #ffb300; background: #1a1400; }
+    .mission-wp-item.wp-complete{ border-color: #00cc66; background: #071a10; }
+    .mission-wp-item.wp-failed  { border-color: #cc2222; background: #180808; }
     .mission-wp-seq {
       width: 20px; height: 20px; border-radius: 50%;
       background: #1e4080; color: #7dd3fc; font-size: 10px; font-weight: 700;
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      margin-top: 2px;
     }
     .mission-wp-fields { flex: 1; display: flex; flex-direction: column; gap: 4px; }
     .mission-wp-name-row { display: flex; gap: 4px; align-items: center; }
     .mission-wp-name-input {
       flex: 1; background: #07101f; border: 1px solid #2a4a6a;
-      border-radius: 3px; color: var(--txt); font-size: 11px; padding: 3px 7px;
+      border-radius: 3px; color: var(--text); font-size: 11px; padding: 3px 7px;
     }
     .mission-wp-coord-row { display: flex; gap: 4px; }
     .mission-wp-desc-input {
       width: 100%; box-sizing: border-box; background: #07101f;
-      border: 1px solid #2a4a6a; border-radius: 3px; color: var(--txt);
-      font-size: 11px; padding: 3px 7px; resize: vertical; min-height: 40px;
+      border: 1px solid #2a4a6a; border-radius: 3px; color: var(--text);
+      font-size: 11px; padding: 3px 7px; resize: vertical; min-height: 38px;
       font-family: inherit;
     }
     .mission-wp-desc-input::placeholder { color: #4a6a8a; }
     .mission-wp-coord-input {
       flex: 1; background: #07101f; border: 1px solid #2a4a6a;
-      border-radius: 3px; color: var(--txt); font-size: 11px; padding: 3px 7px;
+      border-radius: 3px; color: var(--text); font-size: 11px; padding: 3px 7px;
     }
     .mission-wp-coord-input::placeholder { color: #4a6a8a; }
     .mission-wp-del {
       background: none; border: none; color: #f44; cursor: pointer;
       font-size: 15px; line-height: 1; padding: 0 2px; flex-shrink: 0;
     }
-    #mission-add-wp-btn {
-      width: 100%; background: #0b1c34; border: 1px dashed #2a4a6a;
-      border-radius: 4px; color: #5a8ab0; font-size: 12px; padding: 7px;
-      cursor: pointer; margin-bottom: 10px;
+    /* WP 실행 결과 표시 */
+    .wp-result-row {
+      display: flex; align-items: center; gap: 6px; margin-top: 3px;
     }
-    #mission-add-wp-btn:hover { border-color: #7dd3fc; color: #7dd3fc; }
-    .mission-map-hint {
-      font-size: 10px; color: var(--dim); margin-bottom: 10px; text-align: center;
+    .wp-status-badge {
+      font-size: 9px; padding: 1px 6px; border-radius: 8px;
     }
-    #mission-create-btn {
-      width: 100%; background: #1a4080; border: 1px solid #3a70c0;
-      border-radius: 4px; color: #7dd3fc; font-size: 13px; font-weight: 700;
-      padding: 9px; cursor: pointer; letter-spacing: .4px;
-    }
-    #mission-create-btn:hover { background: #2050a0; }
-    #mission-create-btn:disabled { opacity: .4; cursor: not-allowed; }
-
-    /* ── 오른쪽: 임무 목록 패널 ── */
-    #mission-list-panel {
-      flex: 1; display: flex; flex-direction: column; overflow: hidden;
-    }
-    #mission-list-hdr {
-      padding: 10px 14px; font-size: 10px; letter-spacing: .8px;
-      text-transform: uppercase; color: var(--dim); border-bottom: 1px solid #1e3a5f;
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    #mission-list-scroll { flex: 1; overflow-y: auto; padding: 8px 10px; }
-
-    .mission-card {
-      background: #0b1830; border: 1px solid #1e3a5f; border-radius: 6px;
-      margin-bottom: 8px; overflow: hidden;
-    }
-    .mission-card-hdr {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 12px; cursor: pointer;
-    }
-    .mission-card-hdr:hover { background: #101e3a; }
-    .mission-status-badge {
-      font-size: 9px; padding: 2px 7px; border-radius: 10px; font-weight: 700;
-      letter-spacing: .4px; flex-shrink: 0;
-    }
-    .msb-pending  { background: #1a2a1a; color: #6a8a6a; }
-    .msb-running  { background: #1a2a00; color: #aaff44; animation: pulse-glow .9s infinite alternate; }
-    .msb-complete { background: #0a2a1a; color: #00ff88; }
-    .msb-failed   { background: #2a0a0a; color: #ff4444; }
+    .wps-pending  { background: #1a2a1a; color: #6a8a6a; }
+    .wps-running  { background: #1a2a00; color: #aaff44; animation: pulse-glow .9s infinite alternate; }
+    .wps-complete { background: #0a2a1a; color: #00ff88; }
+    .wps-failed   { background: #2a0a0a; color: #ff4444; }
+    .wp-rpt-link  { font-size: 10px; color: #7dd3fc; cursor: pointer; text-decoration: underline; }
     @keyframes pulse-glow {
       from { box-shadow: none; }
       to   { box-shadow: 0 0 6px #aaff44aa; }
     }
-    .mission-card-name { font-size: 13px; font-weight: 600; flex: 1; }
-    .mission-card-time { font-size: 10px; color: var(--dim); }
-    .mission-card-actions { display: flex; gap: 6px; }
-    .mc-exec-btn {
-      background: #143060; border: 1px solid #3a70c0; border-radius: 3px;
-      color: #7dd3fc; font-size: 11px; padding: 3px 9px; cursor: pointer;
-    }
-    .mc-exec-btn:hover { background: #1e4080; }
-    .mc-exec-btn:disabled { opacity: .4; cursor: not-allowed; }
-    .mc-del-btn {
-      background: none; border: 1px solid #3a1a1a; border-radius: 3px;
-      color: #f44; font-size: 11px; padding: 3px 8px; cursor: pointer;
-    }
-    .mc-del-btn:hover { background: #2a0a0a; }
 
-    .mission-wp-table {
-      padding: 0 12px 10px; display: none; flex-direction: column; gap: 4px;
-    }
-    .mission-wp-table.expanded { display: flex; }
-    .mission-wp-row {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 11px; padding: 5px 8px; border-radius: 3px;
-      background: #07101f; border: 1px solid #12283f;
-    }
-    .wp-seq-dot {
-      width: 18px; height: 18px; border-radius: 50%;
-      background: #1e3060; color: #7dd3fc; font-size: 9px; font-weight: 700;
-      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    }
-    .wp-name  { flex: 1; color: var(--txt); }
-    .wp-coord { color: var(--dim); font-size: 10px; min-width: 140px; text-align: right; }
-    .wp-status { font-size: 9px; padding: 1px 6px; border-radius: 8px; flex-shrink: 0; }
-    .wps-pending  { background: #1a2a1a; color: #6a8a6a; }
-    .wps-running  { background: #1a2a00; color: #aaff44; }
-    .wps-complete { background: #0a2a1a; color: #00ff88; }
-    .wps-failed   { background: #2a0a0a; color: #ff4444; }
-    .wp-rpt-link {
-      font-size: 10px; color: #7dd3fc; cursor: pointer; text-decoration: underline;
+    /* WP 추가 버튼 영역 */
+    #wp-add-bar {
+      padding: 8px 12px; border-top: 1px solid #1e3a5f; display: flex; gap: 6px;
       flex-shrink: 0;
     }
-    .wp-desc-text {
-      width: 100%; font-size: 10px; color: #8a9ab8; margin-top: 3px;
-      padding-left: 26px; white-space: pre-wrap; word-break: break-all;
-    }
-
-    #mission-empty { text-align: center; color: var(--dim); font-size: 12px; padding: 40px 0; }
-
-    /* 웨이포인트 추가 버튼 행 */
-    .mission-wp-add-row {
-      display: flex; gap: 6px; margin-bottom: 10px;
-    }
+    .mission-wp-add-row { display: flex; gap: 6px; flex: 1; }
     .mission-wp-add-row button {
       flex: 1; background: #0b1c34; border: 1px dashed #2a4a6a;
-      border-radius: 4px; color: #5a8ab0; font-size: 12px; padding: 7px;
+      border-radius: 4px; color: #5a8ab0; font-size: 12px; padding: 6px;
       cursor: pointer;
     }
     .mission-wp-add-row button:hover { border-color: #7dd3fc; color: #7dd3fc; }
     #mission-pick-map-btn { border-color: #d97706 !important; color: #f59e0b !important; }
-    #mission-pick-map-btn:hover { border-color: #f59e0b !important; color: #fcd34d !important; background: #1c1000 !important; }
+    #mission-pick-map-btn:hover { background: #1c1000 !important; }
     #mission-pick-map-btn.active {
       background: #2c1800 !important; border-style: solid !important;
       border-color: #f59e0b !important; color: #fcd34d !important;
     }
+    #wp-save-btn {
+      background: #143060; border: 1px solid #3a70c0; border-radius: 4px;
+      color: #7dd3fc; font-size: 12px; padding: 6px 14px; cursor: pointer; white-space: nowrap;
+    }
+    #wp-save-btn:hover { background: #1e4080; }
+
+    /* ── 하단 캠페인 바 ── */
+    #campaign-bar {
+      border-top: 2px solid #1e3a5f; padding: 10px 16px;
+      display: flex; align-items: center; gap: 12px;
+      background: #080f1a; flex-shrink: 0;
+    }
+    #campaign-status-txt { flex: 1; font-size: 11px; color: var(--dim); min-width: 0; }
+    #campaign-status-txt.running { color: var(--amber); }
+    #campaign-status-txt.complete{ color: var(--green); }
+    #campaign-status-txt.failed  { color: var(--red); }
+    #campaign-prog-wrap {
+      width: 120px; height: 4px; background: var(--border);
+      border-radius: 2px; overflow: hidden; flex-shrink: 0;
+    }
+    #campaign-prog-bar { height: 100%; width: 0; background: var(--amber); transition: width .5s; }
+    #campaign-start-btn {
+      background: #1a4020; border: 1px solid #3a8040; border-radius: 4px;
+      color: #00ff88; font-size: 12px; font-weight: 700; padding: 7px 16px;
+      cursor: pointer; white-space: nowrap; letter-spacing: .3px;
+    }
+    #campaign-start-btn:hover:not(:disabled) { background: #254030; }
+    #campaign-start-btn:disabled { opacity: .4; cursor: not-allowed; }
+    #campaign-cancel-btn {
+      background: #300a0a; border: 1px solid #8a2020; border-radius: 4px;
+      color: #ff6060; font-size: 12px; padding: 7px 12px; cursor: pointer; display: none;
+    }
+    #campaign-cancel-btn:hover { background: #4a1010; }
 
     /* 지도 선택 모드 배너 */
     #mission-pick-banner {
@@ -673,13 +672,8 @@
     #mission-pick-cancel:hover { background: rgba(0,0,0,.35); }
 
     /* 선택 모드 중 모달 페이드 + 지도 커서 */
-    #mission-modal-overlay.pick-mode {
-      pointer-events: none;
-      background: rgba(0,0,0,.08);
-    }
-    #mission-modal-overlay.pick-mode #mission-modal {
-      opacity: 0.15;
-    }
+    #mission-modal-overlay.pick-mode { pointer-events: none; background: rgba(0,0,0,.08); }
+    #mission-modal-overlay.pick-mode #mission-modal { opacity: 0.15; }
     body.mission-pick-cursor #map { cursor: crosshair !important; }
     body.mission-pick-cursor #map * { cursor: crosshair !important; }
 
@@ -695,7 +689,7 @@
     @media (max-width: 768px) {
       #mission-modal { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
       #mission-modal-body { flex-direction: column; overflow-y: auto; }
-      #mission-create-panel { width: 100%; border-right: none; border-bottom: 1px solid #1e3a5f; }
+      #sat-mission-list-panel { width: 100%; border-right: none; border-bottom: 1px solid #1e3a5f; max-height: 160px; }
     }
   </style>
 </head>
@@ -710,7 +704,7 @@
     </div>
 
     <!-- 임무계획 버튼 -->
-    <button id="mission-plan-btn">⊕ 임무계획 생성</button>
+    <button id="mission-plan-btn">⊕ 위성 임무계획</button>
 
     <!-- 시뮬레이터 컨트롤 -->
     <div id="sim-panel">
@@ -824,37 +818,46 @@
   <div id="mission-modal-overlay">
     <div id="mission-modal">
       <div id="mission-modal-hdr">
-        ⊕ 임무계획 관리
+        ⊕ 위성 임무계획
         <span id="mission-modal-close" title="닫기">✕</span>
       </div>
       <div id="mission-modal-body">
 
-        <!-- 왼쪽: 임무 생성 -->
-        <div id="mission-create-panel">
-          <label>임무명</label>
-          <input id="mission-name-input" type="text" placeholder="예: 북부 해안 감시 #1">
-
-          <label>웨이포인트 목록</label>
-          <div id="mission-wp-list"></div>
-          <div class="mission-wp-add-row">
-            <button id="mission-add-wp-btn">+ 수동 입력</button>
-            <button id="mission-pick-map-btn">📍 지도에서 선택</button>
-          </div>
-
-          <button id="mission-create-btn">임무 생성</button>
+        <!-- 왼쪽: 위성 목록 -->
+        <div id="sat-mission-list-panel">
+          <div class="panel-label">위성 목록</div>
+          <div id="sat-mission-items"><!-- JS 생성 --></div>
         </div>
 
-        <!-- 오른쪽: 임무 목록 -->
-        <div id="mission-list-panel">
-          <div id="mission-list-hdr">
-            <span>저장된 임무 목록</span>
-            <span id="mission-list-count">0개</span>
+        <!-- 오른쪽: WP 편집 -->
+        <div id="wp-edit-panel">
+          <div id="wp-edit-hdr">
+            <div>
+              <span id="wp-edit-sat-name">위성을 선택하세요</span>
+              <span id="wp-edit-sat-id"></span>
+            </div>
+            <button id="wp-clear-sat-btn" style="display:none">초기화</button>
           </div>
-          <div id="mission-list-scroll">
-            <div id="mission-empty">생성된 임무가 없습니다</div>
+          <div id="wp-edit-list">
+            <div id="wp-edit-hint">← 왼쪽에서 위성을 선택하면 웨이포인트를 설정할 수 있습니다</div>
+          </div>
+          <div id="wp-add-bar" style="display:none">
+            <div class="mission-wp-add-row">
+              <button id="mission-add-wp-btn">+ 수동 입력</button>
+              <button id="mission-pick-map-btn">📍 지도에서 선택</button>
+            </div>
+            <button id="wp-save-btn">저장</button>
           </div>
         </div>
 
+      </div>
+
+      <!-- 하단 캠페인 실행 바 -->
+      <div id="campaign-bar">
+        <div id="campaign-status-txt">임무가 설정된 위성이 없습니다</div>
+        <div id="campaign-prog-wrap"><div id="campaign-prog-bar"></div></div>
+        <button id="campaign-cancel-btn">■ 취소</button>
+        <button id="campaign-start-btn" disabled>▶ 전체 임무 실행</button>
       </div>
     </div>
   </div>
@@ -3017,9 +3020,16 @@ async function pollSimStatus() {
     _autoEnabled = s.auto_enabled;
 
     // 지시등 & 라벨
-    const ms = s.active_mission;
-    if (ms) {
-      // 임무 실행 모드
+    const camp = s.campaign;
+    const ms   = s.active_mission;
+    if (camp && camp.status === 'running') {
+      // 캠페인 실행 모드
+      indicator.className = s.running ? 'run' : 'on';
+      const cur = camp.current ? `${camp.current.sat_name} → ${camp.current.wp_name}` : '';
+      label.textContent = `캠페인 실행 중 (${camp.done}/${camp.total}) ${cur ? '| ' + cur : ''}`;
+      label.style.color = 'var(--amber)';
+    } else if (ms) {
+      // 기존 단일 임무 실행 모드
       indicator.className = s.running ? 'run' : 'on';
       const wpInfo = ms.current_wp ? ` — ${ms.current_wp}` : '';
       label.textContent = `임무 실행 중: ${ms.name}  (${ms.wp_done}/${ms.wp_total}${wpInfo})`;
@@ -3061,14 +3071,16 @@ async function pollSimStatus() {
     // 새 실행이 완료됐으면 상태 메시지 갱신 + DB 목록 새로고침
     if (_prevRunning && !s.running) {
       if (s.last_success) {
-        const prefix = ms ? `✓ 임무 WP 완료 (${ms.wp_done}/${ms.wp_total})` : `✓ 자동 완료 (#${s.run_count})`;
+        const prefix = camp && camp.status === 'running'
+          ? `✓ 캠페인 WP 완료 (${camp.done}/${camp.total})`
+          : ms ? `✓ 임무 WP 완료 (${ms.wp_done}/${ms.wp_total})` : `✓ 자동 완료 (#${s.run_count})`;
         const imgs   = (s.last_images || []).map(p => p.split('/').pop()).join(', ');
         statusEl.textContent = `${prefix} | ${s.last_elapsed}s | ${imgs}`;
         statusEl.style.color = 'var(--green)';
       } else {
-        statusEl.textContent = ms
-          ? `⚠ 임무 WP 오류 (WP ${ms.wp_done + 1}/${ms.wp_total})`
-          : `⚠ 파이프라인 오류 (#${s.run_count})`;
+        statusEl.textContent = camp && camp.status === 'running'
+          ? `⚠ 캠페인 WP 오류 (${camp.done + 1}/${camp.total})`
+          : ms ? `⚠ 임무 WP 오류 (WP ${ms.wp_done + 1}/${ms.wp_total})` : `⚠ 파이프라인 오류 (#${s.run_count})`;
         statusEl.style.color = 'var(--red)';
       }
 
@@ -3237,14 +3249,16 @@ window.addEventListener('resize', function() {
 });
 
 /* ══════════════════════════════════════════════════════════════════
-   임무계획 (Mission Planning)
+   위성별 임무계획 (Satellite Mission Planning)
    ══════════════════════════════════════════════════════════════════ */
 
-let _missionPollTimer = null;   // 실행 중 임무 폴링 타이머
-let _pickMode         = false;  // 지도 선택 모드 여부
+let _pickMode          = false;   // 지도 WP 선택 모드
+let _selectedSatId     = null;    // 현재 선택된 위성 ID
+let _satMissionsCache  = {};      // {sat_id: {sat_id, sat_name, waypoints, assigned_at}}
+let _campaignPollTimer = null;    // 캠페인 폴링 타이머
 
-/* ═══ 웨이포인트 마커 관리 ═══════════════════════════════════════════ */
-const _wpMarkers = [];  // [{ item: DOM, marker: L.marker|null }]
+/* ═══ WP 마커 관리 ═══════════════════════════════════════════════════ */
+const _wpMarkers = [];   // [{item:DOM, marker:L.marker|null}]
 
 function _missionMarkerIcon(seq) {
   const el = document.createElement('div');
@@ -3257,54 +3271,34 @@ function _missionMarkerIcon(seq) {
 }
 
 function _addMarkerForItem(item, lat, lon) {
-  if (typeof map === 'undefined' || !map) return;
-  if (isNaN(lat) || isNaN(lon)) return;
-
+  if (typeof map === 'undefined' || !map || isNaN(lat) || isNaN(lon)) return;
   const entry = _wpMarkers.find(e => e.item === item);
-  const seq   = Array.from(document.querySelectorAll('#mission-wp-list .mission-wp-item'))
-                     .indexOf(item) + 1;
-
+  const seq   = Array.from(document.querySelectorAll('#wp-edit-list .mission-wp-item')).indexOf(item) + 1;
   if (entry && entry.marker) {
-    // 이미 마커 있음 → 위치만 갱신
     entry.marker.setLatLng([lat, lon]);
     entry.marker.setIcon(_missionMarkerIcon(seq));
   } else {
-    // 새 마커 생성
-    const marker = L.marker([lat, lon], {
-      icon: _missionMarkerIcon(seq),
-      zIndexOffset: 1000,
-      draggable: true,
-    }).addTo(map);
-
-    // 드래그 종료 → 입력값 동기화
+    const marker = L.marker([lat, lon], { icon: _missionMarkerIcon(seq), zIndexOffset: 1000, draggable: true }).addTo(map);
     marker.on('dragend', () => {
       const pos = marker.getLatLng();
       item.querySelector('.wp-lat').value = pos.lat.toFixed(6);
       item.querySelector('.wp-lon').value = pos.lng.toFixed(6);
-      _refreshTooltip(marker, item);
+      _refreshWpTooltip(marker, item);
     });
-
-    _refreshTooltip(marker, item);
-    if (entry) {
-      entry.marker = marker;
-    } else {
-      _wpMarkers.push({ item, marker });
-    }
+    _refreshWpTooltip(marker, item);
+    if (entry) entry.marker = marker;
+    else _wpMarkers.push({ item, marker });
   }
-  // 지도 중심 이동 (부드럽게)
   map.panTo([lat, lon], { animate: true, duration: 0.4 });
 }
 
-function _refreshTooltip(marker, item) {
+function _refreshWpTooltip(marker, item) {
   const name = item.querySelector('.mission-wp-name-input').value.trim() || 'WP';
   const lat  = parseFloat(item.querySelector('.wp-lat').value);
   const lon  = parseFloat(item.querySelector('.wp-lon').value);
-  if (!isNaN(lat) && !isNaN(lon)) {
-    marker.bindTooltip(
-      `<b>${name}</b><br>${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-      { direction: 'top', offset: [0, -16], opacity: 0.92 }
-    );
-  }
+  if (!isNaN(lat) && !isNaN(lon))
+    marker.bindTooltip(`<b>${name}</b><br>${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+      { direction: 'top', offset: [0, -16], opacity: 0.92 });
 }
 
 function _removeMarkerForItem(item) {
@@ -3323,7 +3317,7 @@ function _clearAllWpMarkers() {
 }
 
 function _refreshWpSeq() {
-  const items = document.querySelectorAll('#mission-wp-list .mission-wp-item');
+  const items = document.querySelectorAll('#wp-edit-list .mission-wp-item');
   items.forEach((item, i) => {
     item.querySelector('.mission-wp-seq').textContent = i + 1;
     const entry = _wpMarkers.find(e => e.item === item);
@@ -3331,62 +3325,86 @@ function _refreshWpSeq() {
   });
 }
 
-/* ═══ 웨이포인트 행 생성 ═════════════════════════════════════════════ */
-function _addWpRow(lat, lon, name) {
-  const list  = document.getElementById('mission-wp-list');
-  const idx   = list.children.length + 1;
-  const item  = document.createElement('div');
-  item.className = 'mission-wp-item';
+/* ═══ WP 편집 행 생성 ════════════════════════════════════════════════ */
+function _addWpRow(lat, lon, name, desc, wpData) {
+  // wpData: 서버에서 받은 WP 데이터 (status, report_id 등). 없으면 신규 입력
+  const list   = document.getElementById('wp-edit-list');
+  const hint   = document.getElementById('wp-edit-hint');
+  if (hint) hint.style.display = 'none';
 
-  const latVal = (lat !== undefined && !isNaN(lat)) ? lat.toFixed(6) : '';
-  const lonVal = (lon !== undefined && !isNaN(lon)) ? lon.toFixed(6) : '';
+  const idx    = list.querySelectorAll('.mission-wp-item').length + 1;
+  const item   = document.createElement('div');
+  item.className = 'mission-wp-item';
+  if (wpData) {
+    const cls = { running:'wp-running', complete:'wp-complete', failed:'wp-failed' }[wpData.status];
+    if (cls) item.classList.add(cls);
+  }
+
+  const latVal = (lat !== undefined && lat !== null && !isNaN(lat)) ? Number(lat).toFixed(6) : '';
+  const lonVal = (lon !== undefined && lon !== null && !isNaN(lon)) ? Number(lon).toFixed(6) : '';
+  const status = wpData?.status || 'pending';
+  const stLabel = { pending:'대기', running:'실행중', complete:'완료', failed:'실패' }[status] || '';
+  const stCls   = { pending:'wps-pending', running:'wps-running', complete:'wps-complete', failed:'wps-failed' }[status] || 'wps-pending';
+  const rptHtml = wpData?.report_id
+    ? `<span class="wp-rpt-link" data-report-id="${wpData.report_id}">보고서 ↗</span>` : '';
+  const resultHtml = wpData && wpData.status !== 'pending'
+    ? `<div class="wp-result-row">
+         <span class="wp-status-badge ${stCls}">${stLabel}</span>
+         ${rptHtml}
+         ${wpData.elapsed_s ? `<span style="font-size:9px;color:var(--dim)">${wpData.elapsed_s}s</span>` : ''}
+         ${wpData.error ? `<span style="font-size:9px;color:var(--red)" title="${wpData.error}">오류</span>` : ''}
+       </div>` : '';
+
+  const isEditable = !wpData || wpData.status === 'pending';
+  const roAttr = isEditable ? '' : 'readonly';
 
   item.innerHTML = `
     <div class="mission-wp-seq">${idx}</div>
     <div class="mission-wp-fields">
       <div class="mission-wp-name-row">
-        <input class="mission-wp-name-input" type="text"
-               placeholder="위치 이름" value="${name || ''}">
+        <input class="mission-wp-name-input" type="text" placeholder="위치 이름"
+               value="${(name||'').replace(/"/g,'&quot;')}" ${roAttr}>
       </div>
       <div class="mission-wp-coord-row">
         <input class="mission-wp-coord-input wp-lat" type="number" step="0.000001"
-               placeholder="위도" value="${latVal}">
+               placeholder="위도" value="${latVal}" ${roAttr}>
         <input class="mission-wp-coord-input wp-lon" type="number" step="0.000001"
-               placeholder="경도" value="${lonVal}">
+               placeholder="경도" value="${lonVal}" ${roAttr}>
       </div>
       <textarea class="mission-wp-desc-input wp-desc"
-                placeholder="표적 설명 (예: 북부 항구 군사시설, 잠수함 기지 의심 구역 등)"></textarea>
+                placeholder="표적 설명 (예: 북부 항구 군사시설)" ${roAttr}>${(desc||'')}</textarea>
+      ${resultHtml}
     </div>
-    <button class="mission-wp-del" title="삭제">✕</button>`;
+    ${isEditable ? '<button class="mission-wp-del" title="삭제">✕</button>' : ''}`;
 
-  // 삭제 버튼
-  item.querySelector('.mission-wp-del').addEventListener('click', () => {
-    _removeMarkerForItem(item);
-    item.remove();
-    _refreshWpSeq();
-  });
-
-  // 좌표 변경 → 마커 갱신
-  const latInput = item.querySelector('.wp-lat');
-  const lonInput = item.querySelector('.wp-lon');
-  function onCoordChange() {
-    const la = parseFloat(latInput.value);
-    const lo = parseFloat(lonInput.value);
-    if (!isNaN(la) && !isNaN(lo)) _addMarkerForItem(item, la, lo);
+  if (isEditable) {
+    item.querySelector('.mission-wp-del').addEventListener('click', () => {
+      _removeMarkerForItem(item); item.remove(); _refreshWpSeq();
+    });
+    const latInput = item.querySelector('.wp-lat');
+    const lonInput = item.querySelector('.wp-lon');
+    const onCoordChange = () => {
+      const la = parseFloat(latInput.value), lo = parseFloat(lonInput.value);
+      if (!isNaN(la) && !isNaN(lo)) _addMarkerForItem(item, la, lo);
+    };
+    latInput.addEventListener('change', onCoordChange);
+    lonInput.addEventListener('change', onCoordChange);
+    item.querySelector('.mission-wp-name-input').addEventListener('input', () => {
+      const entry = _wpMarkers.find(e => e.item === item);
+      if (entry && entry.marker) _refreshWpTooltip(entry.marker, item);
+    });
   }
-  latInput.addEventListener('change', onCoordChange);
-  lonInput.addEventListener('change', onCoordChange);
 
-  // 이름 변경 → 툴팁 갱신
-  item.querySelector('.mission-wp-name-input').addEventListener('input', () => {
-    const entry = _wpMarkers.find(e => e.item === item);
-    if (entry && entry.marker) _refreshTooltip(entry.marker, item);
+  // 보고서 링크
+  item.querySelectorAll('.wp-rpt-link').forEach(el => {
+    el.addEventListener('click', () => {
+      _closeMissionModal();
+      openReportById(el.dataset.reportId, null);
+    });
   });
 
   list.appendChild(item);
-  _wpMarkers.push({ item, marker: null }); // 마커는 이후 추가
-
-  // 좌표 있으면 즉시 마커 생성
+  _wpMarkers.push({ item, marker: null });
   if (latVal && lonVal) _addMarkerForItem(item, parseFloat(latVal), parseFloat(lonVal));
   _refreshWpSeq();
 }
@@ -3394,11 +3412,13 @@ function _addWpRow(lat, lon, name) {
 /* ═══ 모달 열기/닫기 ════════════════════════════════════════════════ */
 function _openMissionModal() {
   document.getElementById('mission-modal-overlay').classList.add('open');
-  loadMissionList();
+  loadSatMissions();
+  loadCampaignStatus();
 }
 function _closeMissionModal() {
   _exitPickMode();
   document.getElementById('mission-modal-overlay').classList.remove('open');
+  if (_campaignPollTimer) { clearInterval(_campaignPollTimer); _campaignPollTimer = null; }
 }
 
 document.getElementById('mission-plan-btn').addEventListener('click', _openMissionModal);
@@ -3424,198 +3444,265 @@ function _exitPickMode() {
 }
 
 document.getElementById('mission-pick-map-btn').addEventListener('click', () => {
-  if (_pickMode) _exitPickMode();
-  else _enterPickMode();
+  if (!_selectedSatId) { alert('먼저 위성을 선택하세요'); return; }
+  if (_pickMode) _exitPickMode(); else _enterPickMode();
 });
 document.getElementById('mission-pick-cancel').addEventListener('click', _exitPickMode);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && _pickMode) _exitPickMode(); });
 
-/* ── 지도에서 WP 추가 (Leaflet 초기화 후 바인딩) ── */
 (function waitMapForMission(n) {
   if (typeof map !== 'undefined' && map) {
     map.on('click', function(e) {
       if (!_pickMode) return;
-      _addWpRow(e.latlng.lat, e.latlng.lng, '');
+      _addWpRow(e.latlng.lat, e.latlng.lng, '', '', null);
       _exitPickMode();
-      // 모달이 열려있지 않으면 다시 열기
       document.getElementById('mission-modal-overlay').classList.add('open');
     });
-  } else if (n > 0) {
-    setTimeout(() => waitMapForMission(n - 1), 200);
-  }
+  } else if (n > 0) setTimeout(() => waitMapForMission(n - 1), 200);
 })(50);
 
-/* ── 수동 WP 추가 버튼 ── */
 document.getElementById('mission-add-wp-btn').addEventListener('click', () => {
-  _addWpRow(undefined, undefined, '');
+  if (!_selectedSatId) { alert('먼저 위성을 선택하세요'); return; }
+  _addWpRow(undefined, undefined, '', '', null);
 });
 
-/* ═══ 임무 생성 ══════════════════════════════════════════════════════ */
-document.getElementById('mission-create-btn').addEventListener('click', async () => {
-  const name = document.getElementById('mission-name-input').value.trim();
-  if (!name) { alert('임무명을 입력하세요'); return; }
-
-  const wpItems = document.querySelectorAll('#mission-wp-list .mission-wp-item');
-  if (wpItems.length === 0) { alert('웨이포인트를 1개 이상 추가하세요'); return; }
-
-  const waypoints = [];
-  let valid = true;
-  wpItems.forEach((item, i) => {
-    const lat   = parseFloat(item.querySelector('.wp-lat').value);
-    const lon   = parseFloat(item.querySelector('.wp-lon').value);
-    const wname = item.querySelector('.mission-wp-name-input').value.trim() || `WP${i+1}`;
-    const wdesc = item.querySelector('.wp-desc').value.trim();
-    if (isNaN(lat) || isNaN(lon)) { valid = false; }
-    else waypoints.push({ lat, lon, name: wname, target_description: wdesc });
-  });
-  if (!valid) { alert('위도/경도를 올바르게 입력하세요'); return; }
-
-  const btn = document.getElementById('mission-create-btn');
+/* ═══ WP 저장 ════════════════════════════════════════════════════════ */
+document.getElementById('wp-save-btn').addEventListener('click', async () => {
+  if (!_selectedSatId) return;
+  const btn = document.getElementById('wp-save-btn');
   btn.disabled = true;
   try {
-    const res = await fetch(`${API}/api/missions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, waypoints }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    // 입력 초기화 + 마커 정리
-    document.getElementById('mission-name-input').value = '';
-    document.getElementById('mission-wp-list').innerHTML = '';
-    _clearAllWpMarkers();
-    loadMissionList();
+    await _saveSatWPs(_selectedSatId);
+    // 위성 목록 갱신 (WP 개수 반영)
+    await loadSatMissions(false);
   } catch(e) {
-    alert('임무 생성 실패: ' + e.message);
+    alert('저장 실패: ' + e.message);
   } finally {
     btn.disabled = false;
   }
 });
 
-/* ── 임무 목록 로드 ── */
-async function loadMissionList() {
-  const scroll = document.getElementById('mission-list-scroll');
-  const empty  = document.getElementById('mission-empty');
-  const cnt    = document.getElementById('mission-list-count');
+async function _saveSatWPs(satId) {
+  const items = document.querySelectorAll('#wp-edit-list .mission-wp-item');
+  const waypoints = [];
+  let valid = true;
+  items.forEach((item, i) => {
+    const lat   = parseFloat(item.querySelector('.wp-lat').value);
+    const lon   = parseFloat(item.querySelector('.wp-lon').value);
+    const wname = item.querySelector('.mission-wp-name-input').value.trim() || `WP${i+1}`;
+    const wdesc = item.querySelector('.wp-desc').value.trim();
+    if (isNaN(lat) || isNaN(lon)) valid = false;
+    else waypoints.push({ lat, lon, name: wname, target_description: wdesc });
+  });
+  if (!valid) throw new Error('위도/경도를 올바르게 입력하세요');
+  const res = await fetch(`${API}/api/sat-mission/${satId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ waypoints }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  _satMissionsCache[satId] = data;
+}
+
+/* ═══ 초기화 버튼 ════════════════════════════════════════════════════ */
+document.getElementById('wp-clear-sat-btn').addEventListener('click', async () => {
+  if (!_selectedSatId) return;
+  const sm = _satMissionsCache[_selectedSatId];
+  const name = sm ? sm.sat_name : _selectedSatId;
+  if (!confirm(`${name}의 임무계획을 초기화하시겠습니까?`)) return;
   try {
-    const res  = await fetch(`${API}/api/missions`);
-    const list = await res.json();
-    cnt.textContent = list.length + '개';
-    if (list.length === 0) {
-      empty.style.display = '';
-      // 기존 카드만 제거
-      scroll.querySelectorAll('.mission-card').forEach(c => c.remove());
-      return;
-    }
-    empty.style.display = 'none';
-    scroll.querySelectorAll('.mission-card').forEach(c => c.remove());
-    list.forEach(m => scroll.appendChild(_buildMissionCard(m)));
-    _scheduleRunningPoll(list);
+    await fetch(`${API}/api/sat-mission/${_selectedSatId}`, { method: 'DELETE' });
+    _satMissionsCache[_selectedSatId] = { sat_id: _selectedSatId, sat_name: name, waypoints: [] };
+    _clearAllWpMarkers();
+    _renderWpEditor(_satMissionsCache[_selectedSatId]);
+    await loadSatMissions(false);
   } catch(e) {
-    console.warn('[Mission] 목록 로드 실패', e);
+    alert('초기화 실패: ' + e.message);
+  }
+});
+
+/* ═══ 위성 목록 로드 & 렌더링 ════════════════════════════════════════ */
+async function loadSatMissions(resetSelection = true) {
+  try {
+    const res  = await fetch(`${API}/api/sat-missions`);
+    const data = await res.json();   // {sat_id: {...}}
+    _satMissionsCache = data;
+    _renderSatList(data);
+    _updateCampaignBar(data);
+    if (resetSelection && _selectedSatId && data[_selectedSatId]) {
+      _renderWpEditor(data[_selectedSatId]);
+    }
+  } catch(e) {
+    console.warn('[SatMission] 로드 실패', e);
   }
 }
 
-/* ── 실행 중인 임무가 있으면 자동 폴링 ── */
-function _scheduleRunningPoll(list) {
-  const hasRunning = list.some(m => m.status === 'running');
-  if (hasRunning && !_missionPollTimer) {
-    _missionPollTimer = setInterval(() => {
-      loadMissionList();
-    }, 3000);
-  } else if (!hasRunning && _missionPollTimer) {
-    clearInterval(_missionPollTimer);
-    _missionPollTimer = null;
+function _renderSatList(data) {
+  const container = document.getElementById('sat-mission-items');
+  container.innerHTML = '';
+  Object.values(data).forEach(sm => {
+    const wpCount = sm.waypoints.length;
+    const hasWp   = wpCount > 0;
+    const dotCls  = hasWp ? 'has-wp' : '';
+    const item = document.createElement('div');
+    item.className = 'sat-mission-item' + (_selectedSatId === sm.sat_id ? ' active' : '');
+    item.dataset.satId = sm.sat_id;
+    item.innerHTML = `
+      <div class="sat-mission-dot ${dotCls}"></div>
+      <div class="sat-mission-info">
+        <div class="sat-mission-name">${sm.sat_name}</div>
+        <div class="sat-mission-id">${sm.sat_id}</div>
+        <div class="sat-mission-wpcount">${hasWp ? `${wpCount}개 WP 설정됨` : '임무 없음'}</div>
+      </div>`;
+    item.addEventListener('click', () => _selectSat(sm.sat_id));
+    container.appendChild(item);
+  });
+}
+
+function _updateCampaignBar(data) {
+  const configured = Object.values(data).filter(sm => sm.waypoints.length > 0);
+  const totalWp    = configured.reduce((s, sm) => s + sm.waypoints.length, 0);
+  const startBtn   = document.getElementById('campaign-start-btn');
+  const txt        = document.getElementById('campaign-status-txt');
+  if (configured.length === 0) {
+    startBtn.disabled = true;
+    txt.textContent = '임무가 설정된 위성이 없습니다';
+    txt.className = '';
+  } else {
+    startBtn.disabled = false;
+    txt.textContent = `위성 ${configured.length}개 · WP ${totalWp}개 설정됨 — 실행 준비 완료`;
+    txt.className = '';
   }
 }
 
-/* ── 임무 카드 빌드 ── */
-function _buildMissionCard(m) {
-  const card = document.createElement('div');
-  card.className = 'mission-card';
-  card.dataset.missionId = m.id;
-
-  const badgeClass = { pending:'msb-pending', running:'msb-running',
-                        complete:'msb-complete', failed:'msb-failed' }[m.status] || 'msb-pending';
-  const statusLabel = { pending:'대기', running:'실행중', complete:'완료', failed:'실패' }[m.status] || m.status;
-  const createdStr  = m.created_at ? new Date(m.created_at).toLocaleString('ko-KR') : '';
-  const running     = m.status === 'running';
-
-  card.innerHTML = `
-    <div class="mission-card-hdr">
-      <span class="mission-status-badge ${badgeClass}">${statusLabel}</span>
-      <span class="mission-card-name">${m.name}</span>
-      <span class="mission-card-time">${createdStr}</span>
-      <div class="mission-card-actions">
-        <button class="mc-exec-btn" ${running ? 'disabled' : ''}>▶ 실행</button>
-        <button class="mc-del-btn">삭제</button>
-      </div>
-    </div>
-    <div class="mission-wp-table">
-      ${m.waypoints.map((wp, i) => {
-        const wsc = { pending:'wps-pending', running:'wps-running',
-                      complete:'wps-complete', failed:'wps-failed' }[wp.status] || 'wps-pending';
-        const wsl = { pending:'대기', running:'실행중', complete:'완료', failed:'실패' }[wp.status] || '';
-        const rptLink = wp.report_id
-          ? `<span class="wp-rpt-link" data-report-id="${wp.report_id}">보고서 ↗</span>`
-          : '';
-        const descHtml = wp.target_description
-          ? `<div class="wp-desc-text">${wp.target_description}</div>` : '';
-        return `<div class="mission-wp-row" style="flex-wrap:wrap;">
-          <div class="wp-seq-dot">${i+1}</div>
-          <div class="wp-name">${wp.name}</div>
-          <div class="wp-coord">${wp.lat.toFixed(4)}, ${wp.lon.toFixed(4)}</div>
-          <span class="wp-status ${wsc}">${wsl}</span>
-          ${rptLink}
-          ${descHtml}
-        </div>`;
-      }).join('')}
-    </div>`;
-
-  // 헤더 클릭 → WP 목록 토글
-  card.querySelector('.mission-card-hdr').addEventListener('click', e => {
-    if (e.target.closest('.mc-exec-btn, .mc-del-btn')) return;
-    card.querySelector('.mission-wp-table').classList.toggle('expanded');
+/* ═══ 위성 선택 ══════════════════════════════════════════════════════ */
+function _selectSat(satId) {
+  _selectedSatId = satId;
+  // 위성 목록 active 상태 갱신
+  document.querySelectorAll('.sat-mission-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.satId === satId);
   });
+  const sm = _satMissionsCache[satId];
+  _renderWpEditor(sm);
+}
 
-  // 실행 버튼
-  card.querySelector('.mc-exec-btn').addEventListener('click', async e => {
-    e.stopPropagation();
-    if (!confirm(`임무 "${m.name}"를 실행하시겠습니까?\n웨이포인트 ${m.waypoints.length}개를 순차 처리합니다.`)) return;
-    e.target.disabled = true;
-    try {
-      const res = await fetch(`${API}/api/mission/${m.id}/execute`, { method: 'POST' });
-      if (!res.ok) throw new Error(await res.text());
-      loadMissionList();
-    } catch(err) {
-      alert('실행 실패: ' + err.message);
-      e.target.disabled = false;
-    }
-  });
+function _renderWpEditor(sm) {
+  if (!sm) return;
+  // 헤더 갱신
+  document.getElementById('wp-edit-sat-name').textContent = sm.sat_name;
+  document.getElementById('wp-edit-sat-id').textContent   = `(${sm.sat_id})`;
+  // 초기화 버튼 표시
+  const clearBtn = document.getElementById('wp-clear-sat-btn');
+  clearBtn.style.display = sm.waypoints.length > 0 ? '' : 'none';
+  // WP 목록 초기화 + 재렌더
+  _clearAllWpMarkers();
+  const list = document.getElementById('wp-edit-list');
+  list.innerHTML = '';
+  const hint = document.createElement('div');
+  hint.id = 'wp-edit-hint';
+  hint.style.display = 'none';
+  list.appendChild(hint);
 
-  // 삭제 버튼
-  card.querySelector('.mc-del-btn').addEventListener('click', async e => {
-    e.stopPropagation();
-    if (!confirm(`임무 "${m.name}"를 삭제하시겠습니까?`)) return;
-    try {
-      await fetch(`${API}/api/mission/${m.id}`, { method: 'DELETE' });
-      loadMissionList();
-    } catch(err) {
-      alert('삭제 실패: ' + err.message);
-    }
-  });
-
-  // 보고서 링크 클릭
-  card.querySelectorAll('.wp-rpt-link').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation();
-      const rptId = el.dataset.reportId;
-      _closeMissionModal();
-      openReportById(rptId, null);
+  if (sm.waypoints.length === 0) {
+    hint.style.display = '';
+    hint.textContent = '웨이포인트가 없습니다. 아래 버튼으로 추가하세요.';
+  } else {
+    sm.waypoints.forEach(wp => {
+      _addWpRow(wp.lat, wp.lon, wp.name, wp.target_description, wp);
     });
-  });
-
-  return card;
+  }
+  // WP 추가 바 표시
+  document.getElementById('wp-add-bar').style.display = '';
 }
+
+/* ═══ 캠페인 상태 로드 & 폴링 ════════════════════════════════════════ */
+async function loadCampaignStatus() {
+  try {
+    const res  = await fetch(`${API}/api/campaign/status`);
+    const data = await res.json();
+    _applyCampaignStatus(data);
+    if (data.status === 'running') {
+      if (!_campaignPollTimer)
+        _campaignPollTimer = setInterval(_pollCampaign, 3000);
+    } else {
+      if (_campaignPollTimer) { clearInterval(_campaignPollTimer); _campaignPollTimer = null; }
+    }
+  } catch(e) { console.warn('[Campaign] 상태 로드 실패', e); }
+}
+
+async function _pollCampaign() {
+  try {
+    const res  = await fetch(`${API}/api/campaign/status`);
+    const data = await res.json();
+    _applyCampaignStatus(data);
+    // 위성 목록 + 현재 선택 위성 WP 상태 갱신
+    await loadSatMissions(false);
+    if (_selectedSatId && _satMissionsCache[_selectedSatId]) {
+      _renderWpEditor(_satMissionsCache[_selectedSatId]);
+    }
+    if (data.status !== 'running') {
+      if (_campaignPollTimer) { clearInterval(_campaignPollTimer); _campaignPollTimer = null; }
+    }
+  } catch(e) { console.warn('[Campaign] 폴링 오류', e); }
+}
+
+function _applyCampaignStatus(c) {
+  const txt       = document.getElementById('campaign-status-txt');
+  const progBar   = document.getElementById('campaign-prog-bar');
+  const startBtn  = document.getElementById('campaign-start-btn');
+  const cancelBtn = document.getElementById('campaign-cancel-btn');
+
+  const pct = c.total > 0 ? Math.round(c.done / c.total * 100) : 0;
+  progBar.style.width = pct + '%';
+
+  if (c.status === 'running') {
+    const cur = c.current ? `${c.current.sat_name} → ${c.current.wp_name}` : '준비 중...';
+    txt.textContent = `실행 중: ${cur}  (${c.done}/${c.total})`;
+    txt.className = 'running';
+    startBtn.disabled = true;
+    cancelBtn.style.display = '';
+    progBar.style.background = 'var(--amber)';
+  } else if (c.status === 'complete') {
+    txt.textContent = `완료: 총 ${c.total}개 WP  · 실패 ${c.failed_count}개`;
+    txt.className = c.failed_count > 0 ? 'failed' : 'complete';
+    startBtn.disabled = false;
+    cancelBtn.style.display = 'none';
+    progBar.style.background = c.failed_count > 0 ? 'var(--red)' : 'var(--green)';
+  } else if (c.status === 'failed') {
+    txt.textContent = `오류 발생 — 완료 ${c.done}/${c.total}  · 실패 ${c.failed_count}개`;
+    txt.className = 'failed';
+    startBtn.disabled = false;
+    cancelBtn.style.display = 'none';
+    progBar.style.background = 'var(--red)';
+  } else {
+    // idle — loadSatMissions 가 갱신함
+    cancelBtn.style.display = 'none';
+    progBar.style.background = 'var(--amber)';
+  }
+}
+
+/* ═══ 캠페인 실행 버튼 ════════════════════════════════════════════════ */
+document.getElementById('campaign-start-btn').addEventListener('click', async () => {
+  const configured = Object.values(_satMissionsCache).filter(sm => sm.waypoints.length > 0);
+  if (configured.length === 0) { alert('설정된 임무가 없습니다.'); return; }
+  const satNames = configured.map(sm => `${sm.sat_name} (${sm.waypoints.length}WP)`).join('\n');
+  if (!confirm(`다음 위성의 임무를 실행합니다:\n${satNames}\n\n시작하시겠습니까?`)) return;
+  try {
+    const res = await fetch(`${API}/api/campaign/start`, { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    loadCampaignStatus();
+    loadSatMissions(false);
+  } catch(e) {
+    alert('실행 실패: ' + e.message);
+  }
+});
+
+document.getElementById('campaign-cancel-btn').addEventListener('click', async () => {
+  if (!confirm('캠페인을 취소하시겠습니까?')) return;
+  await fetch(`${API}/api/campaign`, { method: 'DELETE' });
+  loadCampaignStatus();
+});
 </script>
 </body>
 </html>
