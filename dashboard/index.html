@@ -3017,7 +3017,14 @@ async function pollSimStatus() {
     _autoEnabled = s.auto_enabled;
 
     // 지시등 & 라벨
-    if (s.running) {
+    const ms = s.active_mission;
+    if (ms) {
+      // 임무 실행 모드
+      indicator.className = s.running ? 'run' : 'on';
+      const wpInfo = ms.current_wp ? ` — ${ms.current_wp}` : '';
+      label.textContent = `임무 실행 중: ${ms.name}  (${ms.wp_done}/${ms.wp_total}${wpInfo})`;
+      label.style.color = 'var(--amber)';
+    } else if (s.running) {
       indicator.className = 'run';
       label.textContent   = '자동 실행 중...';
       label.style.color   = 'var(--amber)';
@@ -3054,11 +3061,14 @@ async function pollSimStatus() {
     // 새 실행이 완료됐으면 상태 메시지 갱신 + DB 목록 새로고침
     if (_prevRunning && !s.running) {
       if (s.last_success) {
-        const imgs = (s.last_images || []).map(p => p.split('/').pop()).join(', ');
-        statusEl.textContent = `✓ 자동 완료 (#${s.run_count}, ${s.last_elapsed}s) | ${imgs}`;
+        const prefix = ms ? `✓ 임무 WP 완료 (${ms.wp_done}/${ms.wp_total})` : `✓ 자동 완료 (#${s.run_count})`;
+        const imgs   = (s.last_images || []).map(p => p.split('/').pop()).join(', ');
+        statusEl.textContent = `${prefix} | ${s.last_elapsed}s | ${imgs}`;
         statusEl.style.color = 'var(--green)';
       } else {
-        statusEl.textContent = `⚠ 파이프라인 오류 (#${s.run_count})`;
+        statusEl.textContent = ms
+          ? `⚠ 임무 WP 오류 (WP ${ms.wp_done + 1}/${ms.wp_total})`
+          : `⚠ 파이프라인 오류 (#${s.run_count})`;
         statusEl.style.color = 'var(--red)';
       }
 
@@ -3537,7 +3547,7 @@ function _buildMissionCard(m) {
       <span class="mission-card-time">${createdStr}</span>
       <div class="mission-card-actions">
         <button class="mc-exec-btn" ${running ? 'disabled' : ''}>▶ 실행</button>
-        <button class="mc-del-btn">삭제</button>
+        <button class="mc-del-btn" ${running ? 'disabled' : ''}>삭제</button>
       </div>
     </div>
     <div class="mission-wp-table">

@@ -149,55 +149,6 @@ def _save_missions_to_file():
         )
 
 
-def _run_mission_background(mission_id: str):
-    """임무 각 웨이포인트를 순차 실행하는 백그라운드 스레드 함수."""
-    from simulator_runner import run_step_at
-    from src.database.reports_db import get_all_reports
-
-    with _mission_lock:
-        mission = _missions.get(mission_id)
-    if not mission:
-        return
-
-    mission["status"] = "running"
-    mission["started_at"] = datetime.utcnow().isoformat()
-    _save_missions_to_file()
-
-    for wp in mission["waypoints"]:
-        wp["status"] = "running"
-        _save_missions_to_file()
-        try:
-            result = run_step_at(
-                lat=wp["lat"],
-                lon=wp["lon"],
-                name=wp.get("name", "임무 위성"),
-                target_description=wp.get("target_description", ""),
-            )
-            if result["success"]:
-                # 가장 최근 생성된 보고서 ID를 웨이포인트에 연결
-                try:
-                    all_rpts = get_all_reports(limit=5)
-                    if all_rpts:
-                        wp["report_id"] = all_rpts[0].id
-                except Exception:
-                    pass
-                wp["status"] = "complete"
-                wp["elapsed_s"] = result["elapsed_s"]
-            else:
-                wp["status"] = "failed"
-                wp["error"] = result.get("stderr_tail", "")[:300]
-        except Exception as exc:
-            wp["status"] = "failed"
-            wp["error"] = str(exc)[:300]
-            logger.error("[Mission] wp %s 실패: %s", wp["id"], exc)
-
-        _save_missions_to_file()
-        _notify_db_updated(changed=["reports", "detections"])
-
-    mission["status"] = "complete"
-    mission["finished_at"] = datetime.utcnow().isoformat()
-    _save_missions_to_file()
-    logger.info("[Mission] %s 완료", mission_id)
 
 
 _load_missions_from_file()
@@ -231,6 +182,7 @@ _auto_state: dict = {
     "last_active":    None,   # 마지막 활성 위성
     "last_positions": {},     # sat_id → (lat, lon)  위치 변경 감지용
 }
+_active_mission_id: Optional[str] = None   # 현재 자동 시뮬레이터가 처리 중인 임무 ID
 _auto_lock = threading.Lock()
 
 POSITION_CHANGE_THRESHOLD_DEG = 0.003   # ~300 m – 이 이상 이동하면 실행
@@ -252,57 +204,155 @@ def _any_satellite_moved(new_sats: list) -> bool:
     return False
 
 
+def _finish_wp(wp: dict, result: dict):
+    """웨이포인트 실행 결과 반영 (성공/실패 공통)."""
+    if result["success"]:
+        try:
+            from src.database.reports_db import get_all_reports
+            rpts = get_all_reports(limit=3)
+            if rpts:
+                wp["report_id"] = rpts[0].id
+        except Exception:
+            pass
+        wp["status"]    = "complete"
+        wp["elapsed_s"] = result["elapsed_s"]
+    else:
+        wp["status"] = "failed"
+        wp["error"]  = result.get("stderr_tail", "")[:300]
+
+
 def _auto_sim_worker():
-    """위성 좌표 변경 감지 → 시뮬레이션 자동 실행 백그라운드 스레드."""
+    """
+    자동 시뮬레이션 백그라운드 스레드.
+
+    우선순위:
+      1. 활성 임무(_active_mission_id)가 있으면 → 다음 pending 웨이포인트 실행
+      2. 없으면 → 위성 궤도 위치에서 일반 시뮬레이션
+    """
+    global _active_mission_id
     logger.info("[AutoSim] 백그라운드 스레드 시작 (%.1fs 간격)", AUTO_SIM_POLL_SEC)
-    _time.sleep(3)   # 서버 초기화 대기
+    _time.sleep(3)
 
     while True:
         try:
-            if _auto_state["enabled"] and not _auto_state["running"]:
-                sats = get_positions()
+            # auto 비활성 + 임무도 없으면 아무것도 하지 않음
+            has_mission = bool(_active_mission_id)
+            if not (_auto_state["enabled"] or has_mission):
+                _time.sleep(AUTO_SIM_POLL_SEC)
+                continue
 
-                if _any_satellite_moved(sats):
-                    # 위치 스냅샷 갱신
-                    _auto_state["last_positions"] = {
-                        s["id"]: (s["lat"], s["lon"]) for s in sats
+            if _auto_state["running"]:
+                _time.sleep(AUTO_SIM_POLL_SEC)
+                continue
+
+            # ── 임무 모드 ─────────────────────────────────────────────────
+            if has_mission:
+                mission = _missions.get(_active_mission_id)
+                if not mission:
+                    _active_mission_id = None
+                    continue
+
+                next_wp = next(
+                    (wp for wp in mission["waypoints"] if wp["status"] == "pending"),
+                    None,
+                )
+
+                if next_wp is None:
+                    # 모든 웨이포인트 완료
+                    mission["status"]      = "complete"
+                    mission["finished_at"] = datetime.utcnow().isoformat()
+                    _save_missions_to_file()
+                    logger.info("[AutoSim/Mission] 임무 완료: %s", _active_mission_id)
+                    _active_mission_id = None
+                    continue
+
+                # 웨이포인트 실행
+                wp_seq = next_wp["seq"] + 1
+                total  = len(mission["waypoints"])
+                logger.info(
+                    "[AutoSim/Mission] WP %d/%d — %s (lat=%.4f lon=%.4f)",
+                    wp_seq, total, next_wp["name"], next_wp["lat"], next_wp["lon"],
+                )
+                next_wp["status"] = "running"
+                _save_missions_to_file()
+
+                with _auto_lock:
+                    _auto_state["running"] = True
+                try:
+                    from simulator_runner import run_step_at
+                    result = run_step_at(
+                        lat=next_wp["lat"],
+                        lon=next_wp["lon"],
+                        name=next_wp.get("name", "임무 위성"),
+                        target_description=next_wp.get("target_description", ""),
+                    )
+                    _finish_wp(next_wp, result)
+                    _auto_state["run_count"]  += 1
+                    _auto_state["last_run"]    = datetime.utcnow().isoformat()
+                    _auto_state["last_success"]= result["success"]
+                    _auto_state["last_elapsed"]= result["elapsed_s"]
+                    _auto_state["last_images"] = result.get("images", [])
+                    _auto_state["last_active"] = {
+                        "name": next_wp.get("name", "임무 위성"),
+                        "lat":  next_wp["lat"],
+                        "lon":  next_wp["lon"],
                     }
-
+                except Exception as exc:
+                    next_wp["status"] = "failed"
+                    next_wp["error"]  = str(exc)[:300]
+                    logger.error("[AutoSim/Mission] WP 실행 오류: %s", exc)
+                finally:
+                    _save_missions_to_file()
+                    _notify_db_updated(
+                        run_count=_auto_state["run_count"],
+                        success=_auto_state.get("last_success", False),
+                        elapsed=_auto_state.get("last_elapsed", 0),
+                        changed=["reports", "detections"],
+                    )
                     with _auto_lock:
-                        _auto_state["running"] = True
+                        _auto_state["running"] = False
 
-                    logger.info("[AutoSim] 좌표 변경 감지 → 파이프라인 시작 (실행 #%d)",
-                                _auto_state["run_count"] + 1)
-                    try:
-                        from simulator_runner import run_step
-                        result = run_step()
-                        # 바다 위 → 파이프라인 건너뜀 (run_count 미증가, SSE 미전송)
-                        if result.get("skipped"):
-                            logger.info("[AutoSim] 건너뜀 — %s",
-                                        result.get("skip_reason", ""))
-                        else:
-                            _auto_state["run_count"]    += 1
-                            _auto_state["last_run"]      = datetime.utcnow().isoformat()
-                            _auto_state["last_success"]  = result["success"]
-                            _auto_state["last_elapsed"]  = result["elapsed_s"]
-                            _auto_state["last_images"]   = result.get("images", [])
-                            _auto_state["last_active"]   = result.get("active")
-                            logger.info("[AutoSim] 완료 (#%d, %.1fs, success=%s)",
-                                        _auto_state["run_count"],
-                                        result["elapsed_s"],
-                                        result["success"])
-                            # 파이프라인 완료 → SSE 실시간 알림
-                            _notify_db_updated(
-                                run_count=_auto_state["run_count"],
-                                success=result["success"],
-                                elapsed=result["elapsed_s"],
-                            )
-                    except Exception as exc:
-                        logger.error("[AutoSim] 실행 오류: %s", exc)
-                        _notify_db_updated(run_count=_auto_state["run_count"], success=False)
-                    finally:
-                        with _auto_lock:
-                            _auto_state["running"] = False
+            # ── 일반 궤도 모드 ─────────────────────────────────────────────
+            else:
+                sats = get_positions()
+                if not _any_satellite_moved(sats):
+                    _time.sleep(AUTO_SIM_POLL_SEC)
+                    continue
+
+                _auto_state["last_positions"] = {
+                    s["id"]: (s["lat"], s["lon"]) for s in sats
+                }
+                with _auto_lock:
+                    _auto_state["running"] = True
+
+                logger.info("[AutoSim] 좌표 변경 감지 → 파이프라인 시작 (#%d)",
+                            _auto_state["run_count"] + 1)
+                try:
+                    from simulator_runner import run_step
+                    result = run_step()
+                    if result.get("skipped"):
+                        logger.info("[AutoSim] 건너뜀 — %s", result.get("skip_reason", ""))
+                    else:
+                        _auto_state["run_count"]   += 1
+                        _auto_state["last_run"]     = datetime.utcnow().isoformat()
+                        _auto_state["last_success"] = result["success"]
+                        _auto_state["last_elapsed"] = result["elapsed_s"]
+                        _auto_state["last_images"]  = result.get("images", [])
+                        _auto_state["last_active"]  = result.get("active")
+                        logger.info("[AutoSim] 완료 (#%d, %.1fs, success=%s)",
+                                    _auto_state["run_count"],
+                                    result["elapsed_s"], result["success"])
+                        _notify_db_updated(
+                            run_count=_auto_state["run_count"],
+                            success=result["success"],
+                            elapsed=result["elapsed_s"],
+                        )
+                except Exception as exc:
+                    logger.error("[AutoSim] 실행 오류: %s", exc)
+                    _notify_db_updated(run_count=_auto_state["run_count"], success=False)
+                finally:
+                    with _auto_lock:
+                        _auto_state["running"] = False
 
         except Exception as exc:
             logger.error("[AutoSim] 루프 오류: %s", exc)
@@ -445,15 +495,30 @@ def api_satellites():
 @app.get("/api/simulator/status")
 def api_simulator_status():
     """자동 시뮬레이션 현재 상태 조회."""
+    mission_info = None
+    if _active_mission_id:
+        m = _missions.get(_active_mission_id)
+        if m:
+            total     = len(m["waypoints"])
+            completed = sum(1 for wp in m["waypoints"] if wp["status"] in ("complete", "failed"))
+            running_wp = next((wp for wp in m["waypoints"] if wp["status"] == "running"), None)
+            mission_info = {
+                "id":          m["id"],
+                "name":        m["name"],
+                "wp_total":    total,
+                "wp_done":     completed,
+                "current_wp":  running_wp["name"] if running_wp else None,
+            }
     return {
-        "auto_enabled": _auto_state["enabled"],
-        "running":      _auto_state["running"],
-        "run_count":    _auto_state["run_count"],
-        "last_run":     _auto_state["last_run"],
-        "last_success": _auto_state["last_success"],
-        "last_elapsed": _auto_state["last_elapsed"],
-        "last_images":  _auto_state["last_images"],
-        "last_active":  _auto_state["last_active"],
+        "auto_enabled":  _auto_state["enabled"],
+        "running":       _auto_state["running"],
+        "run_count":     _auto_state["run_count"],
+        "last_run":      _auto_state["last_run"],
+        "last_success":  _auto_state["last_success"],
+        "last_elapsed":  _auto_state["last_elapsed"],
+        "last_images":   _auto_state["last_images"],
+        "last_active":   _auto_state["last_active"],
+        "active_mission": mission_info,
     }
 
 
@@ -1218,22 +1283,27 @@ def api_get_mission(mission_id: str):
 
 @app.post("/api/mission/{mission_id}/execute")
 def api_execute_mission(mission_id: str):
-    """임무 실행 시작 (백그라운드 스레드)."""
+    """임무를 자동 시뮬레이터에 등록하여 실행. 웨이포인트를 순서대로 처리."""
+    global _active_mission_id
     with _mission_lock:
         m = _missions.get(mission_id)
     if not m:
         raise HTTPException(status_code=404, detail="임무 없음")
-    if m["status"] == "running":
-        raise HTTPException(status_code=409, detail="이미 실행 중")
+    if _active_mission_id:
+        raise HTTPException(status_code=409,
+                            detail=f"다른 임무 실행 중 ({_active_mission_id[:8]}). 완료 후 시도하세요.")
     # 상태 초기화
-    m["status"] = "pending"
+    m["status"]      = "running"
+    m["started_at"]  = datetime.utcnow().isoformat()
+    m["finished_at"] = None
     for wp in m["waypoints"]:
-        wp["status"] = "pending"
+        wp["status"]    = "pending"
         wp["report_id"] = None
-        wp["error"] = None
+        wp["error"]     = None
+        wp["elapsed_s"] = None
     _save_missions_to_file()
-    t = threading.Thread(target=_run_mission_background, args=(mission_id,), daemon=True)
-    t.start()
+    _active_mission_id = mission_id
+    logger.info("[Mission] 임무 등록: %s (%d WP)", m["name"], len(m["waypoints"]))
     return {"status": "started", "mission_id": mission_id}
 
 
