@@ -54,6 +54,11 @@ def parse_args():
         default=None,
         help="Override LLM backend (huggingface or ollama)",
     )
+    parser.add_argument(
+        "--target-description",
+        default="",
+        help="임무계획에서 입력한 표적 설명 (LLM 보고서 생성 시 컨텍스트로 활용)",
+    )
     return parser.parse_args()
 
 
@@ -85,6 +90,7 @@ def main():
     report = pipeline.run(
         metadata_json=args.metadata,
         report_output_path=args.report_output,
+        target_description=args.target_description,
     )
 
     # Print report to stdout

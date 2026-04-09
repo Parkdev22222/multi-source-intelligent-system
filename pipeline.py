@@ -322,6 +322,7 @@ class MavenPipeline:
         self,
         session_id: str,
         output_path: Optional[str] = None,
+        target_description: str = "",
     ) -> str:
         """Retrieve latest pairings and generate the military report."""
         pairings = get_pairings_by_session(session_id)
@@ -338,7 +339,8 @@ class MavenPipeline:
             pairings = [p for p in pairings if p.pairing_time == latest_pt]
 
         report = self.reporter.generate_report(
-            pairings, output_path=output_path, session_id=session_id
+            pairings, output_path=output_path, session_id=session_id,
+            target_description=target_description,
         )
         return report
 
@@ -482,6 +484,7 @@ class MavenPipeline:
         self,
         metadata_json: str,
         report_output_path: Optional[str] = None,
+        target_description: str = "",
     ) -> str:
         """
         Execute the full pipeline end-to-end.
@@ -523,7 +526,8 @@ class MavenPipeline:
 
         # --- Step 3: Reporting ---
         logger.info("[Pipeline] Step 3/3 – Military report generation (EXAONE4-32b)")
-        report = self._generate_report(session_id, report_output_path)
+        report = self._generate_report(session_id, report_output_path,
+                                        target_description=target_description)
 
         logger.info(f"[Pipeline] Pipeline complete.  session={session_id}")
         return report

@@ -425,6 +425,7 @@ def run_step_at(
     lat: float,
     lon: float,
     name: str = "임무 위성",
+    target_description: str = "",
     image_mode: str = None,
 ) -> dict:
     """
@@ -478,8 +479,11 @@ def run_step_at(
 
     # ── 파이프라인 실행 ────────────────────────────────────────────────────
     REPORT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    cmd = list(PIPELINE_CMD)
+    if target_description:
+        cmd += ["--target-description", target_description]
     proc = subprocess.run(
-        PIPELINE_CMD, capture_output=True, text=True, timeout=1800,
+        cmd, capture_output=True, text=True, timeout=1800,
         cwd=str(BASE_DIR),
     )
     elapsed = time.time() - t0

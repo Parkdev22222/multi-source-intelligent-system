@@ -90,7 +90,7 @@ def _class_counts(objs) -> str:
     return "  ".join(f"{cls}:{n}" for cls, n in counts.most_common())
 
 
-def _build_user_prompt(pairings: List[PairingRecord]) -> str:
+def _build_user_prompt(pairings: List[PairingRecord], target_description: str = "") -> str:
     """Serialise pairing records into a compact prompt for the LLM."""
 
     def fmt_dt(dt: Optional[datetime]) -> str:
@@ -119,7 +119,14 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     time_past = min(past_times).strftime("%Y-%m-%dT%H:%M:%SZ") if past_times else "UNKNOWN"
     time_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
-    lines = [
+    lines = []
+    if target_description.strip():
+        lines += [
+            "=== 표적 정보 (임무계획 기재) ===",
+            target_description.strip(),
+            "",
+        ]
+    lines += [
         f"PAST_OBS: {time_past}  CURRENT_OBS: {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
         f"CURRENT_FRAME_DETECTIONS: {n_current_detections}"
         f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}  MOVED:{n_moved}"
@@ -464,6 +471,7 @@ class MilitaryReporter:
         pairings: List[PairingRecord],
         output_path: Optional[str] = None,
         session_id: Optional[str] = None,
+        target_description: str = "",
     ) -> str:
         """
         Generate a military intelligence report from the given pairing records,
@@ -508,7 +516,7 @@ class MilitaryReporter:
                 logger.info("[Reporter] 교리 컨텍스트 삽입 완료.")
 
         system_prompt = _build_system_prompt(doctrine_context)
-        user_prompt = _build_user_prompt(pairings)
+        user_prompt = _build_user_prompt(pairings, target_description=target_description)
 
         logger.info(f"[Reporter] Generating military report for {len(pairings)} pairings...")
         report_text = self._backend.generate(system_prompt, user_prompt)

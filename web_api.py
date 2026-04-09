@@ -171,6 +171,7 @@ def _run_mission_background(mission_id: str):
                 lat=wp["lat"],
                 lon=wp["lon"],
                 name=wp.get("name", "임무 위성"),
+                target_description=wp.get("target_description", ""),
             )
             if result["success"]:
                 # 가장 최근 생성된 보고서 ID를 웨이포인트에 연결
@@ -1152,9 +1153,10 @@ async def api_events():
 # ══════════════════════════════════════════════════════════════════════════
 
 class _WaypointIn(BaseModel):
-    name: str = ""
-    lat:  float
-    lon:  float
+    name:               str = ""
+    lat:                float
+    lon:                float
+    target_description: str = ""
 
 
 class _MissionIn(BaseModel):
@@ -1175,15 +1177,16 @@ def api_create_mission(body: _MissionIn):
         "finished_at": None,
         "waypoints": [
             {
-                "id":        str(_uuid.uuid4()),
-                "seq":       i,
-                "name":      wp.name or f"WP{i+1}",
-                "lat":       wp.lat,
-                "lon":       wp.lon,
-                "status":    "pending",
-                "report_id": None,
-                "elapsed_s": None,
-                "error":     None,
+                "id":                 str(_uuid.uuid4()),
+                "seq":                i,
+                "name":               wp.name or f"WP{i+1}",
+                "lat":                wp.lat,
+                "lon":                wp.lon,
+                "target_description": wp.target_description,
+                "status":             "pending",
+                "report_id":          None,
+                "elapsed_s":          None,
+                "error":              None,
             }
             for i, wp in enumerate(body.waypoints)
         ],
