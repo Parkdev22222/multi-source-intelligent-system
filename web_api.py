@@ -222,7 +222,7 @@ _dashboard_path = Path(__file__).parent / "dashboard" / "index.html"
 # ══════════════════════════════════════════════════════════════════════════
 
 _auto_state: dict = {
-    "enabled":        True,   # 자동 실행 ON/OFF
+    "enabled":        False,  # 자동 실행 ON/OFF  (기본 OFF — 사용자가 수동으로 활성화)
     "running":        False,  # 파이프라인 실행 중 여부
     "last_run":       None,   # 마지막 완료 시각 (ISO str)
     "run_count":      0,      # 누적 실행 횟수
