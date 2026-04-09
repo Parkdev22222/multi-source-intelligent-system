@@ -121,6 +121,86 @@ def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float 
                 pass
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# 임무계획 (Mission Planning) — JSON 파일 영속 저장
+# ══════════════════════════════════════════════════════════════════════════
+
+import uuid as _uuid
+
+_MISSIONS_FILE = Path(__file__).parent / "data" / "missions.json"
+_missions: dict = {}   # mission_id → mission dict
+_mission_lock = threading.Lock()
+
+
+def _load_missions_from_file():
+    if _MISSIONS_FILE.exists():
+        try:
+            data = json.loads(_MISSIONS_FILE.read_text(encoding="utf-8"))
+            _missions.update(data)
+        except Exception:
+            pass
+
+
+def _save_missions_to_file():
+    _MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with _mission_lock:
+        _MISSIONS_FILE.write_text(
+            json.dumps(_missions, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+
+def _run_mission_background(mission_id: str):
+    """임무 각 웨이포인트를 순차 실행하는 백그라운드 스레드 함수."""
+    from simulator_runner import run_step_at
+    from src.database.reports_db import get_all_reports
+
+    with _mission_lock:
+        mission = _missions.get(mission_id)
+    if not mission:
+        return
+
+    mission["status"] = "running"
+    mission["started_at"] = datetime.utcnow().isoformat()
+    _save_missions_to_file()
+
+    for wp in mission["waypoints"]:
+        wp["status"] = "running"
+        _save_missions_to_file()
+        try:
+            result = run_step_at(
+                lat=wp["lat"],
+                lon=wp["lon"],
+                name=wp.get("name", "임무 위성"),
+            )
+            if result["success"]:
+                # 가장 최근 생성된 보고서 ID를 웨이포인트에 연결
+                try:
+                    all_rpts = get_all_reports(limit=5)
+                    if all_rpts:
+                        wp["report_id"] = all_rpts[0].id
+                except Exception:
+                    pass
+                wp["status"] = "complete"
+                wp["elapsed_s"] = result["elapsed_s"]
+            else:
+                wp["status"] = "failed"
+                wp["error"] = result.get("stderr_tail", "")[:300]
+        except Exception as exc:
+            wp["status"] = "failed"
+            wp["error"] = str(exc)[:300]
+            logger.error("[Mission] wp %s 실패: %s", wp["id"], exc)
+
+        _save_missions_to_file()
+        _notify_db_updated(changed=["reports", "detections"])
+
+    mission["status"] = "complete"
+    mission["finished_at"] = datetime.utcnow().isoformat()
+    _save_missions_to_file()
+    logger.info("[Mission] %s 완료", mission_id)
+
+
+_load_missions_from_file()
+
 # 위성영상 정적 파일
 _images_dir = Path(IMAGES_DIR)
 if _images_dir.exists():
@@ -1065,6 +1145,104 @@ async def api_events():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 임무계획 API
+# ══════════════════════════════════════════════════════════════════════════
+
+class _WaypointIn(BaseModel):
+    name: str = ""
+    lat:  float
+    lon:  float
+
+
+class _MissionIn(BaseModel):
+    name:      str
+    waypoints: List[_WaypointIn]
+
+
+@app.post("/api/missions")
+def api_create_mission(body: _MissionIn):
+    """임무 생성 (웨이포인트 목록 포함)."""
+    mid = str(_uuid.uuid4())
+    mission = {
+        "id":          mid,
+        "name":        body.name,
+        "created_at":  datetime.utcnow().isoformat(),
+        "status":      "pending",
+        "started_at":  None,
+        "finished_at": None,
+        "waypoints": [
+            {
+                "id":        str(_uuid.uuid4()),
+                "seq":       i,
+                "name":      wp.name or f"WP{i+1}",
+                "lat":       wp.lat,
+                "lon":       wp.lon,
+                "status":    "pending",
+                "report_id": None,
+                "elapsed_s": None,
+                "error":     None,
+            }
+            for i, wp in enumerate(body.waypoints)
+        ],
+    }
+    with _mission_lock:
+        _missions[mid] = mission
+    _save_missions_to_file()
+    return mission
+
+
+@app.get("/api/missions")
+def api_list_missions():
+    """임무 목록 반환 (최신 순)."""
+    with _mission_lock:
+        lst = list(_missions.values())
+    lst.sort(key=lambda m: m.get("created_at", ""), reverse=True)
+    return lst
+
+
+@app.get("/api/mission/{mission_id}")
+def api_get_mission(mission_id: str):
+    """임무 단건 조회 (상태 폴링용)."""
+    with _mission_lock:
+        m = _missions.get(mission_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="임무 없음")
+    return m
+
+
+@app.post("/api/mission/{mission_id}/execute")
+def api_execute_mission(mission_id: str):
+    """임무 실행 시작 (백그라운드 스레드)."""
+    with _mission_lock:
+        m = _missions.get(mission_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="임무 없음")
+    if m["status"] == "running":
+        raise HTTPException(status_code=409, detail="이미 실행 중")
+    # 상태 초기화
+    m["status"] = "pending"
+    for wp in m["waypoints"]:
+        wp["status"] = "pending"
+        wp["report_id"] = None
+        wp["error"] = None
+    _save_missions_to_file()
+    t = threading.Thread(target=_run_mission_background, args=(mission_id,), daemon=True)
+    t.start()
+    return {"status": "started", "mission_id": mission_id}
+
+
+@app.delete("/api/mission/{mission_id}")
+def api_delete_mission(mission_id: str):
+    """임무 삭제."""
+    with _mission_lock:
+        if mission_id not in _missions:
+            raise HTTPException(status_code=404, detail="임무 없음")
+        del _missions[mission_id]
+    _save_missions_to_file()
+    return {"status": "deleted"}
 
 
 def _report_dict(r) -> dict:

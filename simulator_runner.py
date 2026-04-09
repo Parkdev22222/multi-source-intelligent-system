@@ -421,6 +421,90 @@ def run_step(
     }
 
 
+def run_step_at(
+    lat: float,
+    lon: float,
+    name: str = "임무 위성",
+    image_mode: str = None,
+) -> dict:
+    """
+    사용자 지정 위경도에서 파이프라인 1스텝 실행 (임무계획 전용).
+
+    위성 궤도 계산 및 육지 체크를 건너뛰고,
+    사용자가 지정한 lat/lon 을 촬영 좌표로 사용한다.
+
+    Args:
+        lat:        촬영 위도
+        lon:        촬영 경도
+        name:       위성/센서 이름 (metadata 기록용)
+        image_mode: "separate" | "crop" (None 이면 config 기본값)
+
+    Returns:
+        run_step() 과 동일한 dict 구조
+    """
+    mode = image_mode or IMAGE_MODE
+    t0   = time.time()
+
+    logger.info(
+        "[SimRunner/Mission] 임무 위치 실행: lat=%.4f lon=%.4f name=%s", lat, lon, name
+    )
+
+    # ── 이미지 선택 ────────────────────────────────────────────────────────
+    explicit_times = None
+    crop_fracs     = None
+    if mode == "crop":
+        imgs, past_time, curr_time, crop_fracs = _pick_and_crop_image(
+            axis=CROP_AXIS, crop_size=CROP_SIZE, crop_offset=CROP_OFFSET,
+        )
+        explicit_times = [past_time, curr_time]
+    else:
+        imgs = _pick_images(2)
+
+    logger.info("[SimRunner/Mission] 이미지: %s", imgs)
+
+    # ── metadata.json 업데이트 ────────────────────────────────────────────
+    sat_stub = {"lat": lat, "lon": lon, "name": name, "id": f"MISSION_{name}"}
+    meta = _build_metadata(
+        sat_stub, imgs, explicit_times=explicit_times,
+        crop_axis=CROP_AXIS if mode == "crop" else None,
+        crop_size_ratio=CROP_SIZE if mode == "crop" else None,
+        crop_fracs=crop_fracs,
+    )
+    METADATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    METADATA_PATH.write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    logger.info("[SimRunner/Mission] metadata.json 업데이트 완료")
+
+    # ── 파이프라인 실행 ────────────────────────────────────────────────────
+    REPORT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        PIPELINE_CMD, capture_output=True, text=True, timeout=1800,
+        cwd=str(BASE_DIR),
+    )
+    elapsed = time.time() - t0
+    success = proc.returncode == 0
+
+    if success:
+        logger.info("[SimRunner/Mission] 파이프라인 완료 (%.1fs)", elapsed)
+    else:
+        logger.error(
+            "[SimRunner/Mission] 파이프라인 오류 (rc=%d):\n%s",
+            proc.returncode, proc.stderr[-1500:],
+        )
+
+    return {
+        "success":     success,
+        "elapsed_s":   round(elapsed, 2),
+        "image_mode":  mode,
+        "satellites":  [],
+        "active":      sat_stub,
+        "images":      imgs,
+        "stdout_tail": proc.stdout[-1500:] if proc.stdout else "",
+        "stderr_tail": proc.stderr[-500:]  if proc.stderr else "",
+    }
+
+
 # ── 독립 실행 ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     logging.basicConfig(
