@@ -630,8 +630,38 @@ def _image_with_detections_b64(
 
 @app.get("/api/satellites")
 def api_satellites():
-    """위성 모의기에서 계산된 현재 위성 위치 목록을 반환."""
+    """위성 모의기에서 계산된 현재 위성 위치 목록을 반환.
+
+    캠페인/임무 실행 중인 위성은 궤도 좌표 대신 해당 임무 WP 좌표로 오버라이드:
+      - running WP 가 있으면 → 그 WP 좌표
+      - 캠페인이 running/complete 이고 완료 WP 가 있으면 → 마지막 완료 WP 좌표
+    """
     sats = get_positions()
+
+    camp_status = _campaign.get("status", "idle")
+    with _sat_lock:
+        for sat in sats:
+            sm = _sat_missions.get(sat["id"])
+            if not sm or not sm.get("waypoints"):
+                continue
+            wps = sm["waypoints"]
+
+            # 실행 중인 WP
+            running_wp = next((wp for wp in wps if wp["status"] == "running"), None)
+            if running_wp:
+                sat["lat"] = running_wp["lat"]
+                sat["lon"] = running_wp["lon"]
+                sat["at_mission"] = True
+                continue
+
+            # 캠페인이 진행/완료 중 → 마지막 처리된 WP 좌표 유지
+            if camp_status in ("running", "complete"):
+                done_wps = [wp for wp in wps if wp["status"] in ("complete", "failed")]
+                if done_wps:
+                    sat["lat"] = done_wps[-1]["lat"]
+                    sat["lon"] = done_wps[-1]["lon"]
+                    sat["at_mission"] = True
+
     return {"satellites": sats, "count": len(sats)}
 
 

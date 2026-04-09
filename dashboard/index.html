@@ -300,6 +300,9 @@
     .sat-dot { width:20px; height:20px; cursor:pointer; transition:transform .1s; font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 0 2px rgba(0,0,0,.8)); }
     .sat-dot:hover { transform:scale(1.6); }
     .sat-dot.active-sat { filter:drop-shadow(0 0 4px #00ff88); }
+    .sat-dot.at-mission { filter:drop-shadow(0 0 6px #f59e0b); animation:mission-pulse 1.2s ease-in-out infinite; }
+    .sat-dot.active-sat.at-mission { filter:drop-shadow(0 0 6px #00ff88) drop-shadow(0 0 10px #f59e0b); }
+    @keyframes mission-pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
 
     /* ── 보고서 위치 마커 ── */
     .rpt-map-dot {
@@ -1206,9 +1209,10 @@ function renderMarkers() {
   satellites.forEach(sat => {
     const isActive = (sat.id === activeSatId);
     const el = document.createElement('div');
-    el.className = `sat-dot ${isActive ? 'active-sat' : ''}`;
-    el.title = sat.name;
-    el.textContent = '🛰️';
+    const atMission = !!sat.at_mission;
+    el.className = `sat-dot${isActive ? ' active-sat' : ''}${atMission ? ' at-mission' : ''}`;
+    el.title = atMission ? `${sat.name} [임무 수행 중]` : sat.name;
+    el.textContent = atMission ? '🎯' : '🛰️';
     const marker = L.marker([sat.lat, sat.lon], {
       icon: L.divIcon({ html: el, className: '', iconSize: [20, 20], iconAnchor: [10, 10] }),
     }).addTo(map);
@@ -1233,7 +1237,7 @@ function renderSidebarList() {
     const div = document.createElement('div');
     div.className = `sat-item${sat.id === activeSatId ? ' active' : ''}`;
     div.innerHTML = `
-      <div class="sat-name">${sat.name}</div>
+      <div class="sat-name">${sat.name}${sat.at_mission ? ' <span style="color:var(--amber);font-size:.75em">[임무]</span>' : ''}</div>
       <div class="sat-meta">${sat.id} · ${sat.country} · 고도 ${sat.alt_km}km</div>
       <div class="sat-pos">LAT ${sat.lat.toFixed(3)}° &nbsp; LON ${sat.lon.toFixed(3)}°</div>`;
     div.addEventListener('mouseenter', () => showSatDetail(sat));
