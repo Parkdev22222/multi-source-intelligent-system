@@ -182,6 +182,76 @@ def _in_fov(lat: float, lon: float, bounds: Optional[tuple]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Duplicate-pairing guard
+# ---------------------------------------------------------------------------
+
+# Status priority: matched/moved (양쪽 프레임 모두 확인) > disappeared (현재 FOV 내 소실)
+# > current_not_included / past_not_included (FOV 밖) > new (단독 출현)
+_STATUS_PRIORITY: dict = {
+    "moved":                0,
+    "matched":              1,
+    "disappeared":          2,
+    "past_not_included":    3,
+    "current_not_included": 4,
+    "new":                  5,
+}
+
+
+def _dedup_pairing_records(records: List[PairingRecord]) -> List[PairingRecord]:
+    """동일 past_detection_id(또는 current_detection_id)에 대해 페어링 레코드가 중복으로
+    생성된 경우 우선순위가 높은(더 정보량이 많은) 레코드 하나만 남긴다.
+
+    '동일·이동(moved) + 현재 미포함(current_not_included)' 처럼 한 객체에 두 개의 상태가
+    붙는 버그를 최종 방어선으로 차단한다.
+    """
+    def _pri(r: PairingRecord) -> int:
+        return _STATUS_PRIORITY.get(r.status, 99)
+
+    # past_detection_id 기준 중복 제거
+    past_seen: dict = {}   # past_id → best PairingRecord
+    for r in records:
+        pid = r.past_detection_id
+        if pid is None:
+            continue
+        if pid not in past_seen or _pri(r) < _pri(past_seen[pid]):
+            if pid in past_seen:
+                logger.warning(
+                    "[Pairing] 중복 past_detection_id=%s: '%s' 를 '%s' 로 교체",
+                    pid[:8], past_seen[pid].status, r.status,
+                )
+            past_seen[pid] = r
+
+    # current_detection_id 기준 중복 제거 (new / past_not_included 에서 발생 가능)
+    cur_seen: dict = {}    # cur_id → best PairingRecord
+    for r in records:
+        cid = r.current_detection_id
+        if cid is None:
+            continue
+        if cid not in cur_seen or _pri(r) < _pri(cur_seen[cid]):
+            if cid in cur_seen:
+                logger.warning(
+                    "[Pairing] 중복 current_detection_id=%s: '%s' 를 '%s' 로 교체",
+                    cid[:8], cur_seen[cid].status, r.status,
+                )
+            cur_seen[cid] = r
+
+    # 두 기준 모두 통과한 레코드만 유지
+    kept = []
+    for r in records:
+        pid = r.past_detection_id
+        cid = r.current_detection_id
+        keep = True
+        if pid is not None and past_seen.get(pid) is not r:
+            keep = False
+        if cid is not None and cur_seen.get(cid) is not r:
+            keep = False
+        if keep:
+            kept.append(r)
+
+    return kept
+
+
+# ---------------------------------------------------------------------------
 # Static-object cross-image similarity helpers
 # ---------------------------------------------------------------------------
 
@@ -639,7 +709,10 @@ def pair_by_tracking(
     # ------------------------------------------------------------------
     cur_fov = _collect_fov_bounds(current_detections)
     for past in past_detections:
-        if past.id in tracked_past_ids:
+        # tracked_past_ids 가 아닌 matched_past_ids 로 guard:
+        # Step 0 에서 geo-matched 된 객체(matched_past_ids 에 추가, tracked_past_ids 에는 없을 수 있음)도
+        # 제대로 스킵해야 중복 레코드 생성을 막을 수 있다.
+        if past.id in matched_past_ids:
             continue
         past_status = "disappeared" if _in_fov(past.lat, past.lon, cur_fov) else "current_not_included"
         pr = PairingRecord(
@@ -889,6 +962,8 @@ def pair_by_tracking(
                     "x1": synth.bbox_x1, "y1": synth.bbox_y1,
                     "x2": synth.bbox_x2, "y2": synth.bbox_y2,
                 }
+
+    pairing_records = _dedup_pairing_records(pairing_records)
 
     logger.info(
         f"[Pairing/tracker] ({region_lat:.4f}, {region_lon:.4f}): "
@@ -1566,6 +1641,8 @@ def pair_by_similarity(
                     "x1": synth.bbox_x1, "y1": synth.bbox_y1,
                     "x2": synth.bbox_x2, "y2": synth.bbox_y2,
                 }
+
+    pairing_records = _dedup_pairing_records(pairing_records)
 
     logger.info(
         f"[Pairing/similarity] ({region_lat:.4f}, {region_lon:.4f}): "
