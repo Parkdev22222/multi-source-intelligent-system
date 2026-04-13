@@ -11,11 +11,12 @@ Super-Resolution preprocessing for satellite/aerial imagery.
 """
 
 import logging
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-from src.config import SR_TARGET_H, SR_TARGET_W
+from src.config import SR_TARGET_H, SR_TARGET_W, REALESRGAN_X4_PATH, REALESRGAN_X2_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -29,22 +30,30 @@ def _sr_output_size(w: int, h: int) -> tuple[int, int]:
 
 
 def _upscale_realesrgan(image_np: np.ndarray, esrgan_scale: int) -> np.ndarray:
-    """Real-ESRGAN x{esrgan_scale} 업스케일."""
+    """Real-ESRGAN x{esrgan_scale} 업스케일 (로컬 가중치 파일 사용)."""
     from basicsr.archs.rrdbnet_arch import RRDBNet
     from realesrgan import RealESRGANer
+
+    model_path = REALESRGAN_X4_PATH if esrgan_scale == 4 else REALESRGAN_X2_PATH
+
+    if not Path(model_path).is_file():
+        raise FileNotFoundError(
+            f"Real-ESRGAN 가중치 파일을 찾을 수 없습니다: {model_path}\n"
+            f"다운로드 명령:\n"
+            f"  wget -P {Path(model_path).parent} "
+            f"https://github.com/xinntao/Real-ESRGAN/releases/download/"
+            f"{'v0.1.0' if esrgan_scale == 4 else 'v0.2.1'}/"
+            f"RealESRGAN_x{esrgan_scale}plus.pth"
+        )
 
     model = RRDBNet(
         num_in_ch=3, num_out_ch=3,
         num_feat=64, num_block=23, num_grow_ch=32,
         scale=esrgan_scale,
     )
-    model_url = (
-        f"https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/"
-        f"RealESRGAN_x{esrgan_scale}plus.pth"
-    )
     upsampler = RealESRGANer(
         scale=esrgan_scale,
-        model_path=model_url,
+        model_path=model_path,
         model=model,
         tile=512,
         tile_pad=10,

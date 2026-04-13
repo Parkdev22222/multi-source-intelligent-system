@@ -24,6 +24,20 @@ REPORTS_DB_PATH = str(DB_DIR / "reports.db")
 SR_TARGET_W = int(os.getenv("SR_TARGET_W", "8000"))
 SR_TARGET_H = int(os.getenv("SR_TARGET_H", "6000"))
 
+# Real-ESRGAN 로컬 가중치 경로.
+# 환경변수 REALESRGAN_X4_PATH / REALESRGAN_X2_PATH 로 런타임 오버라이드 가능.
+# 다운로드:
+#   wget https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth
+#   wget https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth
+REALESRGAN_X4_PATH = os.getenv(
+    "REALESRGAN_X4_PATH",
+    "/home/work/AILAB/LanguageModels/VLM/realesrgan/RealESRGAN_x4plus.pth",
+)
+REALESRGAN_X2_PATH = os.getenv(
+    "REALESRGAN_X2_PATH",
+    "/home/work/AILAB/LanguageModels/VLM/realesrgan/RealESRGAN_x2plus.pth",
+)
+
 # --- SAM3 Model (Segment Anything Model 3 by Meta AI) ---
 # SAM3 performs text-prompted concept segmentation in a single forward pass,
 # replacing the SAM2 + CLIP two-stage pipeline.
