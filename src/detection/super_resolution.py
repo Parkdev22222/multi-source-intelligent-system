@@ -63,7 +63,13 @@ def _upscale_fsrcnn(image_np: np.ndarray, scale: int) -> np.ndarray:
     # OpenCV는 BGR 사용 → RGB 입력을 변환 후 처리, 결과를 다시 RGB로
     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     result_bgr = sr.upsample(image_bgr)
-    return cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGB)
+    result = cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGB)
+
+    # DNN 네트워크 및 중간 버퍼 명시적 해제
+    del sr, image_bgr, result_bgr
+    import gc; gc.collect()
+
+    return result
 
 
 def _upscale_edsr(image_np: np.ndarray, scale: int) -> np.ndarray:
