@@ -42,10 +42,246 @@ TEMPORAL PAIRING  ──►  current frame ↔ most-recent past frame
 PAIRING DB (SQLite)
   └─ pairing_records     (current_det ↔ past_det, status, session_id)
          │
+         ├─────────────────────────────────────────────────────────►
+         │                                                          │
+         ▼                                                  GRAPHRAG LAYER
+REPORTING LAYER  ◄──────────────────────────────────  (historical context)
+  EXAONE4-32b LLM + GraphRAG 과거 패턴 컨텍스트
+  → Military change-detection intelligence report
+         │
          ▼
-REPORTING LAYER  ──►  EXAONE4-32b LLM
-                       → Military change-detection intelligence report
+  GRAPH DB (SQLite)  ◄──  EntityExtractor  ◄──  PairingRecords
+  ├─ graph_entities    (location, asset 노드)
+  ├─ graph_relations   (found_at, co_occurred_with 엣지)
+  └─ graph_communities (Louvain 클러스터 + 요약)
 ```
+
+---
+
+## GraphRAG 지식 그래프 (Knowledge Graph)
+
+파이프라인이 실행될 때마다 탐지·페어링 결과가 **지식 그래프(Knowledge Graph)**로 누적됩니다.
+이 그래프는 다음 실행 시 LLM 보고서 생성 프롬프트에 **역사적 컨텍스트**로 주입되어,
+단발성 탐지가 아닌 **시계열 인텔리전스 패턴**을 LLM이 참고할 수 있게 합니다.
+
+이 설계는 [Microsoft GraphRAG](https://arxiv.org/abs/2404.16130)의 핵심 원리인
+"엔티티-관계 그래프 구축 → 커뮤니티 탐지 → 계층적 요약 → 검색 보강 생성"을
+MSIS 군사 이미지 도메인에 맞게 구현한 것입니다.
+
+---
+
+### GraphRAG 동작 원리
+
+```
+[파이프라인 실행마다]
+
+  PairingRecord 배치
+        │
+        ▼
+  EntityExtractor                            ← LLM 없이 구조적 추출
+        │
+        ├─ Location 노드 생성/갱신            "loc:37.50,127.00"
+        │   (lat/lon 0.01° 격자로 군집화)
+        │
+        ├─ Asset 노드 생성/갱신               "asset:military_tank:37.50,127.00"
+        │   (object_class × location 고유 쌍)
+        │   속성: new_count / disappeared_count / matched_count / moved_count
+        │         total_confidence / first_seen / last_seen / sessions[]
+        │
+        ├─ found_at 엣지       : asset → location
+        │
+        └─ co_occurred_with 엣지 : asset ↔ asset  (같은 세션·지역에서 함께 탐지된 쌍)
+                                                    엣지 가중치 = 공출현 횟수
+        │
+        ▼
+  NetworkX 인메모리 그래프 갱신
+        │
+        ▼
+  Louvain 커뮤니티 탐지               ← networkx.algorithms.community
+        │                                  (fallback: connected components)
+        ├─ Cluster-0: tank + APC + artillery  →  "기갑 집결 패턴"
+        ├─ Cluster-1: radar + command_post    →  "C2 인프라 패턴"
+        └─ Cluster-2: aircraft + runway       →  "항공 작전 패턴"
+        │
+        ▼
+  CommunityRecord 저장 (graph.db)
+  각 커뮤니티: label, member_ids, member_summary
+```
+
+다음 실행 시 보고서 생성 전에:
+
+```
+  GraphRetriever.get_historical_context(pairings)
+        │
+        ├─ Local Search  : 현재 지역 반경 내 모든 Asset 엔티티 이력 조회
+        │                  (과거 출현 횟수, 소실 횟수, 첫/마지막 탐지 시각)
+        │
+        └─ Global Search : 현재 지역과 겹치는 커뮤니티 요약 조회
+                           (공출현 패턴, 관측 총수, 지역 오버랩 수)
+        │
+        ▼
+  [=== GRAPHRAG HISTORICAL CONTEXT ===] 블록 생성
+        │
+        ▼
+  LLM 프롬프트에 prepend → EXAONE4-32b 보고서 생성
+```
+
+---
+
+### 그래프 데이터 모델
+
+#### 노드 (Entities)
+
+| 타입 | 키 형식 | 속성 |
+|------|---------|------|
+| `location` | `loc:{lat:.2f},{lon:.2f}` | lat, lon |
+| `asset` | `asset:{class_slug}:{lat:.2f},{lon:.2f}` | object_class, new_count, disappeared_count, matched_count, moved_count, total_confidence, first_seen, last_seen, sessions |
+
+**위치 군집화**: lat/lon을 소수점 2자리로 반올림하여 약 1 km 격자 단위로 동일 지역 탐지를 하나의 Location 노드로 통합합니다.
+
+#### 엣지 (Relations)
+
+| 관계 | 방향 | 속성 | 의미 |
+|------|------|------|------|
+| `found_at` | asset → location | count, confidence_sum | 해당 자산이 이 지역에서 탐지된 누적 기록 |
+| `co_occurred_with` | asset ↔ asset | count, locations | 두 자산 클래스가 같은 세션·지역에서 함께 탐지된 횟수 |
+
+#### 커뮤니티 (Communities)
+
+Louvain 알고리즘이 `co_occurred_with` 엣지 가중치를 기반으로 함께 자주 등장하는 자산 클래스군을 자동 군집화합니다.
+
+| 필드 | 설명 |
+|------|------|
+| `label` | 자동 생성 레이블 (예: `Cluster-0: military tank(5), APC(3), artillery(2)`) |
+| `member_ids` | 커뮤니티 소속 Asset 엔티티 ID 목록 |
+| `member_summary` | 자산 종류·위치 수·총 관측·출현·소실 통계 요약 (LLM 불필요, 자동 생성) |
+| `summary` | (선택) LLM 인텔리전스 요약 |
+
+---
+
+### LLM 프롬프트 컨텍스트 예시
+
+파이프라인이 3회 이상 실행된 후 동일 지역 보고서를 생성하면 LLM은 아래와 같은 블록을 참조합니다:
+
+```
+=== GRAPHRAG HISTORICAL CONTEXT ===
+Area centre: (37.500, 127.000)  |  Radius: 0.05°
+
+HISTORICAL ASSET ACTIVITY (graph knowledge base):
+  military tank: 8 obs  (new=5 / persisted=2 / moved=1 / disappeared=3)  avgConf=0.86  first=2026-03-10T06:00Z  last=2026-03-18T12:00Z
+  armored personnel carrier: 5 obs  (new=3 / persisted=2 / moved=0 / disappeared=2)  avgConf=0.79  first=2026-03-11T10:00Z  last=2026-03-18T12:00Z
+  artillery: 3 obs  (new=2 / persisted=1 / moved=0 / disappeared=1)  avgConf=0.71  first=2026-03-13T08:00Z  last=2026-03-17T14:00Z
+
+  Dominant asset classes: military tank:8  armored personnel carrier:5  artillery:3
+
+INTELLIGENCE PATTERN COMMUNITIES (co-occurrence clusters):
+  [Cluster-0: military tank(5), armored personnel carrier(3), artillery(2)]  [↑ 3 local match(es)]
+    Assets: military tank(5), APC(3), artillery(2) | Locations: 1 cluster(s) | Observations: 16 | New deployments: 10 | Disappearances: 6
+=== END HISTORICAL CONTEXT ===
+```
+
+이 컨텍스트를 수신한 LLM은 다음 항목을 강화된 시각으로 작성합니다:
+- **THREAT ASSESSMENT**: 반복 출현 패턴 → 단기 배치가 아닌 지속적 군집화 판단
+- **INTELLIGENCE GAPS**: 과거 5회 출현했다 소실된 전차 행방 불명
+- **RECOMMENDED ACTIONS**: 커뮤니티 패턴("기갑+포병 복합체")이 이전에도 관찰됨 → 상급 기관 에스컬레이션 권고
+
+---
+
+### 파일 구조
+
+```
+src/graph/
+├── __init__.py
+├── models.py            SQLAlchemy ORM (graph_entities, graph_relations, graph_communities)
+├── graph_store.py       GraphStore: SQLite CRUD + NetworkX 그래프 + Louvain 커뮤니티 탐지
+├── entity_extractor.py  PairingRecord → Location/Asset 노드, found_at/co_occurred_with 엣지 추출
+├── graph_retriever.py   LocalSearch / GlobalSearch / get_historical_context()
+└── graph_indexer.py     파이프라인 연동 고수준 API (index_pairings, get_historical_context, stats)
+
+data/db/
+└── graph.db             GraphRAG 전용 SQLite DB (자동 생성)
+```
+
+---
+
+### GraphRAG REST API
+
+웹 서버(`uvicorn web_api:app`) 실행 시 아래 엔드포인트를 사용할 수 있습니다.
+
+| 메서드 | 엔드포인트 | 설명 |
+|--------|-----------|------|
+| `GET` | `/api/graph/stats` | 그래프 통계 (노드·엣지·커뮤니티 수) |
+| `GET` | `/api/graph/entities?lat=&lon=&radius=` | 특정 지역 자산 엔티티 목록 + 이력 통계 |
+| `GET` | `/api/graph/communities` | 전체 커뮤니티(Louvain 군집) 요약 목록 |
+| `GET` | `/api/graph/local-search?lat=&lon=&radius=` | Local + Global 통합 검색 결과 |
+| `POST` | `/api/graph/reindex` | 커뮤니티 감지 강제 재실행 |
+
+#### 예시: 지역 자산 이력 조회
+
+```bash
+curl "http://localhost:8000/api/graph/entities?lat=37.5&lon=127.0&radius=0.1"
+```
+
+```json
+{
+  "entities": [
+    {
+      "id": "asset:military_tank:37.50,127.00",
+      "object_class": "military tank",
+      "new_count": 5,
+      "disappeared_count": 3,
+      "matched_count": 2,
+      "moved_count": 1,
+      "observation_count": 8,
+      "avg_confidence": 0.863,
+      "first_seen": "2026-03-10T06:00:00",
+      "last_seen": "2026-03-18T12:00:00"
+    }
+  ],
+  "count": 3
+}
+```
+
+#### 예시: 커뮤니티 목록 조회
+
+```bash
+curl "http://localhost:8000/api/graph/communities"
+```
+
+```json
+{
+  "communities": [
+    {
+      "community_index": 0,
+      "label": "Cluster-0: military tank(5), armored personnel carrier(3), artillery(2)",
+      "member_count": 6,
+      "member_summary": "Assets: military tank(5), APC(3), artillery(2) | Locations: 1 cluster(s) | Observations: 16 | New deployments: 10 | Disappearances: 6"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+### GraphRAG 환경 변수
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `GRAPHRAG_COMMUNITY_INTERVAL` | `1` | 커뮤니티 감지를 N회 인덱싱마다 실행 (`1` = 매 파이프라인마다) |
+| `GRAPHRAG_CONTEXT_RADIUS` | `0.05` | 과거 컨텍스트 검색 반경 (도 단위, 0.05° ≈ 5.5 km) |
+
+---
+
+### 단발 탐지 vs GraphRAG 비교
+
+| | 단발 탐지 (기존) | GraphRAG 통합 (신규) |
+|---|---|---|
+| 보고서 근거 | 현재 프레임 단독 | 현재 + 누적 이력 그래프 |
+| 위협 평가 | "전차 3대 신규 출현" | "전차 3대 신규 출현 — 이 지역 10일간 5회째 반복 배치, 직전 3회 모두 소실 후 재출현" |
+| 인텔 갭 식별 | 수동 | 커뮤니티 패턴 기반 자동 식별 |
+| LLM 추가 부담 | 없음 | 없음 (컨텍스트 블록은 ~500 토큰) |
+| DB 오버헤드 | 없음 | 경량 SQLite (`graph.db`, 초기 수 KB) |
 
 ---
 
@@ -149,6 +385,13 @@ cp .env.example .env
 | `LLM_MODEL_NAME` | `LGAI-EXAONE/EXAONE-4.0-32B-Instruct` | EXAONE 모델 ID |
 | `OLLAMA_MODEL` | `exaone4:32b` | Ollama 사용 시 모델명 |
 
+**GraphRAG 지식 그래프**
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `GRAPHRAG_COMMUNITY_INTERVAL` | `1` | N회 파이프라인마다 Louvain 커뮤니티 감지 실행 |
+| `GRAPHRAG_CONTEXT_RADIUS` | `0.05` | 과거 컨텍스트 검색 반경 (도 단위, 0.05° ≈ 5.5 km) |
+
 ### 4. 실행
 
 #### 옵션 A — HuggingFace 백엔드 (EXAONE4-32b 직접 로드)
@@ -235,6 +478,14 @@ Place satellite/drone image files and a `metadata.json` in `data/images/`:
 | Table | Key Columns |
 |---|---|
 | `report_records` | `id`, `saved_time`, `report_time`, `session_id`, `llm_model`, `llm_backend`, `pairing_count`, `file_path`, `report_content` |
+
+### Graph DB (`data/db/graph.db`) — GraphRAG 전용
+
+| Table | Key Columns | 설명 |
+|---|---|---|
+| `graph_entities` | `id` (stable key), `entity_type` (location/asset), `name`, `properties` (JSON), `first_seen`, `last_seen`, `observation_count` | 지식 그래프 노드 |
+| `graph_relations` | `id`, `source_id`, `target_id`, `relation_type` (found_at/co_occurred_with), `properties` (JSON: count, …), `created_at`, `updated_at` | 지식 그래프 엣지 |
+| `graph_communities` | `id`, `community_index`, `label`, `member_ids` (JSON), `member_summary`, `summary`, `created_at` | Louvain 커뮤니티 군집 |
 
 ---
 
