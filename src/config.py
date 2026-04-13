@@ -24,11 +24,31 @@ REPORTS_DB_PATH = str(DB_DIR / "reports.db")
 SR_TARGET_W = int(os.getenv("SR_TARGET_W", "8000"))
 SR_TARGET_H = int(os.getenv("SR_TARGET_H", "6000"))
 
-# Real-ESRGAN 로컬 가중치 경로.
-# 환경변수 REALESRGAN_X4_PATH / REALESRGAN_X2_PATH 로 런타임 오버라이드 가능.
+# SR 백엔드 선택: "edsr" (기본, 한국 SNU) | "realesrgan" (중국 Xintao) | "lanczos" (폴백)
+# 환경변수 SR_BACKEND 로 런타임 오버라이드 가능.
+SR_BACKEND = os.getenv("SR_BACKEND", "edsr")
+
+# EDSR 로컬 가중치 경로 (한국 SNU — 2017 NTIRE SR 1위).
 # 다운로드:
-#   wget https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth
-#   wget https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth
+#   wget -P /home/work/AILAB/LanguageModels/VLM/edsr \
+#     https://github.com/XPixelGroup/BasicSR/releases/download/V1.1/EDSR_Lx4_f256b32_DIV2K_official-76ee1c8f.pth
+#   wget -P /home/work/AILAB/LanguageModels/VLM/edsr \
+#     https://github.com/XPixelGroup/BasicSR/releases/download/V1.1/EDSR_Lx2_f256b32_DIV2K_official-be38e77d.pth
+EDSR_X4_PATH = os.getenv(
+    "EDSR_X4_PATH",
+    "/home/work/AILAB/LanguageModels/VLM/edsr/EDSR_Lx4_f256b32_DIV2K_official-76ee1c8f.pth",
+)
+EDSR_X2_PATH = os.getenv(
+    "EDSR_X2_PATH",
+    "/home/work/AILAB/LanguageModels/VLM/edsr/EDSR_Lx2_f256b32_DIV2K_official-be38e77d.pth",
+)
+
+# Real-ESRGAN 로컬 가중치 경로 (SR_BACKEND="realesrgan" 선택 시 사용).
+# 다운로드:
+#   wget -P /home/work/AILAB/LanguageModels/VLM/realesrgan \
+#     https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth
+#   wget -P /home/work/AILAB/LanguageModels/VLM/realesrgan \
+#     https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth
 REALESRGAN_X4_PATH = os.getenv(
     "REALESRGAN_X4_PATH",
     "/home/work/AILAB/LanguageModels/VLM/realesrgan/RealESRGAN_x4plus.pth",
