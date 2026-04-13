@@ -160,12 +160,27 @@ def super_resolve(image_np: np.ndarray) -> np.ndarray:
       "realesrgan" → Real-ESRGAN (basicsr + realesrgan 필요)
       "lanczos"    → PIL LANCZOS 강제 사용 (SR 모델 없이 빠른 폴백)
 
+    어떤 백엔드도 실패하면 PIL LANCZOS 로 최종 폴백하며,
+    PIL LANCZOS 마저 실패해도 원본 이미지를 반환해 파이프라인이 중단되지 않습니다.
+
     Args:
         image_np: H×W×3 uint8 RGB numpy array
 
     Returns:
-        업스케일된 H×W×3 uint8 RGB numpy array
+        업스케일된 H×W×3 uint8 RGB numpy array (실패 시 원본 반환)
     """
+    try:
+        return _super_resolve_impl(image_np)
+    except Exception as exc:
+        logger.error(
+            f"[SR] 예상치 못한 오류로 SR 전체 실패 ({exc}). 원본 이미지 반환. "
+            "파이프라인은 계속 진행됩니다."
+        )
+        return image_np
+
+
+def _super_resolve_impl(image_np: np.ndarray) -> np.ndarray:
+    """super_resolve() 실제 구현 — 호출자가 try/except 로 감싼다."""
     h, w = image_np.shape[:2]
     target_w, target_h = _sr_output_size(w, h)
 
@@ -198,7 +213,7 @@ def super_resolve(image_np: np.ndarray) -> np.ndarray:
             )
             return _finalize(_upscale_fsrcnn(image_np, sr_scale), "FSRCNN")
         except (ImportError, Exception) as exc:
-            logger.warning(f"[SR] FSRCNN 사용 불가 ({exc}). PIL LANCZOS 폴백.")
+            logger.warning(f"[SR] FSRCNN 사용 불가 ({type(exc).__name__}: {exc}). PIL LANCZOS 폴백.")
 
     # ── EDSR ────────────────────────────────────────────────────────────────
     elif backend == "edsr":
@@ -210,7 +225,7 @@ def super_resolve(image_np: np.ndarray) -> np.ndarray:
             )
             return _finalize(_upscale_edsr(image_np, sr_scale), "EDSR")
         except (ImportError, Exception) as exc:
-            logger.warning(f"[SR] EDSR 사용 불가 ({exc}). PIL LANCZOS 폴백.")
+            logger.warning(f"[SR] EDSR 사용 불가 ({type(exc).__name__}: {exc}). PIL LANCZOS 폴백.")
 
     # ── Real-ESRGAN ──────────────────────────────────────────────────────────
     elif backend == "realesrgan":
@@ -223,7 +238,7 @@ def super_resolve(image_np: np.ndarray) -> np.ndarray:
             )
             return _finalize(_upscale_realesrgan(image_np, sr_scale), "Real-ESRGAN")
         except (ImportError, Exception) as exc:
-            logger.warning(f"[SR] Real-ESRGAN 사용 불가 ({exc}). PIL LANCZOS 폴백.")
+            logger.warning(f"[SR] Real-ESRGAN 사용 불가 ({type(exc).__name__}: {exc}). PIL LANCZOS 폴백.")
 
     elif backend != "lanczos":
         logger.warning(f"[SR] 알 수 없는 SR_BACKEND='{SR_BACKEND}'. PIL LANCZOS 사용.")
