@@ -40,9 +40,16 @@ def _sr_output_size(w: int, h: int) -> tuple[int, int]:
 def _upscale_fsrcnn(image_np: np.ndarray, scale: int) -> np.ndarray:
     """FSRCNN x{scale} 업스케일 (OpenCV dnn_superres, 로컬 .pb 가중치 파일 사용).
 
+    cv2 네이티브 크래시(SIGSEGV/SIGABRT)가 메인 파이프라인 프로세스를 죽이는 것을
+    방지하기 위해 별도 서브프로세스에서 실행한다.
+    서브프로세스가 비정상 종료해도 RuntimeError 를 발생시켜 호출자가 LANCZOS 로 폴백.
+
     필요 패키지: opencv-contrib-python
     """
-    import cv2
+    import subprocess
+    import sys
+    import tempfile
+    import os as _os
 
     model_path = FSRCNN_X4_PATH if scale == 4 else FSRCNN_X2_PATH
 
@@ -56,20 +63,40 @@ def _upscale_fsrcnn(image_np: np.ndarray, scale: int) -> np.ndarray:
             f"dnn_superres/models/FSRCNN_x{scale}.pb"
         )
 
-    sr = cv2.dnn_superres.DnnSuperResImpl_create()
-    sr.readModel(model_path)
-    sr.setModel("fsrcnn", scale)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        in_path  = _os.path.join(tmpdir, "in.npy")
+        out_path = _os.path.join(tmpdir, "out.npy")
+        np.save(in_path, image_np)
 
-    # OpenCV는 BGR 사용 → RGB 입력을 변환 후 처리, 결과를 다시 RGB로
-    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-    result_bgr = sr.upsample(image_bgr)
-    result = cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGB)
+        # cv2 크래시를 서브프로세스로 격리
+        script = (
+            "import numpy as np, cv2; "
+            f"a=np.load({repr(in_path)}); "
+            f"sr=cv2.dnn_superres.DnnSuperResImpl_create(); "
+            f"sr.readModel({repr(str(model_path))}); "
+            f"sr.setModel('fsrcnn',{scale}); "
+            "b=cv2.cvtColor(a,cv2.COLOR_RGB2BGR); "
+            "c=sr.upsample(b); "
+            "d=cv2.cvtColor(c,cv2.COLOR_BGR2RGB); "
+            f"np.save({repr(out_path)},d)"
+        )
 
-    # DNN 네트워크 및 중간 버퍼 명시적 해제
-    del sr, image_bgr, result_bgr
-    import gc; gc.collect()
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            timeout=300,   # 5분: 대형 이미지(8000×6000) FSRCNN 처리 시간 고려
+        )
 
-    return result
+        if proc.returncode == 0 and Path(out_path).exists():
+            result = np.load(out_path)
+            import gc; gc.collect()
+            return result
+
+        stderr = proc.stderr.decode(errors="replace")
+        raise RuntimeError(
+            f"FSRCNN 서브프로세스 실패 (exitcode={proc.returncode}): "
+            f"{stderr[:400] if stderr else '(stderr 없음)'}"
+        )
 
 
 def _upscale_edsr(image_np: np.ndarray, scale: int) -> np.ndarray:
@@ -204,10 +231,9 @@ def _super_resolve_impl(image_np: np.ndarray) -> np.ndarray:
         return sr_np
 
     # ── FSRCNN (기본값) ─────────────────────────────────────────────────────
+    # cv2 는 서브프로세스(_upscale_fsrcnn) 안에서만 임포트되므로
+    # 메인 프로세스는 cv2 크래시(SIGSEGV/SIGABRT)로부터 보호된다.
     if backend == "fsrcnn":
-        # 가중치 파일이 없으면 cv2 임포트조차 시도하지 않는다.
-        # cv2 초기화가 환경에 따라 프로세스 수준 문제를 일으킬 수 있어
-        # 파일 존재 여부를 먼저 확인해 불필요한 cv2 로드를 차단한다.
         _fsrcnn_path = FSRCNN_X4_PATH if sr_scale == 4 else FSRCNN_X2_PATH
         if not Path(_fsrcnn_path).is_file():
             logger.info(
@@ -216,13 +242,12 @@ def _super_resolve_impl(image_np: np.ndarray) -> np.ndarray:
             )
         else:
             try:
-                import cv2  # noqa: F401
                 logger.info(
-                    f"[SR] FSRCNN x{sr_scale} 적용: "
+                    f"[SR] FSRCNN x{sr_scale} 적용 (서브프로세스): "
                     f"{w}×{h} → ~{w * sr_scale}×{h * sr_scale}"
                 )
                 return _finalize(_upscale_fsrcnn(image_np, sr_scale), "FSRCNN")
-            except (ImportError, Exception) as exc:
+            except Exception as exc:
                 logger.warning(f"[SR] FSRCNN 실패 ({type(exc).__name__}: {exc}). PIL LANCZOS 폴백.")
 
     # ── EDSR ────────────────────────────────────────────────────────────────
