@@ -211,8 +211,10 @@ def _super_resolve_impl(image_np: np.ndarray) -> np.ndarray:
     h, w = image_np.shape[:2]
     target_w, target_h = _sr_output_size(w, h)
 
+    logger.info(f"[SR] 시작: 입력={w}×{h}, 목표={target_w}×{target_h}, backend={SR_BACKEND!r}")
+
     if target_w == w and target_h == h:
-        logger.debug(f"[SR] 이미지({w}×{h}) 이미 목표 크기 이상, SR 건너뜀.")
+        logger.info(f"[SR] 이미지({w}×{h}) 이미 목표 크기 이상, SR 건너뜀.")
         return image_np
 
     scale_needed = max(target_w / w, target_h / h)
@@ -235,10 +237,11 @@ def _super_resolve_impl(image_np: np.ndarray) -> np.ndarray:
     # 메인 프로세스는 cv2 크래시(SIGSEGV/SIGABRT)로부터 보호된다.
     if backend == "fsrcnn":
         _fsrcnn_path = FSRCNN_X4_PATH if sr_scale == 4 else FSRCNN_X2_PATH
+        logger.info(f"[SR] FSRCNN 가중치 경로: {_fsrcnn_path} / 존재: {Path(_fsrcnn_path).is_file()}")
         if not Path(_fsrcnn_path).is_file():
             logger.info(
-                f"[SR] FSRCNN 가중치 없음 ({_fsrcnn_path}). "
-                "PIL LANCZOS 사용. 가중치 다운로드 후 FSRCNN 적용 가능."
+                f"[SR] FSRCNN 가중치 없음 → PIL LANCZOS 폴백. "
+                "가중치 다운로드 후 FSRCNN 적용 가능."
             )
         else:
             try:
@@ -279,6 +282,7 @@ def _super_resolve_impl(image_np: np.ndarray) -> np.ndarray:
         logger.warning(f"[SR] 알 수 없는 SR_BACKEND='{SR_BACKEND}'. PIL LANCZOS 사용.")
 
     # ── PIL LANCZOS 폴백 ─────────────────────────────────────────────────────
+    logger.info(f"[SR] PIL LANCZOS 실행: {w}×{h} → {target_w}×{target_h}")
     pil = Image.fromarray(image_np)
     pil = pil.resize((target_w, target_h), Image.LANCZOS)
     result = np.array(pil, dtype=np.uint8)

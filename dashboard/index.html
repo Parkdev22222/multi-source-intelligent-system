@@ -157,6 +157,17 @@
     .rpt-filter-cb-label:hover { border-color:var(--amber); color:var(--amber); }
     .rpt-filter-cb-label input[type=checkbox] { display:none; }
     .rpt-filter-cb-label.checked { background:var(--amber); border-color:var(--amber); color:#000; font-weight:bold; }
+    /* ── 국가 드롭다운 ── */
+    .country-dd-wrap { position:relative; display:inline-block; }
+    .country-dd-btn { display:flex; align-items:center; gap:4px; font-size:9px; padding:2px 8px; border-radius:3px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; font-family:var(--font); letter-spacing:.3px; transition:border-color .12s,color .12s; white-space:nowrap; }
+    .country-dd-btn:hover, .country-dd-btn.open { border-color:var(--amber); color:var(--amber); }
+    .country-dd-arrow { font-size:7px; display:inline-block; transition:transform .15s; }
+    .country-dd-btn.open .country-dd-arrow { transform:rotate(180deg); }
+    .country-dd-list { display:none; position:absolute; top:calc(100% + 3px); left:0; z-index:200; min-width:140px; max-height:180px; overflow-y:auto; background:#0b1520; border:1px solid var(--border); border-radius:3px; box-shadow:0 4px 12px rgba(0,0,0,.5); scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+    .country-dd-list.open { display:block; }
+    .country-dd-item { padding:4px 10px; font-size:9px; cursor:pointer; color:var(--dim); display:flex; justify-content:space-between; gap:8px; white-space:nowrap; transition:background .08s,color .08s; }
+    .country-dd-item:hover { background:#131c2e; color:var(--text); }
+    .country-dd-item.active { color:var(--amber); background:rgba(245,158,11,.07); }
     .rpt-list { overflow-y:auto; max-height:160px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; padding:0 8px 6px; }
     .rpt-item { padding:5px 8px; border:1px solid var(--border); border-radius:2px; margin-top:4px; cursor:pointer; transition:background .12s, border-color .12s; }
     .rpt-item:hover { background:#152030; border-color:var(--amber); }
@@ -1677,21 +1688,24 @@ function getAlertLabel(countryName) {
 /* ══════════════════════════════════════════════════
    판독 보고서 목록 로드 (DB)
    ══════════════════════════════════════════════════ */
-let _rptData   = [];      // 전체 보고서 캐시
-let _rptRegion = '전체';  // 지역 필터
+let _rptData          = [];    // 전체 보고서 캐시
+let _rptRegion        = '전체'; // 지역 필터
+let _selectedCountry  = null;  // 국가 드롭다운 선택값 (null = 전체)
+let _countryDDInited  = false; // document click 리스너 중복 방지
 
 function renderRptList() {
   const list        = document.getElementById('rpt-list');
   const dateFrom    = document.getElementById('rpt-date-from')?.value || '';
   const dateTo      = document.getElementById('rpt-date-to')?.value   || '';
-  const checkedCountries = Array.from(
-    document.querySelectorAll('#rpt-filter-country input[type=checkbox]:checked')
-  ).map(cb => cb.value);
 
   // 지역 버튼 활성화 상태 갱신
   document.querySelectorAll('#rpt-filter-region .rpt-filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.region === _rptRegion);
   });
+
+  // 드롭다운 표시 레이블 동기화
+  const ddLabel = document.getElementById('country-dd-label');
+  if (ddLabel) ddLabel.textContent = _selectedCountry || '전체';
 
   const dtFrom = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
   const dtTo   = dateTo   ? new Date(dateTo   + 'T23:59:59') : null;
@@ -1703,10 +1717,10 @@ function renderRptList() {
     const dt = r.report_time ? new Date(r.report_time) : null;
     if (dtFrom && (!dt || dt < dtFrom)) return false;
     if (dtTo   && (!dt || dt > dtTo))   return false;
-    // 국가 체크박스
-    if (checkedCountries.length > 0) {
-      const label = (r._countryLabel || r.country_name || '').toLowerCase();
-      if (!checkedCountries.includes(label)) return false;
+    // 국가 드롭다운
+    if (_selectedCountry) {
+      const label = (r._countryLabel || r.country_name || '기타').toLowerCase();
+      if (label !== _selectedCountry) return false;
     }
     return true;
   });
@@ -1803,7 +1817,7 @@ async function loadAllReports() {
     });
     if (!regionTabs.includes(_rptRegion)) _rptRegion = '전체';
 
-    // ── 국가 필터 행 ─────────────────────────────────────────────────
+    // ── 국가 드롭다운 필터 ────────────────────────────────────────────
     const countryRow = document.getElementById('rpt-filter-country');
     const countryCounts = {};
     _rptData.forEach(r => {
@@ -1811,25 +1825,67 @@ async function loadAllReports() {
       countryCounts[key] = (countryCounts[key] || 0) + 1;
     });
     const sortedCountries = Object.keys(countryCounts).sort((a, b) => countryCounts[b] - countryCounts[a]);
+
     if (sortedCountries.length > 0) {
+      const currLabel = _selectedCountry || '전체';
       countryRow.innerHTML =
         `<span class="rpt-filter-lbl">국가</span>` +
-        `<div class="rpt-filter-cb-wrap">` +
-        sortedCountries.map(c =>
-          `<label class="rpt-filter-cb-label" title="${c}">` +
-          `<input type="checkbox" value="${c}">` +
-          `${c} <span style="opacity:.6">${countryCounts[c]}</span>` +
-          `</label>`
-        ).join('') +
+        `<div class="country-dd-wrap">` +
+          `<button class="country-dd-btn${_selectedCountry ? ' open' : ''}" id="country-dd-btn">` +
+            `<span id="country-dd-label">${currLabel}</span>` +
+            `<span class="country-dd-arrow">▼</span>` +
+          `</button>` +
+          `<div class="country-dd-list" id="country-dd-list">` +
+            `<div class="country-dd-item${!_selectedCountry ? ' active' : ''}" data-country="__all__">` +
+              `<span>전체</span><span style="opacity:.6">${_rptData.length}</span>` +
+            `</div>` +
+            sortedCountries.map(c =>
+              `<div class="country-dd-item${_selectedCountry === c ? ' active' : ''}" data-country="${c}">` +
+                `<span>${c}</span><span style="opacity:.6">${countryCounts[c]}</span>` +
+              `</div>`
+            ).join('') +
+          `</div>` +
         `</div>`;
-      countryRow.querySelectorAll('.rpt-filter-cb-label').forEach(lbl => {
-        lbl.addEventListener('click', () => {
-          const cb = lbl.querySelector('input');
-          cb.checked = !cb.checked;
-          lbl.classList.toggle('checked', cb.checked);
+
+      const ddBtn  = document.getElementById('country-dd-btn');
+      const ddList = document.getElementById('country-dd-list');
+
+      // 버튼 토글
+      ddBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        ddList.classList.toggle('open');
+        ddBtn.classList.toggle('open');
+      });
+
+      // 항목 선택
+      ddList.querySelectorAll('.country-dd-item').forEach(item => {
+        item.addEventListener('click', e => {
+          e.stopPropagation();
+          _selectedCountry = item.dataset.country === '__all__' ? null : item.dataset.country;
+          document.getElementById('country-dd-label').textContent = _selectedCountry || '전체';
+          ddList.querySelectorAll('.country-dd-item').forEach(i =>
+            i.classList.toggle('active',
+              _selectedCountry === null
+                ? i.dataset.country === '__all__'
+                : i.dataset.country === _selectedCountry
+            )
+          );
+          ddList.classList.remove('open');
+          ddBtn.classList.remove('open');
           renderRptList();
         });
       });
+
+      // 외부 클릭 시 닫기 (중복 등록 방지)
+      if (!_countryDDInited) {
+        _countryDDInited = true;
+        document.addEventListener('click', () => {
+          const dl = document.getElementById('country-dd-list');
+          const db = document.getElementById('country-dd-btn');
+          if (dl) dl.classList.remove('open');
+          if (db) db.classList.remove('open');
+        });
+      }
     } else {
       countryRow.innerHTML = '';
     }
