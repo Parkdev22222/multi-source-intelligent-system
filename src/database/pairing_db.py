@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional, Set
 
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from .models import PairingRecord, create_pairing_engine
@@ -118,6 +119,70 @@ def delete_pairings_by_session(session_id: str) -> int:
         session.commit()
     logger.info(f"[PairingDB] Deleted {deleted} pairings for session {session_id}")
     return deleted
+
+
+def delete_older_duplicates_for_generated_pairings(
+    generated_pairings: List[PairingRecord],
+    *,
+    session_id: str,
+    source_type: str,
+) -> int:
+    """Delete older duplicate rows for a soon-to-be-inserted pairing batch.
+
+    Newly generated rows are not yet inserted, so this only removes historical
+    duplicates from DB. Duplicate 조건:
+      - same session/source/status
+      - and same current_detection_id or same past_detection_id
+      - if both ids are missing, same class + rounded (6dp) lat/lon signature
+    """
+    if not generated_pairings:
+        return 0
+
+    engine = get_engine()
+    deleted_total = 0
+    with Session(engine) as session:
+        for pr in generated_pairings:
+            base_filters = [
+                PairingRecord.session_id == session_id,
+                PairingRecord.source_type == source_type,
+                PairingRecord.status == pr.status,
+            ]
+            dup_filters = []
+
+            if pr.current_detection_id:
+                dup_filters.append(PairingRecord.current_detection_id == pr.current_detection_id)
+            if pr.past_detection_id:
+                dup_filters.append(PairingRecord.past_detection_id == pr.past_detection_id)
+
+            if not dup_filters:
+                cur_lat = round(pr.current_lat, 6) if pr.current_lat is not None else None
+                cur_lon = round(pr.current_lon, 6) if pr.current_lon is not None else None
+                past_lat = round(pr.past_lat, 6) if pr.past_lat is not None else None
+                past_lon = round(pr.past_lon, 6) if pr.past_lon is not None else None
+
+                dup_filters.append(and_(
+                    PairingRecord.current_object_class == pr.current_object_class,
+                    PairingRecord.past_object_class == pr.past_object_class,
+                    func.round(PairingRecord.current_lat, 6) == cur_lat,
+                    func.round(PairingRecord.current_lon, 6) == cur_lon,
+                    func.round(PairingRecord.past_lat, 6) == past_lat,
+                    func.round(PairingRecord.past_lon, 6) == past_lon,
+                ))
+
+            deleted_total += (
+                session.query(PairingRecord)
+                .filter(*base_filters, or_(*dup_filters))
+                .delete(synchronize_session=False)
+            )
+        session.commit()
+
+    if deleted_total:
+        logger.info(
+            "[PairingDB] Deleted %d historical duplicate pairings "
+            "(session_id=%s, source_type=%s).",
+            deleted_total, session_id, source_type,
+        )
+    return deleted_total
 
 
 def get_session_location(session_id: str):
