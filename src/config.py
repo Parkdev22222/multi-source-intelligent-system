@@ -24,19 +24,33 @@ REPORTS_DB_PATH = str(DB_DIR / "reports.db")
 SR_TARGET_W = int(os.getenv("SR_TARGET_W", "8000"))
 SR_TARGET_H = int(os.getenv("SR_TARGET_H", "6000"))
 
-# SR 백엔드 선택: "edsr" (기본, 한국 SNU) | "realesrgan" (중국 Xintao) | "lanczos" (폴백)
+# SR 백엔드 선택: "fsrcnn" (기본, OpenCV DNN) | "edsr" (한국 SNU) | "realesrgan" (중국 Xintao) | "lanczos" (폴백)
 # 환경변수 SR_BACKEND 로 런타임 오버라이드 가능.
-SR_BACKEND = os.getenv("SR_BACKEND", "edsr")
+SR_BACKEND = os.getenv("SR_BACKEND", "fsrcnn")
 
 # SR 모델 가중치 기본 다운로드 디렉터리 (프로젝트 루트/downloads/)
 _SR_DOWNLOAD_DIR = BASE_DIR / "downloads"
 
-# EDSR 로컬 가중치 경로 (한국 SNU — 2017 NTIRE SR 1위).
+# FSRCNN 로컬 가중치 경로 (OpenCV contrib dnn_superres 모듈 사용).
+# 필요 패키지: opencv-contrib-python
 # 다운로드:
-#   wget -P downloads/edsr \
-#     https://github.com/XPixelGroup/BasicSR/releases/download/V1.1/EDSR_Lx4_f256b32_DIV2K_official-76ee1c8f.pth
-#   wget -P downloads/edsr \
-#     https://github.com/XPixelGroup/BasicSR/releases/download/V1.1/EDSR_Lx2_f256b32_DIV2K_official-be38e77d.pth
+#   mkdir -p downloads/fsrcnn
+#   wget --no-check-certificate -P downloads/fsrcnn https://github.com/opencv/opencv_contrib/raw/master/modules/dnn_superres/models/FSRCNN_x4.pb
+#   wget --no-check-certificate -P downloads/fsrcnn https://github.com/opencv/opencv_contrib/raw/master/modules/dnn_superres/models/FSRCNN_x2.pb
+FSRCNN_X4_PATH = os.getenv(
+    "FSRCNN_X4_PATH",
+    str(_SR_DOWNLOAD_DIR / "fsrcnn" / "FSRCNN_x4.pb"),
+)
+FSRCNN_X2_PATH = os.getenv(
+    "FSRCNN_X2_PATH",
+    str(_SR_DOWNLOAD_DIR / "fsrcnn" / "FSRCNN_x2.pb"),
+)
+
+# EDSR 로컬 가중치 경로 (한국 SNU — 2017 NTIRE SR 1위, SR_BACKEND="edsr" 선택 시 사용).
+# 다운로드:
+#   mkdir -p downloads/edsr
+#   wget --no-check-certificate -P downloads/edsr https://github.com/XPixelGroup/BasicSR/releases/download/V1.1/EDSR_Lx4_f256b32_DIV2K_official-76ee1c8f.pth
+#   wget --no-check-certificate -P downloads/edsr https://github.com/XPixelGroup/BasicSR/releases/download/V1.1/EDSR_Lx2_f256b32_DIV2K_official-be38e77d.pth
 EDSR_X4_PATH = os.getenv(
     "EDSR_X4_PATH",
     str(_SR_DOWNLOAD_DIR / "edsr" / "EDSR_Lx4_f256b32_DIV2K_official-76ee1c8f.pth"),
@@ -48,10 +62,9 @@ EDSR_X2_PATH = os.getenv(
 
 # Real-ESRGAN 로컬 가중치 경로 (SR_BACKEND="realesrgan" 선택 시 사용).
 # 다운로드:
-#   wget -P downloads/realesrgan \
-#     https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth
-#   wget -P downloads/realesrgan \
-#     https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth
+#   mkdir -p downloads/realesrgan
+#   wget --no-check-certificate -P downloads/realesrgan https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth
+#   wget --no-check-certificate -P downloads/realesrgan https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth
 REALESRGAN_X4_PATH = os.getenv(
     "REALESRGAN_X4_PATH",
     str(_SR_DOWNLOAD_DIR / "realesrgan" / "RealESRGAN_x4plus.pth"),
