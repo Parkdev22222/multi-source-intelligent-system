@@ -205,15 +205,25 @@ def _super_resolve_impl(image_np: np.ndarray) -> np.ndarray:
 
     # ── FSRCNN (기본값) ─────────────────────────────────────────────────────
     if backend == "fsrcnn":
-        try:
-            import cv2  # noqa: F401
+        # 가중치 파일이 없으면 cv2 임포트조차 시도하지 않는다.
+        # cv2 초기화가 환경에 따라 프로세스 수준 문제를 일으킬 수 있어
+        # 파일 존재 여부를 먼저 확인해 불필요한 cv2 로드를 차단한다.
+        _fsrcnn_path = FSRCNN_X4_PATH if sr_scale == 4 else FSRCNN_X2_PATH
+        if not Path(_fsrcnn_path).is_file():
             logger.info(
-                f"[SR] FSRCNN x{sr_scale} 적용: "
-                f"{w}×{h} → ~{w * sr_scale}×{h * sr_scale}"
+                f"[SR] FSRCNN 가중치 없음 ({_fsrcnn_path}). "
+                "PIL LANCZOS 사용. 가중치 다운로드 후 FSRCNN 적용 가능."
             )
-            return _finalize(_upscale_fsrcnn(image_np, sr_scale), "FSRCNN")
-        except (ImportError, Exception) as exc:
-            logger.warning(f"[SR] FSRCNN 사용 불가 ({type(exc).__name__}: {exc}). PIL LANCZOS 폴백.")
+        else:
+            try:
+                import cv2  # noqa: F401
+                logger.info(
+                    f"[SR] FSRCNN x{sr_scale} 적용: "
+                    f"{w}×{h} → ~{w * sr_scale}×{h * sr_scale}"
+                )
+                return _finalize(_upscale_fsrcnn(image_np, sr_scale), "FSRCNN")
+            except (ImportError, Exception) as exc:
+                logger.warning(f"[SR] FSRCNN 실패 ({type(exc).__name__}: {exc}). PIL LANCZOS 폴백.")
 
     # ── EDSR ────────────────────────────────────────────────────────────────
     elif backend == "edsr":
