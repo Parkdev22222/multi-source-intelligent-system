@@ -233,6 +233,60 @@ def _nms_detections(
     return kept
 
 
+def _merge_contained_detections(results: List[DetectionResult]) -> List[DetectionResult]:
+    """동일 클래스에서 한 박스가 다른 박스에 완전히 포함된 경우 큰 박스 하나로 병합한다.
+
+    완전 포함 판정: IoMin = intersection / min(area_a, area_b) >= 0.99
+    (부동소수점 오차를 허용하기 위해 1.0 이 아닌 0.99 사용)
+
+    결과 박스는 두 박스 중 넓이가 큰 (포함하는) 박스이며, 신뢰도는 두 박스의 최대값.
+    NMS 이후에도 남아 있는 동일 클래스 중첩 박스를 최종 정리하는 용도로 사용된다.
+    """
+    if not results:
+        return results
+
+    merged = True
+    detections = list(results)
+    while merged:
+        merged = False
+        used = [False] * len(detections)
+        kept: List[DetectionResult] = []
+        for i, a in enumerate(detections):
+            if used[i]:
+                continue
+            for j in range(i + 1, len(detections)):
+                b = detections[j]
+                if used[j]:
+                    continue
+                if a.object_class.lower() != b.object_class.lower():
+                    continue
+                ix1 = max(a.bbox_x1, b.bbox_x1)
+                iy1 = max(a.bbox_y1, b.bbox_y1)
+                ix2 = min(a.bbox_x2, b.bbox_x2)
+                iy2 = min(a.bbox_y2, b.bbox_y2)
+                inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+                if inter == 0.0:
+                    continue
+                area_a = (a.bbox_x2 - a.bbox_x1) * (a.bbox_y2 - a.bbox_y1)
+                area_b = (b.bbox_x2 - b.bbox_x1) * (b.bbox_y2 - b.bbox_y1)
+                iomin = inter / (min(area_a, area_b) + 1e-6)
+                if iomin < 0.99:
+                    continue
+                # 완전 포함 확인 → 더 큰 박스로 흡수
+                if area_a >= area_b:
+                    a.confidence = max(a.confidence, b.confidence)
+                else:
+                    # b가 더 크므로 a의 bbox를 b로 교체
+                    a.bbox_x1, a.bbox_y1 = b.bbox_x1, b.bbox_y1
+                    a.bbox_x2, a.bbox_y2 = b.bbox_x2, b.bbox_y2
+                    a.confidence = max(a.confidence, b.confidence)
+                used[j] = True
+                merged = True
+            kept.append(a)
+        detections = kept
+    return detections
+
+
 def _merge_adjacent_detections(
     results: List[DetectionResult],
     gap_threshold: int,
@@ -584,7 +638,7 @@ class SAM3Detector:
 
         if self._model is None:
             results = self._fallback_detect(image_np, image_id, meta)
-            return _nms_detections(results, NMS_IOU_THRESHOLD)
+            return _merge_contained_detections(_nms_detections(results, NMS_IOU_THRESHOLD))
 
         from PIL import Image as PILImage
         pil_image = PILImage.fromarray(image_np).convert("RGB")
@@ -676,6 +730,7 @@ class SAM3Detector:
         )
         if TILE_ENABLED and TILE_MERGE_GAP > 0:
             final = _merge_adjacent_detections(final, TILE_MERGE_GAP)
+        final = _merge_contained_detections(final)
         logger.info(
             f"[SAM3Detector] {len(all_results)} raw → {len(final)} after NMS "
             f"(image_id={image_id[:8]})"
