@@ -30,6 +30,12 @@ SR_TARGET_H = int(os.getenv("SR_TARGET_H", "6000"))
 # Model card: https://huggingface.co/facebook/sam3
 SAM3_MODEL_NAME = os.getenv("SAM3_MODEL_NAME", "facebook/sam3")
 SAM3_DEVICE = os.getenv("SAM3_DEVICE", "cuda")  # "cuda" or "cpu"
+# 로컬 가중치 파일 경로. 설정 시 SAM3_MODEL_NAME(HuggingFace ID) 대신 이 경로로 모델을 로드한다.
+# 환경변수 SAM3_CHECKPOINT 로 런타임 오버라이드 가능.
+SAM3_CHECKPOINT = os.getenv(
+    "SAM3_CHECKPOINT",
+    "/home/work/AILAB/LanguageModels/VLM/sam3/sam3.pt",
+)
 # SAM3 requires a fixed inference resolution of 1008×1008
 SAM3_INFERENCE_SIZE = 1008
 

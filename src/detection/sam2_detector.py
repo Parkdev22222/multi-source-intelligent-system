@@ -38,6 +38,7 @@ from src.config import (
     MAX_BBOX_AREA_RATIO_LARGE,
     MILITARY_OBJECT_CLASSES,
     NMS_IOU_THRESHOLD,
+    SAM3_CHECKPOINT,
     SAM3_DEVICE,
     SAM3_MASK_SCORE_THRESHOLD,
     SAM3_MODEL_NAME,
@@ -394,9 +395,9 @@ class SAM3Detector:
 
             logger.info(
                 f"[SAM3Detector] Loading sam3 image model "
-                f"({SAM3_MODEL_NAME}) on {self._device} …"
+                f"(checkpoint={SAM3_CHECKPOINT}) on {self._device} …"
             )
-            self._model = build_sam3_image_model(SAM3_MODEL_NAME)
+            self._model = build_sam3_image_model(checkpoint_path=SAM3_CHECKPOINT)
             self._model = self._model.to(self._device).eval()
             self._processor = Sam3Processor(self._model)
             logger.info("[SAM3Detector] sam3 image model loaded.")
@@ -415,9 +416,9 @@ class SAM3Detector:
 
             logger.info(
                 f"[SAM3Detector] Loading sam3 video predictor "
-                f"({SAM3_MODEL_NAME}) on {self._device} …"
+                f"(checkpoint={SAM3_CHECKPOINT}) on {self._device} …"
             )
-            self._video_predictor = build_sam3_video_predictor(SAM3_MODEL_NAME)
+            self._video_predictor = build_sam3_video_predictor(checkpoint_path=SAM3_CHECKPOINT)
             logger.info("[SAM3Detector] sam3 video predictor loaded.")
         except (ImportError, OSError, Exception) as exc:
             logger.warning(
