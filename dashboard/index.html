@@ -304,6 +304,29 @@
     .sat-dot.active-sat.at-mission { filter:drop-shadow(0 0 6px #00ff88) drop-shadow(0 0 10px #f59e0b); }
     @keyframes mission-pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
 
+    /* ── 파이프라인 분석 단계 마커 ── */
+    .analysis-stage-wrap { display:flex; flex-direction:column; align-items:center; pointer-events:none; }
+    .analysis-stage-dot {
+      width:18px; height:18px; border-radius:50%;
+      border:2px solid #60a5fa;
+      background:rgba(96,165,250,.35);
+      box-shadow:0 0 10px #60a5fa;
+      animation:analysis-pulse 1s ease-in-out infinite;
+    }
+    .analysis-stage-label {
+      margin-top:5px;
+      background:rgba(8,13,24,.85);
+      border:1px solid #60a5fa;
+      color:#60a5fa;
+      font-size:10px;
+      font-family:var(--font);
+      padding:3px 7px;
+      border-radius:3px;
+      white-space:nowrap;
+      pointer-events:none;
+    }
+    @keyframes analysis-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.25)} }
+
     /* ── 보고서 위치 마커 ── */
     .rpt-map-dot {
       width:12px; height:12px; border-radius:50%; border:2px solid var(--amber);
@@ -1227,6 +1250,28 @@ function renderMarkers() {
     });
     satMarkers.push(marker);
   });
+}
+
+/* ── 파이프라인 분석 단계 마커 ── */
+let _analysisMarker = null;
+
+function renderAnalysisMarker(status) {
+  // idle 이거나 좌표 없으면 마커 제거
+  if (!status || status.stage === 'idle' || status.lat == null || status.lon == null) {
+    if (_analysisMarker) { _analysisMarker.remove(); _analysisMarker = null; }
+    return;
+  }
+  const label = status.label || status.stage;
+  const wrap = document.createElement('div');
+  wrap.className = 'analysis-stage-wrap';
+  wrap.innerHTML = `<div class="analysis-stage-dot"></div><div class="analysis-stage-label">${label}</div>`;
+  const icon = L.divIcon({ html: wrap, className: '', iconSize: [0, 0], iconAnchor: [9, 9] });
+  if (_analysisMarker) {
+    _analysisMarker.setLatLng([status.lat, status.lon]);
+    _analysisMarker.setIcon(icon);
+  } else {
+    _analysisMarker = L.marker([status.lat, status.lon], { icon, zIndexOffset: 500 }).addTo(map);
+  }
 }
 
 /* ── 사이드바 목록 ── */
@@ -3169,6 +3214,8 @@ function setupSSE() {
 
         await Promise.all(tasks);
         await pollSimStatus();   // 상태 표시줄도 즉시 갱신
+      } else if (msg.type === 'pipeline_stage') {
+        renderAnalysisMarker(msg);
       }
     } catch(err) { console.warn('[SSE msg]', err); }
   };
@@ -3212,6 +3259,8 @@ setInterval(async () => {
     _bindRptFilterInputs();
     pollSimStatus();
     setupSSE();
+    // 페이지 로드 시 진행 중인 파이프라인 단계 복원
+    fetch(`${API}/api/pipeline/status`).then(r => r.json()).then(renderAnalysisMarker).catch(() => {});
   } else if (retry > 0) {
     setTimeout(function(){ boot(retry - 1); }, 100);
   } else {

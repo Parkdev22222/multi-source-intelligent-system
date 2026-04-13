@@ -66,6 +66,10 @@ from src.detection.image_loader import load_metadata_index, iter_images
 from src.detection.sam2_detector import SAM3Detector, DetectionResult
 from src.pairing.temporal_pairing import pair_by_tracking, pair_by_similarity
 from src.reporting.military_reporter import MilitaryReporter
+from src.pipeline_status import (
+    write_status as _write_ps, clear_status as _clear_ps,
+    STAGE_SR, STAGE_DETECTION, STAGE_PAIRING, STAGE_REPORTING,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -105,8 +109,15 @@ class MavenPipeline:
         """
         metas = sorted(load_metadata_index(metadata_json), key=lambda m: m.capture_time)
         image_ids = []
+        _lat = metas[-1].lat_center if metas else None
+        _lon = metas[-1].lon_center if metas else None
+        _detection_stage_set = False
 
         for loaded in iter_images(metas):
+            # SR은 iter_images 내부에서 완료됨 → 루프 첫 진입 시 탐지 단계로 전환
+            if not _detection_stage_set:
+                _write_ps(STAGE_DETECTION, _lat, _lon, session_id)
+                _detection_stage_set = True
             meta = loaded.meta
 
             # Insert image record into Sensor DB
@@ -510,24 +521,35 @@ class MavenPipeline:
             )
             from scripts.generate_sample_data import generate_sample_data
             generate_sample_data(metadata_json)
+            metas_check = load_metadata_index(metadata_json)
 
-        # --- Step 1: Detection ---
-        logger.info("[Pipeline] Step 1/3 – Image ingestion & SAM3 detection")
-        image_ids = self._detect_and_store(metadata_json, session_id)
-        logger.info(f"[Pipeline] Processed {len(image_ids)} images.")
+        # 상태 표시용 대표 좌표 (마지막 메타의 lat/lon)
+        _lat = metas_check[-1].lat_center if metas_check else None
+        _lon = metas_check[-1].lon_center if metas_check else None
 
-        # --- Step 2: Pairing ---
-        logger.info("[Pipeline] Step 2/3 – Temporal object pairing")
-        n_pairings = self._pair_and_store(metadata_json, session_id)
-        logger.info(f"[Pipeline] Created {n_pairings} pairing records.")
+        try:
+            # --- Step 1: SR + Detection ---
+            logger.info("[Pipeline] Step 1/3 – Image ingestion & SAM3 detection")
+            _write_ps(STAGE_SR, _lat, _lon, session_id)
+            image_ids = self._detect_and_store(metadata_json, session_id)
+            logger.info(f"[Pipeline] Processed {len(image_ids)} images.")
 
-        # SAM3 모델을 GPU에서 해제 — vLLM 로딩 전 VRAM 확보
-        self.detector.unload()
+            # --- Step 2: Pairing ---
+            logger.info("[Pipeline] Step 2/3 – Temporal object pairing")
+            _write_ps(STAGE_PAIRING, _lat, _lon, session_id)
+            n_pairings = self._pair_and_store(metadata_json, session_id)
+            logger.info(f"[Pipeline] Created {n_pairings} pairing records.")
 
-        # --- Step 3: Reporting ---
-        logger.info("[Pipeline] Step 3/3 – Military report generation (EXAONE4-32b)")
-        report = self._generate_report(session_id, report_output_path,
-                                        target_description=target_description)
+            # SAM3 모델을 GPU에서 해제 — vLLM 로딩 전 VRAM 확보
+            self.detector.unload()
+
+            # --- Step 3: Reporting ---
+            logger.info("[Pipeline] Step 3/3 – Military report generation (EXAONE4-32b)")
+            _write_ps(STAGE_REPORTING, _lat, _lon, session_id)
+            report = self._generate_report(session_id, report_output_path,
+                                            target_description=target_description)
+        finally:
+            _clear_ps()
 
         logger.info(f"[Pipeline] Pipeline complete.  session={session_id}")
         return report

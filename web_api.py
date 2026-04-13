@@ -121,6 +121,30 @@ def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float 
                 pass
 
 
+def _notify_pipeline_stage(status: dict):
+    """파이프라인 단계 변경 이벤트를 모든 SSE 클라이언트에 브로드캐스트한다."""
+    payload = json.dumps({
+        "type":  "pipeline_stage",
+        "stage": status.get("stage", "idle"),
+        "label": status.get("label", ""),
+        "lat":   status.get("lat"),
+        "lon":   status.get("lon"),
+        "ts":    status.get("ts", ""),
+    })
+    with _sse_lock:
+        dead = []
+        for q in list(_sse_clients):
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            try:
+                _sse_clients.remove(q)
+            except ValueError:
+                pass
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # 임무계획 (Mission Planning) — JSON 파일 영속 저장
 # ══════════════════════════════════════════════════════════════════════════
@@ -534,6 +558,7 @@ def _db_poll_worker():
         return counts
 
     prev = {"images": -1, "detections": -1, "reports": -1}
+    _prev_stage_ts: str | None = None
 
     while True:
         _time.sleep(_DB_POLL_INTERVAL)
@@ -552,6 +577,17 @@ def _db_poll_worker():
                         changed=changed,
                     )
                 prev = cur
+
+            # 파이프라인 단계 상태 파일 폴링 → 변경 시 SSE 브로드캐스트
+            try:
+                from src.pipeline_status import read_status as _read_ps
+                ps = _read_ps()
+                cur_ts = ps.get("ts")
+                if cur_ts != _prev_stage_ts:
+                    _prev_stage_ts = cur_ts
+                    _notify_pipeline_stage(ps)
+            except Exception:
+                pass
         except Exception as exc:
             logger.debug("[DBPoll] 오류: %s", exc)
 
@@ -1654,6 +1690,13 @@ def api_campaign_status():
     """캠페인 실행 상태 조회."""
     with _camp_lock:
         return dict(_campaign)
+
+
+@app.get("/api/pipeline/status")
+def api_pipeline_status():
+    """현재 파이프라인 단계 상태 조회 (대시보드 초기 로드용)."""
+    from src.pipeline_status import read_status as _read_ps
+    return _read_ps()
 
 
 def _report_dict(r) -> dict:
