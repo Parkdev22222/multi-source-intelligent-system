@@ -716,6 +716,126 @@ def api_all_reports(limit: int = Query(default=50, le=200)):
 
 
 # ══════════════════════════════════════════════════════════════════════════
+# GraphRAG 지식 그래프 API
+# ══════════════════════════════════════════════════════════════════════════
+
+def _get_graph_indexer():
+    """Return a module-level singleton GraphIndexer (lazy-init)."""
+    from src.graph.graph_indexer import GraphIndexer
+    if not hasattr(_get_graph_indexer, "_instance"):
+        _get_graph_indexer._instance = GraphIndexer()
+    return _get_graph_indexer._instance
+
+
+@app.get("/api/graph/stats")
+def api_graph_stats():
+    """지식 그래프 통계 (엔티티 수, 관계 수, 커뮤니티 수)."""
+    try:
+        stats = _get_graph_indexer().stats()
+        return {"ok": True, **stats}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/graph/entities")
+def api_graph_entities(
+    lat:    float = Query(..., description="검색 중심 위도"),
+    lon:    float = Query(..., description="검색 중심 경도"),
+    radius: float = Query(default=0.1, description="검색 반경 (도)"),
+):
+    """
+    해당 지역의 지식 그래프 자산(asset) 엔티티 목록 반환.
+    각 엔티티는 과거 탐지 통계(new / persisted / moved / disappeared)를 포함한다.
+    """
+    try:
+        indexer = _get_graph_indexer()
+        assets = indexer.store.get_assets_near(lat, lon, radius)
+        items = []
+        for rec in assets:
+            props = rec.properties or {}
+            obs = rec.observation_count or 0
+            avg_conf = (
+                props.get("total_confidence", 0.0) / obs
+                if obs > 0 else 0.0
+            )
+            items.append({
+                "id":               rec.id,
+                "object_class":     props.get("object_class", rec.name),
+                "location_key":     props.get("location_key", ""),
+                "lat":              props.get("lat"),
+                "lon":              props.get("lon"),
+                "new_count":        props.get("new_count", 0),
+                "disappeared_count": props.get("disappeared_count", 0),
+                "matched_count":    props.get("matched_count", 0),
+                "moved_count":      props.get("moved_count", 0),
+                "observation_count": obs,
+                "avg_confidence":   round(avg_conf, 3),
+                "first_seen":       rec.first_seen.isoformat() if rec.first_seen else None,
+                "last_seen":        rec.last_seen.isoformat()  if rec.last_seen  else None,
+                "sessions":         props.get("sessions", []),
+            })
+        items.sort(key=lambda x: -x["observation_count"])
+        return {"entities": items, "count": len(items)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/graph/communities")
+def api_graph_communities():
+    """모든 커뮤니티(공출현 군집) 요약 반환."""
+    try:
+        communities = _get_graph_indexer().store.get_all_communities()
+        items = []
+        for c in communities:
+            items.append({
+                "id":             c.id,
+                "community_index": c.community_index,
+                "label":          c.label,
+                "member_count":   len(c.member_ids or []),
+                "member_summary": c.member_summary,
+                "summary":        c.summary,
+                "created_at":     c.created_at.isoformat() if c.created_at else None,
+            })
+        return {"communities": items, "count": len(items)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/graph/local-search")
+def api_graph_local_search(
+    lat:    float = Query(...),
+    lon:    float = Query(...),
+    radius: float = Query(default=0.05),
+):
+    """
+    지역 기반 그래프 로컬 검색 – 해당 지역의 역사적 자산 활동 + 관련 커뮤니티 반환.
+    보고서 생성 시 LLM 프롬프트에 주입되는 컨텍스트와 동일한 형태.
+    """
+    try:
+        indexer = _get_graph_indexer()
+        local = indexer.retriever.local_search(lat, lon, radius)
+        global_comms = indexer.retriever.global_search(lat, lon, radius)
+        return {
+            "location": local["location"],
+            "assets": local["assets"],
+            "total_observations": local["total_observations"],
+            "communities": global_comms,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/graph/reindex")
+def api_graph_reindex():
+    """커뮤니티 감지를 강제로 재실행하고 결과 저장."""
+    try:
+        n = _get_graph_indexer().reindex_communities()
+        return {"ok": True, "communities_detected": n}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ══════════════════════════════════════════════════════════════════════════
 # SSE 엔드포인트
 # ══════════════════════════════════════════════════════════════════════════
 

@@ -67,7 +67,10 @@ def _class_counts(objs) -> str:
     return "  ".join(f"{cls}:{n}" for cls, n in counts.most_common())
 
 
-def _build_user_prompt(pairings: List[PairingRecord]) -> str:
+def _build_user_prompt(
+    pairings: List[PairingRecord],
+    historical_context: str = "",
+) -> str:
     """Serialise pairing records into a compact prompt for the LLM."""
 
     def fmt_dt(dt: Optional[datetime]) -> str:
@@ -135,10 +138,16 @@ def _build_user_prompt(pairings: List[PairingRecord]) -> str:
     if not disappeared_objs:
         lines.append("  (none)")
 
+    # --- GraphRAG historical context (prepended before task) ---
+    if historical_context:
+        lines = [historical_context] + lines
+
     lines += [
         "\n=== TASK ===",
         "Write a military intelligence report based ONLY on the NEW and DISAPPEARED objects above.",
         "Use PAST_OBS and CURRENT_OBS timestamps (not today's date) as the observation times.",
+        "Where GRAPHRAG HISTORICAL CONTEXT is provided, reference relevant historical patterns "
+        "to enrich THREAT ASSESSMENT and INTELLIGENCE GAPS sections.",
         "For DISAPPEARED objects, state they were 'no longer observed in current imagery' — "
         "do NOT imply they are destroyed, eliminated, or permanently gone.",
         "Do NOT mention stationary or repositioned/moved objects.",
@@ -305,15 +314,18 @@ class MilitaryReporter:
         pairings: List[PairingRecord],
         output_path: Optional[str] = None,
         session_id: Optional[str] = None,
+        historical_context: str = "",
     ) -> str:
         """
         Generate a military intelligence report from the given pairing records,
         then persist it to the Reports DB (saved_time, file_path, full content).
 
         Args:
-            pairings:    List of PairingRecord objects (latest session).
-            output_path: If provided, write the report text to this file path.
-            session_id:  Pipeline session UUID (stored in the Reports DB row).
+            pairings:           List of PairingRecord objects (latest session).
+            output_path:        If provided, write the report text to this file path.
+            session_id:         Pipeline session UUID (stored in the Reports DB row).
+            historical_context: Optional GraphRAG context string injected into the
+                                LLM prompt to enrich threat assessment and gap analysis.
 
         Returns:
             Report text as a string.
@@ -324,7 +336,7 @@ class MilitaryReporter:
 
         report_time = datetime.now(tz=timezone.utc)
         system_prompt = _build_system_prompt()
-        user_prompt = _build_user_prompt(pairings)
+        user_prompt = _build_user_prompt(pairings, historical_context=historical_context)
 
         logger.info(f"[Reporter] Generating military report for {len(pairings)} pairings...")
         report_text = self._backend.generate(system_prompt, user_prompt)

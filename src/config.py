@@ -105,5 +105,12 @@ SIMILARITY_CLIP_WEIGHT = float(os.getenv("SIMILARITY_CLIP_WEIGHT", "0.7"))
 # Range: -1.0 – 1.0 for pure CLIP cosine; 0.0 – 1.0 for combined score.
 SIMILARITY_MATCH_THRESHOLD = float(os.getenv("SIMILARITY_MATCH_THRESHOLD", "0.5"))
 
+# --- GraphRAG Knowledge Graph ---
+GRAPH_DB_PATH = str(DB_DIR / "graph.db")
+# How often to run community detection (every N pipeline runs; 1 = every run)
+GRAPHRAG_COMMUNITY_INTERVAL = int(os.getenv("GRAPHRAG_COMMUNITY_INTERVAL", "1"))
+# Radius (degrees) used when querying historical context from the graph
+GRAPHRAG_CONTEXT_RADIUS_DEG = float(os.getenv("GRAPHRAG_CONTEXT_RADIUS", "0.05"))
+
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

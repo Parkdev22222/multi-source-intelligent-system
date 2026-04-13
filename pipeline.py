@@ -65,6 +65,7 @@ from src.detection.image_loader import load_metadata_index, iter_images
 from src.detection.sam2_detector import SAM3Detector, DetectionResult
 from src.pairing.temporal_pairing import pair_by_tracking, pair_by_similarity
 from src.reporting.military_reporter import MilitaryReporter
+from src.graph.graph_indexer import GraphIndexer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -90,6 +91,7 @@ class MavenPipeline:
     def __init__(self):
         self.detector = SAM3Detector()
         self.reporter = MilitaryReporter()
+        self.graph_indexer = GraphIndexer()
 
     # ------------------------------------------------------------------
     # Step 1: Ingest + Detect
@@ -294,7 +296,10 @@ class MavenPipeline:
         session_id: str,
         output_path: Optional[str] = None,
     ) -> str:
-        """Retrieve latest pairings and generate the military report."""
+        """
+        Retrieve latest pairings, build GraphRAG historical context, and
+        generate the military report with context-enriched prompting.
+        """
         pairings = get_pairings_by_session(session_id)
         if not pairings:
             # Fall back to global latest
@@ -308,8 +313,17 @@ class MavenPipeline:
             latest_pt = max(p.pairing_time for p in pairings)
             pairings = [p for p in pairings if p.pairing_time == latest_pt]
 
+        # --- GraphRAG: retrieve historical context from the knowledge graph ---
+        historical_context = self.graph_indexer.get_historical_context(pairings)
+        if historical_context:
+            logger.info("[Pipeline] GraphRAG historical context retrieved (%d chars).",
+                        len(historical_context))
+
         report = self.reporter.generate_report(
-            pairings, output_path=output_path, session_id=session_id
+            pairings,
+            output_path=output_path,
+            session_id=session_id,
+            historical_context=historical_context,
         )
         return report
 
@@ -356,6 +370,20 @@ class MavenPipeline:
         logger.info("[Pipeline] Step 2/3 – Temporal object pairing")
         n_pairings = self._pair_and_store(metadata_json, session_id)
         logger.info(f"[Pipeline] Created {n_pairings} pairing records.")
+
+        # --- GraphRAG: index pairings into knowledge graph (non-blocking) ---
+        logger.info("[Pipeline] GraphRAG – Indexing pairings into knowledge graph")
+        session_pairings = get_pairings_by_session(session_id)
+        self.graph_indexer.index_pairings(session_pairings, session_id)
+        graph_stats = self.graph_indexer.stats()
+        logger.info(
+            "[Pipeline] GraphRAG stats: entities=%d, assets=%d, "
+            "relations=%d, communities=%d",
+            graph_stats.get("entities", 0),
+            graph_stats.get("assets", 0),
+            graph_stats.get("relations", 0),
+            graph_stats.get("communities", 0),
+        )
 
         # --- Step 3: Reporting ---
         logger.info("[Pipeline] Step 3/3 – Military report generation (EXAONE4-32b)")
