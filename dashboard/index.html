@@ -1353,12 +1353,14 @@ async function loadAllImages() {
         <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>
         ${sessTag}`;
       item.addEventListener('mouseenter', e => {
-        flyToLocation(img.lat_center, img.lon_center);
-        showHoverMarker(img.lat_center, img.lon_center, 'img-pin');
         showImagePopup(img, e);
       });
       item.addEventListener('mousemove', e => movePopup(e));
       item.addEventListener('mouseleave', () => { hidePopup(); removeHoverMarker(); });
+      item.addEventListener('click', () => {
+        flyToLocation(img.lat_center, img.lon_center);
+        showHoverMarker(img.lat_center, img.lon_center, 'img-pin');
+      });
       list.appendChild(item);
     });
 
@@ -1406,12 +1408,14 @@ async function loadAllDetections() {
         <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>
         ${sessTag}`;
       item.addEventListener('mouseenter', e => {
-        flyToLocation(img.lat_center, img.lon_center);
-        showHoverMarker(img.lat_center, img.lon_center, 'det-pin');
         showDetectionPopup(img.id, img, e);
       });
       item.addEventListener('mousemove', e => movePopup(e));
       item.addEventListener('mouseleave', () => { hidePopup(); removeHoverMarker(); });
+      item.addEventListener('click', () => {
+        flyToLocation(img.lat_center, img.lon_center);
+        showHoverMarker(img.lat_center, img.lon_center, 'det-pin');
+      });
       item.addEventListener('dblclick', () => {
         hidePopup();
         removeHoverMarker();
@@ -1750,13 +1754,13 @@ function renderRptList() {
   }).join('');
 
   list.querySelectorAll('.rpt-item').forEach(el => {
-    el.addEventListener('mouseenter', () => {
+    el.addEventListener('mouseleave', removeHoverMarker);
+    el.addEventListener('click', () => {
       const lat = parseFloat(el.dataset.lat);
       const lon = parseFloat(el.dataset.lon);
       flyToLocation(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon);
       showHoverMarker(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon, 'rpt-pin');
     });
-    el.addEventListener('mouseleave', removeHoverMarker);
     el.addEventListener('dblclick', () => openReportById(el.dataset.id, el.dataset.fname));
   });
 }
