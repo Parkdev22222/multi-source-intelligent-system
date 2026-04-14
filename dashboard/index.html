@@ -146,7 +146,7 @@
     .dp-empty { padding:6px 14px; font-size:11px; color:var(--dim); }
 
     /* 판독보고서 목록 */
-    .rpt-filter-wrap { display:none; flex-direction:column; border-bottom:1px solid var(--border); background:#080d14; }
+    .rpt-filter-wrap { display:flex; flex-direction:column; border-bottom:1px solid var(--border); background:#080d14; }
     .rpt-filter-row { display:flex; flex-wrap:wrap; align-items:center; gap:3px; padding:4px 8px; }
     .rpt-filter-row + .rpt-filter-row { border-top:1px solid #131c28; padding-top:3px; }
     .rpt-filter-lbl { font-size:8px; color:var(--dim); letter-spacing:.5px; margin-right:2px; white-space:nowrap; flex-shrink:0; }
@@ -1824,7 +1824,6 @@ async function loadAllReports() {
 
     if (reports.length === 0) {
       list.innerHTML = '<div class="dp-empty">보고서 없음 – 시뮬레이션을 먼저 실행하세요</div>';
-      filterWrap.style.display = 'none';
       return;
     }
 
@@ -1931,7 +1930,6 @@ async function loadAllReports() {
       countryRow.innerHTML = '';
     }
 
-    filterWrap.style.display = 'flex';
     renderRptList();
     renderReportMarkers();
   } catch(e) { console.warn('[loadAllReports]', e); }
