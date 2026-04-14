@@ -302,7 +302,9 @@
     .det-sess-img-btn:hover { border-color:var(--blue); color:var(--blue); background:#0a1c35; }
     .det-sess-img-btn.active { border-color:var(--amber); color:var(--amber); background:#1a1200; cursor:default; }
     #det-editor-body { flex:1; display:flex; min-height:0; }
-    #det-canvas-wrap { flex:1; display:flex; align-items:center; justify-content:center; background:#050a10; overflow:hidden; padding:12px; }
+    #det-canvas-wrap { flex:1; display:flex; align-items:center; justify-content:center; background:#050a10; overflow:hidden; padding:12px; position:relative; }
+    #det-bbox-del-btn { display:none; position:absolute; z-index:10; width:22px; height:22px; border-radius:50%; background:#e02020; border:2px solid #fff; color:#fff; font-size:13px; font-weight:bold; line-height:1; cursor:pointer; align-items:center; justify-content:center; box-shadow:0 0 6px rgba(0,0,0,.7); pointer-events:auto; transform:translate(50%,-50%); }
+    #det-bbox-del-btn:hover { background:#ff0000; transform:translate(50%,-50%) scale(1.15); }
     #det-canvas { cursor:crosshair; max-width:100%; max-height:100%; display:block; border:1px solid var(--border); }
     #det-sidebar { width:260px; flex-shrink:0; background:#0a1220; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
     #det-sidebar-hdr { padding:8px 12px; font-size:10px; color:var(--amber); border-bottom:1px solid var(--border); letter-spacing:.5px; }
@@ -1067,6 +1069,7 @@
   <div id="det-editor-body">
     <div id="det-canvas-wrap">
       <canvas id="det-canvas"></canvas>
+      <button id="det-bbox-del-btn" title="박스 삭제">✕</button>
     </div>
     <div id="det-sidebar">
       <div id="det-sidebar-hdr">탐지 목록 <span id="det-count-badge"></span></div>
@@ -2789,20 +2792,8 @@ function _edDraw() {
     _edCtx.fillStyle = '#000';
     _edCtx.fillText(label, x1 + pad, y1 - pad);
 
-    // 선택된 박스: 우상단 ✕ 삭제 버튼
-    if (sel) {
-      const bs = 18 / _edZoom;
-      const bx = x2 - bs, by = y1;
-      _edCtx.fillStyle = 'rgba(220,30,30,.9)';
-      _edCtx.fillRect(bx, by, bs, bs);
-      _edCtx.fillStyle = '#fff';
-      _edCtx.font = `bold ${fsBtn}px monospace`;
-      _edCtx.fillText('✕', bx + pad, by + bs * 0.72);
-      // 클릭 판정용 — world 좌표로 저장 (zoom/pan 역변환 후와 일치)
-      det._delBtn = {bx, by, bw: bs, bh: bs};
-    } else {
-      det._delBtn = null;
-    }
+    // 선택된 박스: HTML 오버레이 버튼으로 처리 (_edUpdateDelOverlay 에서 위치 결정)
+    det._delBtn = null;
   });
 
   // 드래그 중인 새 바운딩 박스 (점선)
@@ -2816,12 +2807,43 @@ function _edDraw() {
   }
 
   _edCtx.restore();
+  _edUpdateDelOverlay();
+}
+
+/* 선택된 bbox 우상단에 HTML 오버레이 ✕ 버튼 위치 갱신 */
+function _edUpdateDelOverlay() {
+  const btn = document.getElementById('det-bbox-del-btn');
+  if (_edSelIdx < 0 || _edSelIdx >= _edDets.length) {
+    btn.style.display = 'none';
+    return;
+  }
+  const det = _edDets[_edSelIdx];
+  // world 좌표 (canvas px before zoom/pan)
+  const wx2 = _toCanvas(det.bbox.x2, 'x');
+  const wy1 = _toCanvas(det.bbox.y1, 'y');
+  // world → raw canvas px (after zoom/pan)
+  const rawX = wx2 * _edZoom + _edPanX;
+  const rawY = wy1 * _edZoom + _edPanY;
+  // raw canvas px → CSS px (relative to canvas element)
+  const r   = _edCanvas.getBoundingClientRect();
+  const scaleX = r.width  / _edCanvas.width;
+  const scaleY = r.height / _edCanvas.height;
+  const cssX   = rawX * scaleX;
+  const cssY   = rawY * scaleY;
+  // wrap 기준 상대 좌표 (canvas가 wrap 안에서 flex center 정렬됨)
+  const wrapR  = document.getElementById('det-canvas-wrap').getBoundingClientRect();
+  const left   = (r.left - wrapR.left) + cssX;
+  const top    = (r.top  - wrapR.top)  + cssY;
+  btn.style.left    = left + 'px';
+  btn.style.top     = top  + 'px';
+  btn.style.display = 'flex';
 }
 
 function _edDeleteDet(idx) {
   if (idx < 0 || idx >= _edDets.length) return;
   _edDets.splice(idx, 1);
   if (_edSelIdx >= _edDets.length) _edSelIdx = -1;
+  document.getElementById('det-bbox-del-btn').style.display = 'none';
   _edRenderList(); _edDraw();
 }
 
@@ -2860,13 +2882,6 @@ _edCanvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
 
   const {x, y} = _canvasCoords(e);
-  // ✕ 삭제 버튼 클릭 판정 (선택된 박스에만 렌더링됨)
-  if (_edSelIdx >= 0) {
-    const btn = _edDets[_edSelIdx]?._delBtn;
-    if (btn && x >= btn.bx && x <= btn.bx + btn.bw && y >= btn.by && y <= btn.by + btn.bh) {
-      _edDeleteDet(_edSelIdx); return;
-    }
-  }
 
   // 기존 박스 선택 시도
   let hit = -1;
@@ -3128,7 +3143,12 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
   }
 });
 
+document.getElementById('det-bbox-del-btn').addEventListener('click', () => {
+  _edDeleteDet(_edSelIdx);
+});
+
 document.getElementById('det-cancel-btn').addEventListener('click', () => {
+  document.getElementById('det-bbox-del-btn').style.display = 'none';
   document.getElementById('det-editor-modal').classList.remove('open');
 });
 
