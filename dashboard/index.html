@@ -70,6 +70,14 @@
     #auto-run-count { font-size:9px; color:var(--dim); margin-top:3px; }
     #sim-progress { height:2px; background:var(--border); margin-top:6px; border-radius:1px; overflow:hidden; }
     #sim-progress-bar { height:100%; width:0; background:var(--green); transition:width .3s; }
+    #reset-btn {
+      width:100%; margin-top:6px; padding:5px 0; background:transparent;
+      border:1px solid #c0392b55; color:#c0392b; cursor:pointer;
+      font-family:var(--font); font-size:10px; border-radius:3px;
+      letter-spacing:.8px; transition:all .15s;
+    }
+    #reset-btn:hover:not(:disabled) { border-color:#e74c3c; color:#e74c3c; background:rgba(231,76,60,.08); }
+    #reset-btn:disabled { opacity:.35; cursor:not-allowed; }
 
     /* 위성 목록 */
     #sat-list-hdr { display:flex; justify-content:space-between; padding:6px 12px; font-size:10px; color:var(--dim); border-bottom:1px solid var(--border); background:#0d1520; }
@@ -759,6 +767,9 @@
       <div id="sim-status">자동 시뮬레이션을 켜거나 수동 실행하세요</div>
       <div id="auto-run-count"></div>
       <div id="sim-progress"><div id="sim-progress-bar"></div></div>
+
+      <!-- 시스템 초기화 버튼 -->
+      <button id="reset-btn" title="pipeline_status / sat_missions 초기화 + 파이프라인 프로세스 해제">⟳ 시스템 초기화</button>
     </div>
 
     <div id="sat-list-hdr">
@@ -1651,6 +1662,32 @@ document.getElementById('run-btn').addEventListener('click', async () => {
 
 /* ── 위치 갱신 버튼 ── */
 document.getElementById('refresh-btn').addEventListener('click', loadSatellites);
+
+/* ── 시스템 초기화 버튼 ── */
+document.getElementById('reset-btn').addEventListener('click', async () => {
+  if (!confirm('pipeline_status, sat_missions, 파이프라인 프로세스를 초기화합니다.\n계속하시겠습니까?')) return;
+
+  const btn = document.getElementById('reset-btn');
+  btn.disabled = true;
+  btn.textContent = '초기화 중...';
+
+  try {
+    const res = await fetch(`${API}/api/system/reset`, { method: 'POST' });
+    if (res.ok) {
+      renderAnalysisMarker({ stage: 'idle' });  // 지도 마커 즉시 제거
+      btn.textContent = '✓ 초기화 완료';
+      setTimeout(() => { btn.textContent = '⟳ 시스템 초기화'; }, 2000);
+    } else {
+      btn.textContent = '✗ 초기화 실패';
+      setTimeout(() => { btn.textContent = '⟳ 시스템 초기화'; }, 2000);
+    }
+  } catch(e) {
+    btn.textContent = `오류: ${e.message}`;
+    setTimeout(() => { btn.textContent = '⟳ 시스템 초기화'; }, 3000);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 /* ── 위경도 → 지역명 분류 ── */
 function getRegion(lat, lon) {

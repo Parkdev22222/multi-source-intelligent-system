@@ -244,7 +244,26 @@ def _save_sat_missions():
         )
 
 
-_load_sat_missions()
+# ── 서버 시작 시 상태 파일 초기화 ─────────────────────────────────────────
+# 이전 실행에서 고착된 pipeline_status / sat_missions 를 항상 깨끗하게 시작한다.
+def _reset_state_files() -> None:
+    """pipeline_status.json → idle, sat_missions.json → {} 로 초기화."""
+    try:
+        from src.pipeline_status import clear_status as _ps_clear
+        _ps_clear()
+        logger.info("[Startup] pipeline_status.json 초기화 완료")
+    except Exception as e:
+        logger.warning("[Startup] pipeline_status 초기화 실패: %s", e)
+    try:
+        with _sat_lock:
+            _sat_missions.clear()
+        _SAT_MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SAT_MISSIONS_FILE.write_text("{}", encoding="utf-8")
+        logger.info("[Startup] sat_missions.json 초기화 완료")
+    except Exception as e:
+        logger.warning("[Startup] sat_missions 초기화 실패: %s", e)
+
+_reset_state_files()
 
 # 위성영상 정적 파일
 _images_dir = Path(IMAGES_DIR)
@@ -1716,6 +1735,62 @@ def api_pipeline_status():
     """현재 파이프라인 단계 상태 조회 (대시보드 초기 로드용)."""
     from src.pipeline_status import read_status as _read_ps
     return _read_ps()
+
+
+@app.post("/api/system/reset")
+def api_system_reset():
+    """
+    시스템 전체 초기화:
+      - pipeline_status.json → idle
+      - sat_missions.json    → {}  (메모리 포함)
+      - 캠페인 상태          → idle
+      - 파이프라인 실행 플래그 해제
+    """
+    global _active_mission_id
+
+    # 1. pipeline_status 초기화
+    try:
+        from src.pipeline_status import clear_status as _ps_clear
+        _ps_clear()
+    except Exception as e:
+        logger.warning("[Reset] pipeline_status 초기화 실패: %s", e)
+
+    # 2. sat_missions 초기화 (파일 + 메모리)
+    with _sat_lock:
+        _sat_missions.clear()
+    try:
+        _SAT_MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SAT_MISSIONS_FILE.write_text("{}", encoding="utf-8")
+    except Exception as e:
+        logger.warning("[Reset] sat_missions 파일 초기화 실패: %s", e)
+
+    # 3. 캠페인 상태 초기화
+    with _camp_lock:
+        _campaign.update({
+            "status":       "idle",
+            "started_at":   None,
+            "finished_at":  None,
+            "queue":        [],
+            "current":      None,
+            "total":        0,
+            "done":         0,
+            "failed_count": 0,
+        })
+
+    # 4. 파이프라인 실행 중 플래그 해제 + 활성 임무 해제
+    with _auto_lock:
+        _auto_state["running"] = False
+    _active_mission_id = None
+
+    # 5. SSE 로 pipeline_stage idle 브로드캐스트 (지도 마커 즉시 제거)
+    try:
+        from src.pipeline_status import read_status as _read_ps
+        _notify_pipeline_stage(_read_ps())
+    except Exception:
+        pass
+
+    logger.info("[Reset] 시스템 초기화 완료")
+    return {"ok": True, "message": "시스템이 초기화되었습니다."}
 
 
 def _report_dict(r) -> dict:
