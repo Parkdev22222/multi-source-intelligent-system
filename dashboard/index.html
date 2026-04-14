@@ -1822,11 +1822,6 @@ async function loadAllReports() {
     const reports = data.reports || [];
     count.textContent = `${reports.length}건`;
 
-    if (reports.length === 0) {
-      list.innerHTML = '<div class="dp-empty">보고서 없음 – 시뮬레이션을 먼저 실행하세요</div>';
-      return;
-    }
-
     // 각 보고서에 지역·파일명·국가 레이블 메타 캐시
     _rptData = reports.map(r => {
       const dt = r.report_time ? new Date(r.report_time) : null;
@@ -1928,6 +1923,11 @@ async function loadAllReports() {
       }
     } else {
       countryRow.innerHTML = '';
+    }
+
+    if (reports.length === 0) {
+      list.innerHTML = '<div class="dp-empty">보고서 없음 – 시뮬레이션을 먼저 실행하세요</div>';
+      return;
     }
 
     renderRptList();
