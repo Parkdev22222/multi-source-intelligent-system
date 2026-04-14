@@ -296,6 +296,11 @@
     .rpt-act-btn.regen { border-color:#ff9900; color:#ff9900; }
     .rpt-act-btn.regen:hover { background:#ff990022; }
     .rpt-act-btn.regen:disabled { opacity:.4; cursor:not-allowed; }
+    #det-session-nav { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+    #det-session-nav-label { font-size:9px; color:var(--dim); letter-spacing:.3px; white-space:nowrap; }
+    .det-sess-img-btn { font-size:9px; padding:3px 8px; border-radius:3px; border:1px solid var(--border); background:transparent; color:var(--dim); cursor:pointer; font-family:var(--font); white-space:nowrap; }
+    .det-sess-img-btn:hover { border-color:var(--blue); color:var(--blue); background:#0a1c35; }
+    .det-sess-img-btn.active { border-color:var(--amber); color:var(--amber); background:#1a1200; cursor:default; }
     #det-editor-body { flex:1; display:flex; min-height:0; }
     #det-canvas-wrap { flex:1; display:flex; align-items:center; justify-content:center; background:#050a10; overflow:hidden; padding:12px; }
     #det-canvas { cursor:crosshair; max-width:100%; max-height:100%; display:block; border:1px solid var(--border); }
@@ -1019,6 +1024,9 @@
   <div id="det-editor-hdr">
     <span id="det-editor-title">◈ 객체탐지 수정</span>
     <span id="det-editor-info"></span>
+    <div id="det-session-nav" style="display:none">
+      <span id="det-session-nav-label">세션 이미지</span>
+    </div>
     <button id="det-save-btn">저장</button>
     <button id="det-cancel-btn">취소</button>
   </div>
@@ -2974,6 +2982,43 @@ async function openDetEditor(imageId, label) {
       : '—';
     document.getElementById('det-editor-info').textContent =
       `취득: ${capTime} | 탐지: ${_edDets.length}건 | 원본 ${_edOrig.w}×${_edOrig.h}px`;
+
+    // ── 같은 세션 이미지 네비게이션 버튼 ─────────────────────────────────
+    const sessNav = document.getElementById('det-session-nav');
+    sessNav.style.display = 'none';
+    if (rawData.session_id) {
+      try {
+        const sessRes = await fetch(`${API}/api/images/by-session/${encodeURIComponent(rawData.session_id)}`);
+        if (sessRes.ok) {
+          const sessData = await sessRes.json();
+          const imgs = sessData.images || [];
+          if (imgs.length > 1) {
+            // 세션 레이블 + 각 이미지 버튼
+            sessNav.innerHTML =
+              `<span id="det-session-nav-label">세션 이미지</span>` +
+              imgs.map((img, i) => {
+                const t = img.capture_time
+                  ? new Date(img.capture_time).toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+                  : `이미지 ${i + 1}`;
+                const src = img.source_type === 'drone' ? '🚁' : '🛰';
+                const isCurr = img.id === imageId;
+                return `<button class="det-sess-img-btn${isCurr ? ' active' : ''}"
+                  data-img-id="${img.id}" data-img-label="${src} ${t}"
+                  title="${img.source_type || ''} | ${img.capture_time || ''}"
+                  ${isCurr ? 'disabled' : ''}
+                >${src} ${t}</button>`;
+              }).join('');
+            sessNav.style.display = 'flex';
+            // 버튼 이벤트
+            sessNav.querySelectorAll('.det-sess-img-btn:not(.active)').forEach(btn => {
+              btn.addEventListener('click', () => {
+                openDetEditor(btn.dataset.imgId, btn.dataset.imgLabel);
+              });
+            });
+          }
+        }
+      } catch(_) {}
+    }
 
     _edRenderList(); _edDraw();
   } catch(e) {

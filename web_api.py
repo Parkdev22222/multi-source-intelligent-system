@@ -998,6 +998,24 @@ def api_detections_by_image(image_id: str):
     }
 
 
+@app.get("/api/images/by-session/{session_id}")
+def api_images_by_session(session_id: str):
+    """동일 session_id를 가진 이미지 목록 반환 (탐지 에디터 세션 이동용)."""
+    records = get_images_by_session(session_id)
+    return {
+        "images": [
+            {
+                "id":           r.id,
+                "capture_time": r.capture_time.isoformat() if r.capture_time else None,
+                "source_type":  r.source_type,
+                "session_id":   r.session_id,
+            }
+            for r in records
+        ],
+        "count": len(records),
+    }
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # 판독 보고서
 # ══════════════════════════════════════════════════════════════════════════
@@ -1290,6 +1308,8 @@ def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
         "orig_width":   orig_w,
         "orig_height":  orig_h,
         "capture_time": rec.capture_time.isoformat() if rec.capture_time else None,
+        "session_id":   rec.session_id,
+        "source_type":  rec.source_type,
     }
 
 
