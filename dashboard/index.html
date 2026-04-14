@@ -1922,7 +1922,27 @@ async function loadAllReports() {
         });
       }
     } else {
-      countryRow.innerHTML = '';
+      // 보고서 없어도 국가 드롭다운 껍데기 표시
+      countryRow.innerHTML =
+        `<span class="rpt-filter-lbl">국가</span>` +
+        `<div class="country-dd-wrap">` +
+          `<button class="country-dd-btn" id="country-dd-btn">` +
+            `<span id="country-dd-label">전체</span>` +
+            `<span class="country-dd-arrow">▼</span>` +
+          `</button>` +
+          `<div class="country-dd-list" id="country-dd-list">` +
+            `<div class="country-dd-item active" data-country="__all__">` +
+              `<span>전체</span><span style="opacity:.6">0</span>` +
+            `</div>` +
+          `</div>` +
+        `</div>`;
+      const ddBtn2  = document.getElementById('country-dd-btn');
+      const ddList2 = document.getElementById('country-dd-list');
+      if (ddBtn2) ddBtn2.addEventListener('click', e => {
+        e.stopPropagation();
+        ddList2.classList.toggle('open');
+        ddBtn2.classList.toggle('open');
+      });
     }
 
     if (reports.length === 0) {
