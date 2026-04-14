@@ -40,7 +40,7 @@ def _get_country_name(lat: float, lon: float) -> Optional[str]:
     except Exception:
         return None
 
-from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
