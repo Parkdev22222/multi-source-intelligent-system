@@ -635,7 +635,7 @@ def pair_by_tracking(
             if expected_cls in _STATIC_CLASSES:
                 status = "matched"
             else:
-                status = "moved" if dist > MOVE_DISTANCE_THRESHOLD_DEG else "matched"
+                status = "matched"   # moved 상태 미사용 – 이동 여부 무관하게 matched 처리
         else:
             status = "matched"
 
