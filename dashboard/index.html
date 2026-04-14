@@ -320,6 +320,39 @@
     #det-class-input:focus, #det-conf-input:focus { outline:none; border-color:var(--amber); }
     #det-add-hint { font-size:9px; color:var(--dim); text-align:center; padding:4px 0 0; }
 
+    /* ── Pairing 에디터 ── */
+    #pairing-editor-modal { display:none; position:fixed; inset:0; z-index:9600; background:rgba(0,0,0,.92); flex-direction:column; }
+    #pairing-editor-modal.open { display:flex; }
+    #pairing-editor-hdr { padding:10px 16px; background:#080d18; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+    #pairing-editor-title { font-size:13px; color:#00d4ff; letter-spacing:1px; flex:1; }
+    #pairing-editor-info  { font-size:10px; color:var(--dim); }
+    #pairing-editor-hdr button { font-size:11px; padding:5px 14px; border-radius:3px; border:1px solid; cursor:pointer; font-family:var(--font); font-weight:bold; }
+    #pairing-save-btn   { background:var(--green); border-color:var(--green); color:#000; }
+    #pairing-save-btn:hover { background:#00ee77; }
+    #pairing-cancel-btn { background:transparent; border-color:var(--dim); color:var(--dim); }
+    #pairing-cancel-btn:hover { border-color:var(--red); color:var(--red); }
+    #pairing-editor-body { flex:1; overflow-y:auto; padding:12px 16px; }
+    .pr-table { width:100%; border-collapse:collapse; font-size:11px; }
+    .pr-table th { background:#0a1220; color:var(--dim); font-weight:600; padding:6px 8px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; font-size:10px; letter-spacing:.4px; }
+    .pr-table td { padding:5px 6px; border-bottom:1px solid #0d1a2a; vertical-align:middle; }
+    .pr-table tr:hover td { background:#081220; }
+    .pr-row-del   { color:#888; cursor:pointer; padding:2px 6px; border-radius:2px; border:1px solid transparent; font-size:13px; }
+    .pr-row-del:hover { color:#fff; background:var(--red); border-color:var(--red); }
+    .pr-status-sel { background:#080d18; border:1px solid var(--border); color:var(--text); font-family:var(--font); font-size:10px; padding:2px 5px; border-radius:2px; }
+    .pr-status-sel:focus { outline:none; border-color:var(--amber); }
+    .pr-class-inp { background:#080d18; border:1px solid var(--border); color:var(--text); font-family:var(--font); font-size:10px; padding:2px 5px; border-radius:2px; width:130px; }
+    .pr-class-inp:focus { outline:none; border-color:var(--amber); }
+    .pr-conf-inp  { background:#080d18; border:1px solid var(--border); color:var(--text); font-family:var(--font); font-size:10px; padding:2px 4px; border-radius:2px; width:48px; }
+    .pr-conf-inp:focus { outline:none; border-color:var(--amber); }
+    .pr-badge { display:inline-block; font-size:9px; padding:2px 6px; border-radius:2px; font-weight:600; letter-spacing:.3px; }
+    .pr-badge-new         { background:#003a00; color:#00ff88; border:1px solid #00ff8855; }
+    .pr-badge-matched     { background:#001a30; color:#4fc3f7; border:1px solid #4fc3f755; }
+    .pr-badge-disappeared { background:#2a0800; color:#ff8844; border:1px solid #ff884455; }
+    .pr-badge-pni         { background:#1a1200; color:#f59e0b; border:1px solid #f59e0b55; }
+    .pr-badge-cni         { background:#1a0020; color:#cc88ff; border:1px solid #cc88ff55; }
+    .pr-coord { font-size:9px; color:var(--dim); }
+    .pr-changed td { background:#0a1a08 !important; }
+
     /* ── 마커 스타일 ── */
     .sat-dot { width:20px; height:20px; cursor:pointer; transition:transform .1s; font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 0 2px rgba(0,0,0,.8)); }
     .sat-dot:hover { transform:scale(1.6); }
@@ -1027,6 +1060,7 @@
     <div id="det-session-nav" style="display:none">
       <span id="det-session-nav-label">세션 이미지</span>
     </div>
+    <button id="det-pairing-btn" style="display:none;background:transparent;border-color:#00d4ff;color:#00d4ff;">◈ Pairing 수정</button>
     <button id="det-save-btn">저장</button>
     <button id="det-cancel-btn">취소</button>
   </div>
@@ -1046,6 +1080,19 @@
         <div id="det-add-hint">이미지 위에서 드래그하여 박스 추가<br>목록 항목 클릭 → 선택 / ✕ 클릭 → 삭제</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ── Pairing 에디터 모달 ──────────────────────────────────── -->
+<div id="pairing-editor-modal">
+  <div id="pairing-editor-hdr">
+    <span id="pairing-editor-title">◈ Pairing 수정</span>
+    <span id="pairing-editor-info"></span>
+    <button id="pairing-save-btn">저장</button>
+    <button id="pairing-cancel-btn">닫기</button>
+  </div>
+  <div id="pairing-editor-body">
+    <div id="pairing-editor-content"></div>
   </div>
 </div>
 
@@ -2649,7 +2696,8 @@ function meta_toast(msg) {
 /* ══════════════════════════════════════════════════
    탐지 편집기 (캔버스 바운딩박스 수정)
    ══════════════════════════════════════════════════ */
-let _edImgId   = null;   // 편집 중인 image_id
+let _edImgId      = null;   // 편집 중인 image_id
+let _edSessionId  = null;   // 편집 중인 세션 ID (pairing 에디터 연동용)
 let _edOrig    = {w:1, h:1};  // 원본 이미지 크기
 let _edDets    = [];     // [{object_class, confidence, bbox:{x1,y1,x2,y2}}]
 let _edSelIdx  = -1;
@@ -2983,6 +3031,11 @@ async function openDetEditor(imageId, label) {
     document.getElementById('det-editor-info').textContent =
       `취득: ${capTime} | 탐지: ${_edDets.length}건 | 원본 ${_edOrig.w}×${_edOrig.h}px`;
 
+    // ── session_id 보존 + Pairing 버튼 표시/숨김 ─────────────────────────
+    _edSessionId = rawData.session_id || null;
+    const pairingBtn = document.getElementById('det-pairing-btn');
+    pairingBtn.style.display = _edSessionId ? 'inline-block' : 'none';
+
     // ── 같은 세션 이미지 네비게이션 버튼 ─────────────────────────────────
     const sessNav = document.getElementById('det-session-nav');
     sessNav.style.display = 'none';
@@ -3077,6 +3130,175 @@ document.getElementById('det-save-btn').addEventListener('click', async () => {
 
 document.getElementById('det-cancel-btn').addEventListener('click', () => {
   document.getElementById('det-editor-modal').classList.remove('open');
+});
+
+document.getElementById('det-pairing-btn').addEventListener('click', () => {
+  if (_edSessionId) openPairingEditor(_edSessionId);
+});
+
+/* ════════════════════════════════════════════════════════════════════════
+   Pairing 에디터
+   ════════════════════════════════════════════════════════════════════════ */
+let _prData    = [];   // 현재 로드된 pairing 목록
+let _prChanged = {};   // { pairing_id: {field: value, ...} } 변경 추적
+let _prDeleted = new Set(); // 삭제 예정 pairing id 집합
+
+const _PAIRING_STATUSES = ['new','matched','disappeared','past_not_included','current_not_included'];
+const _PR_STATUS_LABEL  = {
+  new:'신규', matched:'정지', disappeared:'소실',
+  past_not_included:'과거미포함', current_not_included:'현재미포함'
+};
+const _PR_BADGE_CLS = {
+  new:'pr-badge-new', matched:'pr-badge-matched', disappeared:'pr-badge-disappeared',
+  past_not_included:'pr-badge-pni', current_not_included:'pr-badge-cni'
+};
+
+async function openPairingEditor(sessionId) {
+  const modal   = document.getElementById('pairing-editor-modal');
+  const content = document.getElementById('pairing-editor-content');
+  const info    = document.getElementById('pairing-editor-info');
+  document.getElementById('pairing-editor-title').textContent =
+    `◈ Pairing 수정 – SESSION ${sessionId.slice(0,8).toUpperCase()}`;
+  info.textContent = '로딩 중...';
+  content.innerHTML = '';
+  _prData = []; _prChanged = {}; _prDeleted.clear();
+  modal.classList.add('open');
+
+  try {
+    const res = await fetch(`${API}/api/pairings/by-session/${encodeURIComponent(sessionId)}`);
+    if (!res.ok) throw new Error('pairing 조회 실패');
+    const data = await res.json();
+    _prData = data.pairings || [];
+    info.textContent = `총 ${_prData.length}건`;
+    _renderPairingTable();
+  } catch(e) {
+    info.textContent = `오류: ${e.message}`;
+  }
+}
+
+function _renderPairingTable() {
+  const content = document.getElementById('pairing-editor-content');
+  if (!_prData.length) {
+    content.innerHTML = '<div style="color:var(--dim);padding:20px;text-align:center">pairing 없음</div>';
+    return;
+  }
+  const rows = _prData.map((p, i) => {
+    const isDel = _prDeleted.has(p.id);
+    const ch    = _prChanged[p.id] || {};
+    const status = ch.status ?? p.status;
+    const curCls = ch.current_object_class ?? (p.current_object_class || '');
+    const curConf = ch.current_confidence ?? (p.current_confidence ?? '');
+    const pastCls = ch.past_object_class ?? (p.past_object_class || '');
+    const pastConf = ch.past_confidence ?? (p.past_confidence ?? '');
+
+    const badgeCls = _PR_BADGE_CLS[status] || '';
+    const rowCls   = (Object.keys(ch).length > 0 ? 'pr-changed' : '') + (isDel ? ' pr-deleted' : '');
+
+    const statusOpts = _PAIRING_STATUSES.map(s =>
+      `<option value="${s}"${status===s?' selected':''}>${_PR_STATUS_LABEL[s]||s}</option>`
+    ).join('');
+
+    const curCoord  = (p.current_lat != null)
+      ? `<div class="pr-coord">${p.current_lat?.toFixed(3)},${p.current_lon?.toFixed(3)}</div>` : '';
+    const pastCoord = (p.past_lat != null)
+      ? `<div class="pr-coord">${p.past_lat?.toFixed(3)},${p.past_lon?.toFixed(3)}</div>` : '';
+
+    return `<tr class="${rowCls}" data-idx="${i}" style="${isDel?'opacity:.35;pointer-events:none':''}">
+      <td><span class="pr-badge ${badgeCls}">${_PR_STATUS_LABEL[status]||status}</span></td>
+      <td>
+        <select class="pr-status-sel" data-id="${p.id}" data-field="status">
+          ${statusOpts}
+        </select>
+      </td>
+      <td>
+        <input class="pr-class-inp" data-id="${p.id}" data-field="current_object_class"
+               value="${curCls}" placeholder="—">
+        ${curCoord}
+      </td>
+      <td>
+        <input class="pr-conf-inp" type="number" min="0" max="1" step="0.01"
+               data-id="${p.id}" data-field="current_confidence"
+               value="${curConf !== '' ? Number(curConf).toFixed(2) : ''}">
+      </td>
+      <td>
+        <input class="pr-class-inp" data-id="${p.id}" data-field="past_object_class"
+               value="${pastCls}" placeholder="—">
+        ${pastCoord}
+      </td>
+      <td>
+        <input class="pr-conf-inp" type="number" min="0" max="1" step="0.01"
+               data-id="${p.id}" data-field="past_confidence"
+               value="${pastConf !== '' ? Number(pastConf).toFixed(2) : ''}">
+      </td>
+      <td>
+        <span class="pr-row-del" data-id="${p.id}" title="삭제">✕</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <table class="pr-table">
+      <thead><tr>
+        <th>현재 상태</th><th>변경 상태</th>
+        <th>현재탐지 클래스</th><th>현재 신뢰도</th>
+        <th>과거탐지 클래스</th><th>과거 신뢰도</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  // 이벤트 바인딩
+  content.querySelectorAll('.pr-status-sel, .pr-class-inp, .pr-conf-inp').forEach(el => {
+    el.addEventListener('change', () => {
+      const id    = el.dataset.id;
+      const field = el.dataset.field;
+      const val   = (field.includes('confidence')) ? (el.value === '' ? null : parseFloat(el.value)) : el.value;
+      if (!_prChanged[id]) _prChanged[id] = {};
+      _prChanged[id][field] = val;
+      _renderPairingTable();
+    });
+  });
+  content.querySelectorAll('.pr-row-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _prDeleted.add(btn.dataset.id);
+      _renderPairingTable();
+    });
+  });
+}
+
+document.getElementById('pairing-save-btn').addEventListener('click', async () => {
+  const saveBtn = document.getElementById('pairing-save-btn');
+  saveBtn.disabled = true; saveBtn.textContent = '저장 중...';
+  try {
+    // 삭제 먼저
+    for (const id of _prDeleted) {
+      await fetch(`${API}/api/pairing/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    }
+    // 변경 저장
+    for (const [id, fields] of Object.entries(_prChanged)) {
+      if (_prDeleted.has(id)) continue;
+      await fetch(`${API}/api/pairing/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(fields),
+      });
+    }
+    const total = _prDeleted.size + Object.keys(_prChanged).length;
+    meta_toast(`Pairing ${total}건 저장 완료`);
+    _prChanged = {}; _prDeleted.clear();
+    // 목록 새로고침
+    const sessionId = _edSessionId;
+    document.getElementById('pairing-editor-modal').classList.remove('open');
+    if (sessionId) openPairingEditor(sessionId);
+  } catch(e) {
+    meta_toast(`저장 오류: ${e.message}`);
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = '저장';
+  }
+});
+
+document.getElementById('pairing-cancel-btn').addEventListener('click', () => {
+  document.getElementById('pairing-editor-modal').classList.remove('open');
 });
 
 document.getElementById('rpt-regen-btn').addEventListener('click', async () => {

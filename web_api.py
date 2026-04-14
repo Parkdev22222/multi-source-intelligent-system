@@ -47,7 +47,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.config import IMAGES_DIR, SR_TARGET_W, SR_TARGET_H
-from src.database.pairing_db import get_session_ids_near, get_session_location, get_pairings_by_session, update_pairings_detection_refs, get_pairings_near_time
+from src.database.pairing_db import (
+    get_session_ids_near, get_session_location, get_pairings_by_session,
+    update_pairings_detection_refs, get_pairings_near_time,
+    update_pairing, delete_pairing,
+)
 from src.database.reports_db import (
     get_all_reports,
     get_latest_report_for_sessions,
@@ -1014,6 +1018,58 @@ def api_images_by_session(session_id: str):
         ],
         "count": len(records),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Pairing 수정 API
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/pairings/by-session/{session_id}")
+def api_pairings_by_session(session_id: str):
+    """세션의 pairing 목록 반환 (pairing 에디터용)."""
+    records = get_pairings_by_session(session_id)
+    def _fmt(r):
+        return {
+            "id":                    r.id,
+            "status":                r.status,
+            "lat_center":            r.lat_center,
+            "lon_center":            r.lon_center,
+            "current_detection_id":  r.current_detection_id,
+            "current_object_class":  r.current_object_class,
+            "current_confidence":    round(r.current_confidence, 3) if r.current_confidence is not None else None,
+            "current_lat":           r.current_lat,
+            "current_lon":           r.current_lon,
+            "current_capture_time":  r.current_capture_time.isoformat() if r.current_capture_time else None,
+            "current_bbox":          r.current_bbox,
+            "past_detection_id":     r.past_detection_id,
+            "past_object_class":     r.past_object_class,
+            "past_confidence":       round(r.past_confidence, 3) if r.past_confidence is not None else None,
+            "past_lat":              r.past_lat,
+            "past_lon":              r.past_lon,
+            "past_capture_time":     r.past_capture_time.isoformat() if r.past_capture_time else None,
+            "past_bbox":             r.past_bbox,
+            "session_id":            r.session_id,
+        }
+    return {"pairings": [_fmt(r) for r in records], "count": len(records)}
+
+
+@app.put("/api/pairing/{pairing_id}")
+async def api_update_pairing(pairing_id: str, request: Request):
+    """pairing 단건 업데이트 (status / object_class / confidence 변경)."""
+    body = await request.json()
+    ok = update_pairing(pairing_id, body)
+    if not ok:
+        raise HTTPException(status_code=404, detail="pairing not found")
+    return {"ok": True, "id": pairing_id}
+
+
+@app.delete("/api/pairing/{pairing_id}")
+def api_delete_pairing(pairing_id: str):
+    """pairing 단건 삭제."""
+    ok = delete_pairing(pairing_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="pairing not found")
+    return {"ok": True, "id": pairing_id}
 
 
 # ══════════════════════════════════════════════════════════════════════════

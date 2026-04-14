@@ -120,6 +120,50 @@ def delete_pairings_by_session(session_id: str) -> int:
     return deleted
 
 
+def update_pairing(pairing_id: str, fields: dict) -> bool:
+    """단일 PairingRecord를 부분 업데이트한다.
+
+    Args:
+        pairing_id: 업데이트할 pairing의 UUID
+        fields: 업데이트할 필드 딕셔너리.
+                허용 키: status, current_object_class, current_confidence,
+                         past_object_class, past_confidence
+
+    Returns:
+        True if record found and updated, False if not found.
+    """
+    _ALLOWED = {
+        "status", "current_object_class", "current_confidence",
+        "past_object_class", "past_confidence",
+    }
+    safe = {k: v for k, v in fields.items() if k in _ALLOWED}
+    if not safe:
+        return False
+    engine = get_engine()
+    with Session(engine) as session:
+        rec = session.get(PairingRecord, pairing_id)
+        if rec is None:
+            return False
+        for k, v in safe.items():
+            setattr(rec, k, v)
+        session.commit()
+    logger.info(f"[PairingDB] Updated pairing {pairing_id[:8]}: {safe}")
+    return True
+
+
+def delete_pairing(pairing_id: str) -> bool:
+    """단일 PairingRecord를 삭제한다."""
+    engine = get_engine()
+    with Session(engine) as session:
+        rec = session.get(PairingRecord, pairing_id)
+        if rec is None:
+            return False
+        session.delete(rec)
+        session.commit()
+    logger.info(f"[PairingDB] Deleted pairing {pairing_id[:8]}")
+    return True
+
+
 def get_session_location(session_id: str):
     """Return (lat_center, lon_center) for the first pairing of a session, or (None, None)."""
     engine = get_engine()
