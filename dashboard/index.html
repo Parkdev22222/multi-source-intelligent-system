@@ -3520,7 +3520,7 @@ function _addWpRow(lat, lon, name, desc, wpData) {
          <span class="wp-status-badge ${stCls}">${stLabel}</span>
          ${rptHtml}
          ${wpData.elapsed_s ? `<span style="font-size:9px;color:var(--dim)">${wpData.elapsed_s}s</span>` : ''}
-         ${wpData.error ? `<span style="font-size:9px;color:var(--red)" title="${wpData.error}">오류</span>` : ''}
+         ${wpData.error && wpData.status !== 'complete' ? `<span style="font-size:9px;color:var(--red)" title="${wpData.error}">오류</span>` : ''}
        </div>` : '';
 
   const isEditable = !wpData || wpData.status === 'pending';

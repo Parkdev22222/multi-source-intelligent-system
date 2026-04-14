@@ -316,18 +316,37 @@ def _any_satellite_moved(new_sats: list) -> bool:
     return False
 
 
-def _finish_wp(wp: dict, result: dict):
-    """웨이포인트 실행 결과 반영 (성공/실패 공통)."""
-    if result["success"]:
-        try:
-            from src.database.reports_db import get_all_reports
-            rpts = get_all_reports(limit=3)
-            if rpts:
-                wp["report_id"] = rpts[0].id
-        except Exception:
-            pass
+def _get_latest_report_id() -> str | None:
+    """DB에서 가장 최근 보고서 ID 반환. 조회 실패 시 None."""
+    try:
+        from src.database.reports_db import get_all_reports
+        rpts = get_all_reports(limit=1)
+        return rpts[0].id if rpts else None
+    except Exception:
+        return None
+
+
+def _finish_wp(wp: dict, result: dict, before_report_id: str | None = None):
+    """웨이포인트 실행 결과 반영 (성공/실패 공통).
+
+    파이프라인이 비정상 종료(returncode!=0)여도 DB에 새 보고서가 실제로
+    생성된 경우(RAG 실패 후 LLM 폴백 등)는 complete 로 처리한다.
+
+    Args:
+        before_report_id: WP 실행 직전 DB 최신 보고서 ID.
+                          실행 후 ID가 달라지면 새 보고서가 생성된 것.
+    """
+    after_report_id = _get_latest_report_id()
+    new_report_created = (
+        after_report_id is not None and after_report_id != before_report_id
+    )
+
+    if result["success"] or new_report_created:
+        if after_report_id:
+            wp["report_id"] = after_report_id
         wp["status"]    = "complete"
         wp["elapsed_s"] = result["elapsed_s"]
+        wp.pop("error", None)
     else:
         wp["status"] = "failed"
         wp["error"]  = result.get("stderr_tail", "")[:300]
@@ -398,6 +417,7 @@ def _auto_sim_worker():
                 with _auto_lock:
                     _auto_state["running"] = True
                 try:
+                    _before_rpt_id = _get_latest_report_id()
                     from simulator_runner import run_step_at
                     result = run_step_at(
                         lat=wp_ref["lat"],
@@ -405,7 +425,7 @@ def _auto_sim_worker():
                         name=item["sat_name"],
                         target_description=wp_ref.get("target_description", ""),
                     )
-                    _finish_wp(wp_ref, result)
+                    _finish_wp(wp_ref, result, before_report_id=_before_rpt_id)
                     _auto_state["run_count"]   += 1
                     _auto_state["last_run"]     = datetime.utcnow().isoformat()
                     _auto_state["last_success"] = result["success"]
@@ -416,7 +436,7 @@ def _auto_sim_worker():
                         "lat":  wp_ref["lat"],
                         "lon":  wp_ref["lon"],
                     }
-                    if not result["success"]:
+                    if wp_ref["status"] == "failed":
                         with _camp_lock:
                             _campaign["failed_count"] += 1
                 except Exception as exc:
@@ -484,6 +504,7 @@ def _auto_sim_worker():
                 with _auto_lock:
                     _auto_state["running"] = True
                 try:
+                    _before_rpt_id = _get_latest_report_id()
                     from simulator_runner import run_step_at
                     result = run_step_at(
                         lat=next_wp["lat"],
@@ -491,7 +512,7 @@ def _auto_sim_worker():
                         name=next_wp.get("name", "임무 위성"),
                         target_description=next_wp.get("target_description", ""),
                     )
-                    _finish_wp(next_wp, result)
+                    _finish_wp(next_wp, result, before_report_id=_before_rpt_id)
                     _auto_state["run_count"]  += 1
                     _auto_state["last_run"]    = datetime.utcnow().isoformat()
                     _auto_state["last_success"]= result["success"]
