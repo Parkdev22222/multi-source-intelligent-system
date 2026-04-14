@@ -454,6 +454,9 @@ def _auto_sim_worker():
                         _campaign["done"]    += 1
                         _campaign["current"]  = None
                     _save_sat_missions()
+                    # WP 완료 즉시 idle 브로드캐스트 — 다음 WP가 빠르게 시작해도
+                    # 폴링 스레드가 idle을 놓치지 않도록 명시적으로 전송
+                    _notify_pipeline_stage({"stage": "idle", "label": "", "lat": None, "lon": None})
                     _notify_db_updated(
                         run_count=_auto_state["run_count"],
                         success=_auto_state.get("last_success", False),
@@ -533,6 +536,8 @@ def _auto_sim_worker():
                     logger.error("[AutoSim/Mission] WP 실행 오류: %s", exc)
                 finally:
                     _save_missions_to_file()
+                    # WP 완료 즉시 idle 브로드캐스트
+                    _notify_pipeline_stage({"stage": "idle", "label": "", "lat": None, "lon": None})
                     _notify_db_updated(
                         run_count=_auto_state["run_count"],
                         success=_auto_state.get("last_success", False),
