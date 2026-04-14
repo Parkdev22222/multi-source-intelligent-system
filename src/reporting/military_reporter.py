@@ -79,6 +79,20 @@ def _build_system_prompt(doctrine_context: str = "") -> str:
 
 _MAX_DETAIL = 20   # max individual records shown per change category
 
+# 차량류 클래스 – 보고서에 개별 항목 대신 건수(CLASS_SUMMARY)만 표시
+_VEHICLE_CLASSES: frozenset = frozenset({
+    "military tank",
+    "armored personnel carrier",
+    "military truck",
+    "military jeep",
+    "civilian vehicle",
+})
+
+
+def _is_vehicle(p) -> bool:
+    cls = (p.current_object_class or p.past_object_class or "").lower()
+    return cls in _VEHICLE_CLASSES
+
 
 def _class_counts(objs) -> str:
     """Return 'TANK:3 APC:2 ...' summary string from a list of pairing records."""
@@ -101,13 +115,11 @@ def _build_user_prompt(pairings: List[PairingRecord], target_description: str = 
     past_not_inc      = [p for p in pairings if p.status == "past_not_included"]
     cur_not_inc       = [p for p in pairings if p.status == "current_not_included"]
     matched_objs      = [p for p in pairings if p.status == "matched"]
-    moved_objs        = [p for p in pairings if p.status == "moved"]
 
     n_matched = len(matched_objs)
-    n_moved   = len(moved_objs)
 
-    # 현재 프레임 탐지 건수 = new + matched + moved + past_not_included
-    n_current_detections = len(new_objs) + n_matched + n_moved + len(past_not_inc)
+    # 현재 프레임 탐지 건수 = new + matched + past_not_included
+    n_current_detections = len(new_objs) + n_matched + len(past_not_inc)
 
     lats = [p.lat_center for p in pairings]
     lons = [p.lon_center for p in pairings]
@@ -119,6 +131,45 @@ def _build_user_prompt(pairings: List[PairingRecord], target_description: str = 
     time_past = min(past_times).strftime("%Y-%m-%dT%H:%M:%SZ") if past_times else "UNKNOWN"
     time_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
+    def _append_section(section_objs, conf_key: str):
+        """섹션 내 객체를 출력.
+        차량류(_VEHICLE_CLASSES): CLASS_SUMMARY 건수만 표시 (개별 항목 생략).
+        비차량류: 개별 항목 (좌표·신뢰도) 표시.
+        """
+        vehicles     = [p for p in section_objs if _is_vehicle(p)]
+        non_vehicles = [p for p in section_objs if not _is_vehicle(p)]
+
+        if vehicles:
+            lines.append(f"  VEHICLE_COUNT: {_class_counts(vehicles)}"
+                         f"  (총 {len(vehicles)}대 — 위치 상세 생략)")
+
+        if non_vehicles:
+            lines.append(f"  CLASS_SUMMARY: {_class_counts(non_vehicles)}")
+            top = sorted(non_vehicles,
+                         key=lambda p: (getattr(p, conf_key) or 0),
+                         reverse=True)
+            for p in top[:_MAX_DETAIL]:
+                if conf_key == "current_confidence":
+                    lines.append(
+                        f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
+                        f" ({p.current_lat:.3f},{p.current_lon:.3f})"
+                        f" DETECTED={fmt_dt(p.current_capture_time)}"
+                    )
+                else:
+                    lines.append(
+                        f"  {p.past_object_class} CONF={p.past_confidence:.2f}"
+                        f" ({p.past_lat:.3f},{p.past_lon:.3f})"
+                        f" LAST_SEEN={fmt_dt(p.past_capture_time)}"
+                    )
+            if len(non_vehicles) > _MAX_DETAIL:
+                lines.append(
+                    f"  ... +{len(non_vehicles) - _MAX_DETAIL} more:"
+                    f" {_class_counts(non_vehicles[_MAX_DETAIL:])}"
+                )
+
+        if not vehicles and not non_vehicles:
+            lines.append("  (none)")
+
     lines = []
     if target_description.strip():
         lines += [
@@ -129,7 +180,7 @@ def _build_user_prompt(pairings: List[PairingRecord], target_description: str = 
     lines += [
         f"PAST_OBS: {time_past}  CURRENT_OBS: {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
         f"CURRENT_FRAME_DETECTIONS: {n_current_detections}"
-        f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}  MOVED:{n_moved}"
+        f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}"
         f"  PAST_NOT_INCLUDED:{len(past_not_inc)})",
         f"PAST_ONLY: disappeared={len(disappeared_objs)}"
         f"  current_not_included={len(cur_not_inc)}",
@@ -139,6 +190,7 @@ def _build_user_prompt(pairings: List[PairingRecord], target_description: str = 
         " — cannot confirm if new.",
         "NOTE: CURRENT_NOT_INCLUDED = past detection outside current image FOV"
         " — cannot confirm if gone.",
+        "NOTE: Vehicle classes (tank/APC/truck/jeep/vehicle) are reported as counts only.",
         "NOTE: Report covers NEW, DISAPPEARED, PAST_NOT_INCLUDED, CURRENT_NOT_INCLUDED objects.",
     ]
 
@@ -149,94 +201,30 @@ def _build_user_prompt(pairings: List[PairingRecord], target_description: str = 
         )
         lines.append(f"  CLASS_SUMMARY: {_class_counts(matched_objs)}")
 
-    # --- MOVED objects (class breakdown only – for threat context) ---
-    if moved_objs:
-        lines.append(
-            f"\n=== MOVED OBJECTS (same object, position changed between frames — class breakdown for context) ==="
-        )
-        lines.append(f"  CLASS_SUMMARY: {_class_counts(moved_objs)}")
-        top_moved = sorted(moved_objs, key=lambda p: p.current_confidence or 0, reverse=True)
-        for p in top_moved[:_MAX_DETAIL]:
-            lines.append(
-                f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
-                f" PAST({p.past_lat:.3f},{p.past_lon:.3f})"
-                f" → CURRENT({p.current_lat:.3f},{p.current_lon:.3f})"
-            )
-        if len(moved_objs) > _MAX_DETAIL:
-            lines.append(f"  ... +{len(moved_objs) - _MAX_DETAIL} more: {_class_counts(moved_objs[_MAX_DETAIL:])}")
-
     # --- NEW objects ---
     lines.append(f"\n=== NEW OBJECTS (overlap zone, first observed at CURRENT_OBS: {time_current}) ===")
-    if new_objs:
-        lines.append(f"  CLASS_SUMMARY: {_class_counts(new_objs)}")
-    top_new = sorted(new_objs, key=lambda p: p.current_confidence or 0, reverse=True)
-    for p in top_new[:_MAX_DETAIL]:
-        lines.append(
-            f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
-            f" ({p.current_lat:.3f},{p.current_lon:.3f})"
-            f" DETECTED={fmt_dt(p.current_capture_time)}"
-        )
-    if len(new_objs) > _MAX_DETAIL:
-        lines.append(f"  ... +{len(new_objs) - _MAX_DETAIL} more: {_class_counts(new_objs[_MAX_DETAIL:])}")
-    if not new_objs:
-        lines.append("  (none)")
+    _append_section(new_objs, "current_confidence")
 
     # --- DISAPPEARED objects ---
     lines.append(
         f"\n=== DISAPPEARED OBJECTS"
         f" (overlap zone, present at PAST_OBS: {time_past}, NOT observed at CURRENT_OBS: {time_current}) ==="
     )
-    if disappeared_objs:
-        lines.append(f"  CLASS_SUMMARY: {_class_counts(disappeared_objs)}")
-    top_gone = sorted(disappeared_objs, key=lambda p: p.past_confidence or 0, reverse=True)
-    for p in top_gone[:_MAX_DETAIL]:
-        lines.append(
-            f"  {p.past_object_class} CONF={p.past_confidence:.2f}"
-            f" ({p.past_lat:.3f},{p.past_lon:.3f})"
-            f" LAST_SEEN={fmt_dt(p.past_capture_time)}"
-        )
-    if len(disappeared_objs) > _MAX_DETAIL:
-        lines.append(f"  ... +{len(disappeared_objs) - _MAX_DETAIL} more: {_class_counts(disappeared_objs[_MAX_DETAIL:])}")
-    if not disappeared_objs:
-        lines.append("  (none)")
+    _append_section(disappeared_objs, "past_confidence")
 
     # --- PAST_NOT_INCLUDED objects (coverage gap – current detection, no past coverage) ---
     lines.append(
         f"\n=== PAST_NOT_INCLUDED OBJECTS"
         f" (detected CURRENT_OBS: {time_current}, outside past image FOV — unverifiable) ==="
     )
-    if past_not_inc:
-        lines.append(f"  CLASS_SUMMARY: {_class_counts(past_not_inc)}")
-    top_pni = sorted(past_not_inc, key=lambda p: p.current_confidence or 0, reverse=True)
-    for p in top_pni[:_MAX_DETAIL]:
-        lines.append(
-            f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
-            f" ({p.current_lat:.3f},{p.current_lon:.3f})"
-            f" DETECTED={fmt_dt(p.current_capture_time)}"
-        )
-    if len(past_not_inc) > _MAX_DETAIL:
-        lines.append(f"  ... +{len(past_not_inc) - _MAX_DETAIL} more: {_class_counts(past_not_inc[_MAX_DETAIL:])}")
-    if not past_not_inc:
-        lines.append("  (none)")
+    _append_section(past_not_inc, "current_confidence")
 
     # --- CURRENT_NOT_INCLUDED objects (coverage gap – past detection, no current coverage) ---
     lines.append(
         f"\n=== CURRENT_NOT_INCLUDED OBJECTS"
         f" (detected PAST_OBS: {time_past}, outside current image FOV — unverifiable) ==="
     )
-    if cur_not_inc:
-        lines.append(f"  CLASS_SUMMARY: {_class_counts(cur_not_inc)}")
-    top_cni = sorted(cur_not_inc, key=lambda p: p.past_confidence or 0, reverse=True)
-    for p in top_cni[:_MAX_DETAIL]:
-        lines.append(
-            f"  {p.past_object_class} CONF={p.past_confidence:.2f}"
-            f" ({p.past_lat:.3f},{p.past_lon:.3f})"
-            f" LAST_SEEN={fmt_dt(p.past_capture_time)}"
-        )
-    if len(cur_not_inc) > _MAX_DETAIL:
-        lines.append(f"  ... +{len(cur_not_inc) - _MAX_DETAIL} more: {_class_counts(cur_not_inc[_MAX_DETAIL:])}")
-    if not cur_not_inc:
-        lines.append("  (none)")
+    _append_section(cur_not_inc, "past_confidence")
 
     lines += [
         "\n=== 작성 지시 ===",
@@ -246,8 +234,9 @@ def _build_user_prompt(pairings: List[PairingRecord], target_description: str = 
         " — 신규 활동 여부 미확인'으로 표기.",
         "  3) CURRENT_NOT_INCLUDED(현재 미포함) 객체: '과거 영상에서 탐지되었으나 현재 촬영 범위 밖에 위치"
         " — 현재 상태 불명, 추가 수집 필요'로 표기.",
-        "  4) STATIONARY(정지) 및 MOVED(이동) 객체: 변화 분석 섹션에서 직접 나열하지 말고,"
+        "  4) STATIONARY(정지) 객체: 변화 분석 섹션에서 직접 나열하지 말고,"
         " 탐지된 객체 종류(CLASS_SUMMARY)를 바탕으로 해당 지역의 전력 구성 및 위협 수준 평가에 활용하세요.",
+        "  5) 차량류(VEHICLE_COUNT): tank·APC·truck·jeep·vehicle은 개별 위치 없이 총 댓수와 종류만 보고서에 기재하세요.",
         "각 객체 종류(TANK, APC, HELICOPTER, civilian building 등)의 군사적 의미를 분석에 반영하세요.",
         "관측 시각은 오늘 날짜가 아닌 PAST_OBS 및 CURRENT_OBS 타임스탬프를 사용하세요.",
         "DISAPPEARED 객체는 '현재 영상에서 더 이상 관측되지 않음'으로 표현하세요.",

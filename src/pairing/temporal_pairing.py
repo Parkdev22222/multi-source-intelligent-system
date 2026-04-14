@@ -1358,7 +1358,7 @@ def pair_by_similarity(
             status = "matched"
         else:
             dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
-            status = "moved" if dist > MOVE_DISTANCE_THRESHOLD_DEG else "matched"
+            status = "matched"   # moved 상태 미사용 – 이동 여부 무관하게 matched 처리
         pairing_records.append(PairingRecord(
             pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             current_detection_id=cur.detection_id,
