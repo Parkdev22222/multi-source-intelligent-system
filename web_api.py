@@ -71,6 +71,25 @@ from src.satellite.simulator import get_positions
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ── uvicorn access 로그 필터 ───────────────────────────────────────────────
+# 폴링성 엔드포인트(이미지 목록·썸네일·렌더 등)는 터미널 노이즈가 심하므로 숨긴다.
+_MUTE_PATHS = (
+    "/api/images",
+    "/api/image/",   # /api/image/<id>/thumb, /api/image/<id>/rendered 등
+    "/api/detections",
+    "/api/events",
+    "/api/satellites",
+)
+
+class _SilentAccessFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(p in msg for p in _MUTE_PATHS)
+
+for _uvicorn_logger_name in ("uvicorn.access",):
+    _ul = logging.getLogger(_uvicorn_logger_name)
+    _ul.addFilter(_SilentAccessFilter())
+
 app = FastAPI(
     title="MSIS Satellite Dashboard API",
     description="위성 모의기 + SAM3 객체탐지 + 판독보고서 대시보드",
