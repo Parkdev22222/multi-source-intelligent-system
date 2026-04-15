@@ -148,9 +148,8 @@ MILITARY_OBJECT_CLASSES = [
 # ~1 degree ≈ 111 km; 0.001 degree ≈ 111 m
 COORDINATE_MATCH_RADIUS_DEG = float(os.getenv("COORD_MATCH_RADIUS", "0.01"))
 
-# Minimum lat/lon displacement (degrees) between past and current detection
-# to classify a matched object as "moved" rather than "stationary".
-# 0.001 deg ≈ 111 m at equator – smaller than this is considered noise.
+# Minimum lat/lon displacement (degrees) for static object same-location constraint.
+# 0.001 deg ≈ 111 m at equator – used as geo proximity threshold for static classes.
 MOVE_DISTANCE_THRESHOLD_DEG = float(os.getenv("MOVE_DISTANCE_THRESHOLD", "0.001"))
 
 # --- LLM (EXAONE-3.5-7.8B-Instruct-AWQ via vLLM) ---

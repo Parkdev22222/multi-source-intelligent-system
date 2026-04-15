@@ -5,13 +5,13 @@ Strategy A – "sam3_tracker" (default):
   1. Sam3Tracker runs on the current frame with past-frame bboxes as prompts
      → returns TrackedObject list (past_detection_id + updated bbox + score)
   2. pair_by_tracking() assigns status for every object:
-     ┌──────────────────────┬───────────────────────────────────────────────────┐
-     │ status               │ condition                                         │
-     ├──────────────────────┼───────────────────────────────────────────────────┤
-     │ "matched" / "moved"  │ Sam3Tracker found the past object in current frame │
-     │ "new"                │ current detection has no matching tracked past obj │
-     │ "disappeared"        │ past object was NOT returned by Sam3Tracker        │
-     └──────────────────────┴───────────────────────────────────────────────────┘
+     ┌───────────────┬───────────────────────────────────────────────────┐
+     │ status        │ condition                                         │
+     ├───────────────┼───────────────────────────────────────────────────┤
+     │ "matched"     │ Sam3Tracker found the past object in current frame │
+     │ "new"         │ current detection has no matching tracked past obj │
+     │ "disappeared" │ past object was NOT returned by Sam3Tracker        │
+     └───────────────┴───────────────────────────────────────────────────┘
 
 Strategy B – "similarity":
   No video tracker session needed.
@@ -20,11 +20,11 @@ Strategy B – "similarity":
     score = (1 - geo_dist / COORDINATE_MATCH_RADIUS_DEG)
             + SIMILARITY_CLASS_BONUS  (if classes match)
   Greedy assignment (best-score pair first).  Status rules:
-     ┌──────────────────────┬───────────────────────────────────────────────────┐
-     │ "matched" / "moved"  │ current ↔ past pair found within radius           │
-     │ "new"                │ current detection – no past match within radius    │
-     │ "disappeared"        │ past detection – no current match within radius    │
-     └──────────────────────┴───────────────────────────────────────────────────┘
+     ┌───────────────┬───────────────────────────────────────────────────┐
+     │ "matched"     │ current ↔ past pair found within radius           │
+     │ "new"         │ current detection – no past match within radius    │
+     │ "disappeared" │ past detection – no current match within radius    │
+     └───────────────┴───────────────────────────────────────────────────┘
 
 Select strategy via env var:  TRACKING_MODE=sam3_tracker | similarity
 """
@@ -65,10 +65,9 @@ IOU_MATCH_THRESHOLD = 0.25
 # ---------------------------------------------------------------------------
 # Static (building) object classes – cannot physically move between frames.
 # Pairing rules:
-#   1. "moved" status is never assigned – always "matched".
-#   2. Only pair two detections whose geo distance ≤ MOVE_DISTANCE_THRESHOLD_DEG
+#   1. Only pair two detections whose geo distance ≤ MOVE_DISTANCE_THRESHOLD_DEG
 #      (same location constraint).
-#   3. When one side is missing a detection, attempt cross-image similarity:
+#   2. When one side is missing a detection, attempt cross-image similarity:
 #      crop the same geo region from both images and compare with CLIP.
 #      If similarity ≥ _STATIC_SIM_THRESHOLD → synthesise a DetectionRecord
 #      for the missing frame, insert into sensor DB, and pair as "matched".
@@ -185,15 +184,14 @@ def _in_fov(lat: float, lon: float, bounds: Optional[tuple]) -> bool:
 # Duplicate-pairing guard
 # ---------------------------------------------------------------------------
 
-# Status priority: matched/moved (양쪽 프레임 모두 확인) > disappeared (현재 FOV 내 소실)
+# Status priority: matched (양쪽 프레임 모두 확인) > disappeared (현재 FOV 내 소실)
 # > current_not_included / past_not_included (FOV 밖) > new (단독 출현)
 _STATUS_PRIORITY: dict = {
-    "moved":                0,
-    "matched":              1,
-    "disappeared":          2,
-    "past_not_included":    3,
-    "current_not_included": 4,
-    "new":                  5,
+    "matched":              0,
+    "disappeared":          1,
+    "past_not_included":    2,
+    "current_not_included": 3,
+    "new":                  4,
 }
 
 
@@ -201,8 +199,7 @@ def _dedup_pairing_records(records: List[PairingRecord]) -> List[PairingRecord]:
     """동일 past_detection_id(또는 current_detection_id)에 대해 페어링 레코드가 중복으로
     생성된 경우 우선순위가 높은(더 정보량이 많은) 레코드 하나만 남긴다.
 
-    '동일·이동(moved) + 현재 미포함(current_not_included)' 처럼 한 객체에 두 개의 상태가
-    붙는 버그를 최종 방어선으로 차단한다.
+    한 객체에 두 개의 상태가 붙는 버그를 최종 방어선으로 차단한다.
     """
     def _pri(r: PairingRecord) -> int:
         return _STATUS_PRIORITY.get(r.status, 99)
@@ -467,8 +464,7 @@ def pair_by_tracking(
     Status assignment is explicitly based on metadata.json capture times:
       "new"         – object only in the LATER frame (current_capture_time)
       "matched"     – object in BOTH the earlier frame (past_capture_time) AND
-                      the later frame (current_capture_time), same position
-      "moved"       – same as matched but position changed significantly
+                      the later frame (current_capture_time)
       "disappeared" – object only in the EARLIER frame (past_capture_time)
 
     Args:
@@ -531,7 +527,7 @@ def pair_by_tracking(
     #    건물류(static classes)는 물리적으로 이동 불가이므로 SAM3 tracker(픽셀 IoU)
     #    보다 먼저 위경도 근접도 기준으로 매칭한다.
     #    같은 클래스이고 geo 거리 ≤ MOVE_DISTANCE_THRESHOLD_DEG 인 쌍 중 가장
-    #    가까운 쌍부터 greedy 할당. 일치 시 "matched" (절대 "moved" 아님).
+    #    가까운 쌍부터 greedy 할당. 일치 시 "matched".
     # ------------------------------------------------------------------
     static_cur_list  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
     static_past_list = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
@@ -574,7 +570,7 @@ def pair_by_tracking(
                 past_capture_time=past_capture_time,
                 past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
                            "x2": past.bbox_x2, "y2": past.bbox_y2},
-                status="matched",   # 건물류 → 절대 "moved" 아님
+                status="matched",
                 source_type=source_type,
                 session_id=session_id,
             ))
@@ -621,23 +617,7 @@ def pair_by_tracking(
         if best_current is not None:
             matched_current_ids.add(best_current.detection_id)
 
-        # Determine if the object has moved significantly:
-        # compare past lat/lon with current lat/lon
-        cur_lat = best_current.lat if best_current else None
-        cur_lon = best_current.lon if best_current else None
-        past_lat = past.lat if past else None
-        past_lon = past.lon if past else None
-
-        if (cur_lat is not None and cur_lon is not None
-                and past_lat is not None and past_lon is not None):
-            dist = _geo_distance(cur_lat, cur_lon, past_lat, past_lon)
-            # 건물류는 물리적으로 이동 불가 → 항상 matched
-            if expected_cls in _STATIC_CLASSES:
-                status = "matched"
-            else:
-                status = "matched"   # moved 상태 미사용 – 이동 여부 무관하게 matched 처리
-        else:
-            status = "matched"
+        status = "matched"
 
         pr = PairingRecord(
             pairing_time=now,
@@ -968,7 +948,6 @@ def pair_by_tracking(
     logger.info(
         f"[Pairing/tracker] ({region_lat:.4f}, {region_lon:.4f}): "
         f"{sum(1 for p in pairing_records if p.status == 'matched')} matched  "
-        f"{sum(1 for p in pairing_records if p.status == 'moved')} moved  "
         f"{sum(1 for p in pairing_records if p.status == 'new')} new  "
         f"{sum(1 for p in pairing_records if p.status == 'disappeared')} disappeared"
     )
@@ -1169,8 +1148,7 @@ def pair_by_similarity(
       "new"         – object only in the LATER frame (current_capture_time):
                       unmatched current detections
       "matched"     – object in BOTH the earlier frame (past_capture_time) AND
-                      the later frame (current_capture_time), same position
-      "moved"       – same as matched but position changed significantly
+                      the later frame (current_capture_time)
       "disappeared" – object only in the EARLIER frame (past_capture_time):
                       unmatched past detections
 
@@ -1350,15 +1328,10 @@ def pair_by_similarity(
         pairs.append((cur, past))
 
     # ------------------------------------------------------------------
-    # 1. "matched" / "moved"
+    # 1. "matched"
     # ------------------------------------------------------------------
     for cur, past in pairs:
-        # 건물류는 이동 불가 → 항상 matched
-        if cur.object_class.lower() in _STATIC_CLASSES:
-            status = "matched"
-        else:
-            dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
-            status = "matched"   # moved 상태 미사용 – 이동 여부 무관하게 matched 처리
+        status = "matched"
         pairing_records.append(PairingRecord(
             pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             current_detection_id=cur.detection_id,
@@ -1647,7 +1620,6 @@ def pair_by_similarity(
     logger.info(
         f"[Pairing/similarity] ({region_lat:.4f}, {region_lon:.4f}): "
         f"{sum(1 for p in pairing_records if p.status == 'matched')} matched  "
-        f"{sum(1 for p in pairing_records if p.status == 'moved')} moved  "
         f"{sum(1 for p in pairing_records if p.status == 'new')} new  "
         f"{sum(1 for p in pairing_records if p.status == 'disappeared')} disappeared"
     )

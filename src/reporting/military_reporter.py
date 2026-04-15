@@ -524,11 +524,10 @@ class MilitaryReporter:
         # Prepend metadata header
         n_new_rep          = sum(1 for p in pairings if p.status == 'new')
         n_matched_rep      = sum(1 for p in pairings if p.status == 'matched')
-        n_moved_rep        = sum(1 for p in pairings if p.status == 'moved')
         n_disappeared_rep  = sum(1 for p in pairings if p.status == 'disappeared')
         n_past_not_inc     = sum(1 for p in pairings if p.status == 'past_not_included')
         n_cur_not_inc      = sum(1 for p in pairings if p.status == 'current_not_included')
-        n_current = n_new_rep + n_matched_rep + n_moved_rep + n_past_not_inc
+        n_current = n_new_rep + n_matched_rep + n_past_not_inc
         lang_note = "한국어 (EXAONE 번역)" if LLM_TRANSLATE_TO_KOREAN else "English"
         header = (
             f"{'='*72}\n"
@@ -540,7 +539,7 @@ class MilitaryReporter:
             f"  Current observation: {obs_current}\n"
             f"  Report generated:    {report_time.strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
             f"  Current frame detections: {n_current}"
-            f"  (new={n_new_rep} / stationary={n_matched_rep} / moved={n_moved_rep}"
+            f"  (new={n_new_rep} / matched={n_matched_rep}"
             f" / past_not_included={n_past_not_inc})\n"
             f"  Disappeared (past only):  {n_disappeared_rep}\n"
             f"  Current not included:     {n_cur_not_inc}\n"
