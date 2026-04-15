@@ -42,7 +42,7 @@ def _get_country_name(lat: float, lon: float) -> Optional[str]:
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -71,6 +71,7 @@ from src.database.sensor_db import (
     delete_detection_by_id,
 )
 from src.satellite.simulator import get_positions
+from src.utils.hwpx_writer import make_hwpx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1107,6 +1108,28 @@ def api_report_by_id(report_id: str):
     if report is None:
         raise HTTPException(status_code=404, detail="보고서 없음.")
     return _report_dict(report)
+
+
+@app.get("/api/report/{report_id}/hwp")
+def api_report_hwp(report_id: str):
+    """보고서를 HWPX 파일로 다운로드한다."""
+    report = get_report_by_id(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="보고서 없음.")
+    text = report.report_content or ""
+    hwpx_bytes = make_hwpx(text)
+    ts = ""
+    if report.report_time:
+        try:
+            ts = "_" + report.report_time.strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            pass
+    filename = f"MSIS_report{ts}.hwpx"
+    return Response(
+        content=hwpx_bytes,
+        media_type="application/hwp+zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/report/{report_id}/images")

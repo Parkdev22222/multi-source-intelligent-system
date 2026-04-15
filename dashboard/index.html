@@ -1887,8 +1887,8 @@ async function loadAllReports() {
       return {
         ...r,
         _fname: dt
-          ? `MSIS_report_${dt.toISOString().replace(/[:.]/g,'-').slice(0,19)}.txt`
-          : `MSIS_report_${r.id}.txt`,
+          ? `MSIS_report_${dt.toISOString().replace(/[:.]/g,'-').slice(0,19)}.hwpx`
+          : `MSIS_report_${r.id}.hwpx`,
         _region:       getRegion(r.lat_center, r.lon_center),
         _countryLabel: countryLabel,
       };
@@ -2290,12 +2290,19 @@ async function openReportById(id, fname) {
 
     // 다운로드 + 보고서 수정 버튼
     dlBtn.style.display = 'inline-block';
-    dlBtn.onclick = () => {
-      const blob = new Blob([content.textContent || ''], { type: 'text/plain;charset=utf-8' });
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(blob), download: fname || `MSIS_report_${id}.txt`
-      });
-      a.click(); URL.revokeObjectURL(a.href);
+    dlBtn.onclick = async () => {
+      try {
+        const res = await fetch(`/api/report/${id}/hwp`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const dlFname = (fname || `MSIS_report_${id}`).replace(/\.txt$/i, '') + '.hwpx';
+        const a = Object.assign(document.createElement('a'), {
+          href: URL.createObjectURL(blob), download: dlFname
+        });
+        a.click(); URL.revokeObjectURL(a.href);
+      } catch(e) {
+        alert('HWP 다운로드 실패: ' + e.message);
+      }
     };
     editRpt.style.display = 'inline-block';
     document.getElementById('rpt-regen-btn').style.display = 'inline-block';
@@ -3420,14 +3427,20 @@ async function openReport(lat, lon) {
     dlBtn.style.display = 'inline-block';
     document.getElementById('rpt-regen-btn').style.display  = 'inline-block';
     document.getElementById('edit-report-btn').style.display = 'inline-block';
-    dlBtn.onclick = () => {
-      const ts = report.report_time
-        ? new Date(report.report_time).toISOString().replace(/[:.]/g,'-') : 'report';
-      const blob = new Blob([report.report_content||''], {type:'text/plain;charset=utf-8'});
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(blob), download: `MSIS_report_${ts}.txt`
-      });
-      a.click(); URL.revokeObjectURL(a.href);
+    dlBtn.onclick = async () => {
+      try {
+        const res = await fetch(`/api/report/${report.id}/hwp`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const ts = report.report_time
+          ? new Date(report.report_time).toISOString().replace(/[:.]/g,'-').slice(0,19) : 'report';
+        const a = Object.assign(document.createElement('a'), {
+          href: URL.createObjectURL(blob), download: `MSIS_report_${ts}.hwpx`
+        });
+        a.click(); URL.revokeObjectURL(a.href);
+      } catch(e) {
+        alert('HWP 다운로드 실패: ' + e.message);
+      }
     };
   } catch(e) {
     meta.textContent = `네트워크 오류: ${e.message}`;
