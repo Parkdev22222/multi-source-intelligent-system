@@ -181,6 +181,65 @@ def _pick_and_crop_image(
     return paths, past_time, now, fracs
 
 
+def _pick_from_crops_dir() -> tuple:
+    """
+    sample/.crops/ 폴더에서 *_crop_A.png + *_crop_B.png 쌍을 찾아 하나를 선택.
+
+    파일 수정시간(mtime)을 촬영 시각으로 사용한다.
+    crop 모드로 생성된 파일은 생성 시 mtime이 촬영 시각으로 설정되어 있으므로
+    올바른 과거/현재 순서가 자동으로 유지된다.
+
+    Returns:
+        (img_paths, past_time, current_time)
+          img_paths: 상대 경로 2개 리스트 — [과거, 현재] 순서
+    """
+    if not CROPS_DIR.exists():
+        raise RuntimeError(
+            f".crops 폴더가 없습니다: {CROPS_DIR}\n"
+            "IMAGE_MODE=crop 으로 먼저 크롭을 생성하거나 파일을 직접 배치해 주세요.\n"
+            "  파일명 규칙: <이름>_crop_A.png (과거), <이름>_crop_B.png (현재)"
+        )
+
+    # *_crop_A.png 파일을 수집하고 대응하는 B 파일이 있는 쌍만 필터링
+    pairs = []
+    for a_file in sorted(CROPS_DIR.glob("*_crop_A.png")):
+        stem = a_file.stem[:-7]  # "_crop_A" 제거
+        b_file = CROPS_DIR / f"{stem}_crop_B.png"
+        if b_file.exists():
+            pairs.append((a_file, b_file))
+
+    if not pairs:
+        raise RuntimeError(
+            f".crops 폴더에 *_crop_A.png + *_crop_B.png 쌍이 없습니다: {CROPS_DIR}\n"
+            "  파일명 규칙: <이름>_crop_A.png (과거), <이름>_crop_B.png (현재)"
+        )
+
+    a_path, b_path = random.choice(pairs)
+
+    # 파일 mtime → capture_time (crop 모드로 생성 시 os.utime 으로 설정됨)
+    a_mtime = datetime.fromtimestamp(a_path.stat().st_mtime, tz=timezone.utc)
+    b_mtime = datetime.fromtimestamp(b_path.stat().st_mtime, tz=timezone.utc)
+
+    # mtime 기준으로 과거/현재 순서 결정
+    if a_mtime <= b_mtime:
+        past_path, curr_path = a_path, b_path
+        past_time, curr_time = a_mtime, b_mtime
+    else:
+        past_path, curr_path = b_path, a_path
+        past_time, curr_time = b_mtime, a_mtime
+
+    paths = [
+        str(past_path.relative_to(SAMPLE_DIR.parent)),
+        str(curr_path.relative_to(SAMPLE_DIR.parent)),
+    ]
+    logger.info(
+        "[SimRunner/crops_dir] 쌍 선택: %s (과거=%s) / %s (현재=%s)",
+        past_path.name, past_time.strftime("%H:%M:%S"),
+        curr_path.name, curr_time.strftime("%H:%M:%S"),
+    )
+    return paths, past_time, curr_time
+
+
 def _extract_tiff_capture_time(path: Path) -> datetime:
     """
     TIFF 파일에서 촬영 시각을 추출.
@@ -373,6 +432,10 @@ def run_step(
         )
         explicit_times = [past_time, curr_time]
         logger.info(f"[SimRunner] 크롭 모드 — 이미지: {imgs}")
+    elif mode == "crops_dir":
+        imgs, past_time, curr_time = _pick_from_crops_dir()
+        explicit_times = [past_time, curr_time]
+        logger.info(f"[SimRunner] .crops 폴더 모드 — 이미지: {imgs}")
     else:
         imgs = _pick_images(2)
         logger.info(f"[SimRunner] 분리 이미지 모드 — 이미지: {imgs}")
@@ -457,6 +520,9 @@ def run_step_at(
         imgs, past_time, curr_time, crop_fracs = _pick_and_crop_image(
             axis=CROP_AXIS, crop_size=CROP_SIZE, crop_offset=CROP_OFFSET,
         )
+        explicit_times = [past_time, curr_time]
+    elif mode == "crops_dir":
+        imgs, past_time, curr_time = _pick_from_crops_dir()
         explicit_times = [past_time, curr_time]
     else:
         imgs = _pick_images(2)
