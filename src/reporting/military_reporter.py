@@ -70,6 +70,7 @@ def _class_counts(objs) -> str:
 def _build_user_prompt(
     pairings: List[PairingRecord],
     historical_context: str = "",
+    target_description: str = "",
 ) -> str:
     """Serialise pairing records into a compact prompt for the LLM."""
 
@@ -96,7 +97,14 @@ def _build_user_prompt(
     time_past = min(past_times).strftime("%Y-%m-%dT%H:%M:%SZ") if past_times else "UNKNOWN"
     time_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
-    lines = [
+    lines = []
+    if target_description.strip():
+        lines += [
+            "=== 표적 정보 (임무계획 기재) ===",
+            target_description.strip(),
+            "",
+        ]
+    lines += [
         f"PAST_OBS: {time_past}  CURRENT_OBS: {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
         f"CURRENT_FRAME_DETECTIONS: {n_current_detections}"
         f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}  MOVED:{n_moved})",
@@ -315,6 +323,7 @@ class MilitaryReporter:
         output_path: Optional[str] = None,
         session_id: Optional[str] = None,
         historical_context: str = "",
+        target_description: str = "",
     ) -> str:
         """
         Generate a military intelligence report from the given pairing records,
@@ -326,6 +335,8 @@ class MilitaryReporter:
             session_id:         Pipeline session UUID (stored in the Reports DB row).
             historical_context: Optional GraphRAG context string injected into the
                                 LLM prompt to enrich threat assessment and gap analysis.
+            target_description: Optional mission target description prepended to the
+                                LLM prompt.
 
         Returns:
             Report text as a string.
@@ -336,7 +347,11 @@ class MilitaryReporter:
 
         report_time = datetime.now(tz=timezone.utc)
         system_prompt = _build_system_prompt()
-        user_prompt = _build_user_prompt(pairings, historical_context=historical_context)
+        user_prompt = _build_user_prompt(
+            pairings,
+            historical_context=historical_context,
+            target_description=target_description,
+        )
 
         logger.info(f"[Reporter] Generating military report for {len(pairings)} pairings...")
         report_text = self._backend.generate(system_prompt, user_prompt)

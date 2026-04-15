@@ -295,6 +295,7 @@ class MavenPipeline:
         self,
         session_id: str,
         output_path: Optional[str] = None,
+        target_description: str = "",
     ) -> str:
         """
         Retrieve latest pairings, build GraphRAG historical context, and
@@ -324,6 +325,7 @@ class MavenPipeline:
             output_path=output_path,
             session_id=session_id,
             historical_context=historical_context,
+            target_description=target_description,
         )
         return report
 
@@ -335,13 +337,16 @@ class MavenPipeline:
         self,
         metadata_json: str,
         report_output_path: Optional[str] = None,
+        target_description: str = "",
     ) -> str:
         """
         Execute the full pipeline end-to-end.
 
         Args:
-            metadata_json:      Path to the image metadata index JSON.
-            report_output_path: Optional file path to save the generated report.
+            metadata_json:       Path to the image metadata index JSON.
+            report_output_path:  Optional file path to save the generated report.
+            target_description:  Optional mission target description injected into
+                                 the LLM prompt (from simulator/web_api).
 
         Returns:
             Military intelligence report as a string.
@@ -387,7 +392,8 @@ class MavenPipeline:
 
         # --- Step 3: Reporting ---
         logger.info("[Pipeline] Step 3/3 – Military report generation (EXAONE4-32b)")
-        report = self._generate_report(session_id, report_output_path)
+        report = self._generate_report(session_id, report_output_path,
+                                        target_description=target_description)
 
         logger.info(f"[Pipeline] Pipeline complete.  session={session_id}")
         return report
