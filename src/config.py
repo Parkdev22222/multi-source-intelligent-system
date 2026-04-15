@@ -105,6 +105,19 @@ SIMILARITY_CLIP_WEIGHT = float(os.getenv("SIMILARITY_CLIP_WEIGHT", "0.7"))
 # Range: -1.0 – 1.0 for pure CLIP cosine; 0.0 – 1.0 for combined score.
 SIMILARITY_MATCH_THRESHOLD = float(os.getenv("SIMILARITY_MATCH_THRESHOLD", "0.5"))
 
+# --- Simulator Image Mode ---
+# SAM3 입력 이미지를 준비하는 방식.
+#   IMAGE_MODE=separate  sample/ 에서 서로 다른 이미지 2장을 선택 (기본값)
+#   IMAGE_MODE=crop      sample/ 에서 이미지 1장을 선택한 뒤 두 영역으로 크롭해 2장으로 활용
+# 크롭 모드 전용 파라미터:
+#   CROP_AXIS    분할 축  — "vertical" (좌/우, 기본) | "horizontal" (상/하)
+#   CROP_SIZE    각 크롭의 크기 비율 (0.0~1.0, 기본 0.7)
+#   CROP_OFFSET  두 크롭 시작점 간의 이동 비율 (0.0~1.0, 기본 0.15)
+IMAGE_MODE  = os.getenv("IMAGE_MODE",  "separate")
+CROP_AXIS   = os.getenv("CROP_AXIS",   "vertical")
+CROP_SIZE   = float(os.getenv("CROP_SIZE",   "0.7"))
+CROP_OFFSET = float(os.getenv("CROP_OFFSET", "0.15"))
+
 # --- GraphRAG Knowledge Graph ---
 GRAPH_DB_PATH = str(DB_DIR / "graph.db")
 # How often to run community detection (every N pipeline runs; 1 = every run)
