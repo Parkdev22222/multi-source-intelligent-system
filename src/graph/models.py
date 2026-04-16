@@ -107,6 +107,11 @@ class CommunityRecord(GraphBase):
 def create_graph_engine(db_path: str):
     """Create (or open) the graph SQLite database and ensure tables exist."""
     from sqlalchemy import create_engine
+    from sqlalchemy.exc import OperationalError
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
-    GraphBase.metadata.create_all(engine)
+    try:
+        GraphBase.metadata.create_all(engine)
+    except OperationalError as exc:
+        if "already exists" not in str(exc).lower():
+            raise
     return engine

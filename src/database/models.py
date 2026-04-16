@@ -193,19 +193,38 @@ class ReportRecord(ReportBase):
 # DB factory helpers
 # ---------------------------------------------------------------------------
 
+def _safe_create_all(metadata, engine) -> None:
+    """
+    create_all() 을 race-condition 에 안전하게 호출한다.
+
+    두 프로세스(web_api + main.py 서브프로세스)가 동시에 빈 DB를 초기화할 때
+    두 번째 프로세스가 'table X already exists' OperationalError를 일으키는
+    SQLite race condition을 조용히 무시한다.
+    테이블이 이미 존재하면 정상 상태이므로 계속 진행해도 안전하다.
+    """
+    from sqlalchemy.exc import OperationalError
+    try:
+        metadata.create_all(engine)
+    except OperationalError as exc:
+        if "already exists" in str(exc).lower():
+            pass  # 다른 프로세스가 먼저 생성 완료 — 정상
+        else:
+            raise
+
+
 def create_sensor_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
-    Base.metadata.create_all(engine)
+    _safe_create_all(Base.metadata, engine)
     return engine
 
 
 def create_pairing_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
-    PairingBase.metadata.create_all(engine)
+    _safe_create_all(PairingBase.metadata, engine)
     return engine
 
 
 def create_report_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
-    ReportBase.metadata.create_all(engine)
+    _safe_create_all(ReportBase.metadata, engine)
     return engine
