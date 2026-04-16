@@ -1234,15 +1234,22 @@ def api_report_images(report_id: str):
             "session_id":   rec.session_id,
         }
 
+    # 최후 수단: 동일 세션에 이미지가 2장 이상이면 가장 오래된 것을 과거 이미지로 사용
+    if past_image_id is None and len(curr_imgs) >= 2:
+        past_image_id    = curr_imgs[0].id
+        past_capture_time = curr_imgs[0].capture_time
+
     curr_info = _build_info(current_image_id, current_capture_time, with_detections=True) \
                 if current_image_id else None
     past_info = _build_info(past_image_id,    past_capture_time,    with_detections=True) \
                 if past_image_id else None
 
     return {
-        "current_images": [curr_info] if curr_info else [],
-        "past_images":    [past_info] if past_info else [],
-        "session_id":     report.session_id,
+        "current_images":   [curr_info] if curr_info else [],
+        "past_images":      [past_info] if past_info else [],
+        "current_image_id": current_image_id,
+        "past_image_id":    past_image_id,
+        "session_id":       report.session_id,
     }
 
 

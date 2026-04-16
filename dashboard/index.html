@@ -2344,13 +2344,30 @@ async function openReportById(id, fname) {
     document.getElementById('rpt-target-desc-row').style.display = 'flex';
 
     // 위성사진 패널 처리
-    const hasPast = imgs?.past_images?.length > 0;
-    const hasCurr = imgs?.current_images?.length > 0;
+    const hasPast    = imgs?.past_images?.length > 0;
+    const hasCurr    = imgs?.current_images?.length > 0;
+    const pastImgId  = imgs?.past_image_id  || null;
+    const currImgId  = imgs?.current_image_id || null;
 
-    if (hasPast || hasCurr) {
+    // 탐지 결과가 없더라도 원본 이미지 ID가 있으면 raw 이미지를 표시한다
+    function _loadRawInto(wrap, imageId, editBtn) {
+      wrap.innerHTML = '<span class="rpt-img-loading">이미지 로딩 중...</span>';
+      editBtn.style.display = 'inline-block';
+      editBtn.disabled = false;
+      fetch(`/api/image/${imageId}/raw?max_size=480`)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => { wrap.innerHTML = ''; wrap.appendChild(buildImgEl(data)); })
+        .catch(() => {
+          wrap.innerHTML = '<span class="rpt-img-loading" style="color:#f44">이미지 로드 실패</span>';
+        });
+    }
+
+    if (hasPast || hasCurr || pastImgId || currImgId) {
       imgRow.classList.add('has-images');
       pastWrap.innerHTML = '';
       currWrap.innerHTML = '';
+
+      // ── 현재 이미지 ──
       if (hasCurr) {
         imgs.current_images.forEach(info => {
           currWrap.appendChild(buildImgEl(info));
@@ -2358,9 +2375,14 @@ async function openReportById(id, fname) {
         });
         editCurr.style.display = 'inline-block';
         editCurr.disabled = false;
+      } else if (currImgId) {
+        _currImageIds.push(currImgId);
+        _loadRawInto(currWrap, currImgId, editCurr);
       } else {
         currWrap.innerHTML = '<span class="rpt-img-loading">현재 사진 없음</span>';
       }
+
+      // ── 이전 이미지 ──
       if (hasPast) {
         imgs.past_images.forEach(info => {
           pastWrap.appendChild(buildImgEl(info));
@@ -2368,11 +2390,15 @@ async function openReportById(id, fname) {
         });
         editPast.style.display = 'inline-block';
         editPast.disabled = false;
+      } else if (pastImgId) {
+        _pastImageIds.push(pastImgId);
+        _loadRawInto(pastWrap, pastImgId, editPast);
       } else {
         pastWrap.innerHTML = '<span class="rpt-img-loading">이전 사진 없음</span>';
       }
-      // 매칭 도시 버튼 – 이전+현재 사진이 모두 있을 때만 활성화
-      if (hasPast && hasCurr) {
+
+      // 매칭 도시 버튼 – 이전·현재 이미지가 모두 있을 때 활성화
+      if ((hasPast || pastImgId) && (hasCurr || currImgId)) {
         document.getElementById('pviz-toggle-btn').style.display = 'inline-block';
       }
     } else {
