@@ -434,34 +434,12 @@ class SAM3Detector:
     def _fallback_detect(
         self, image: np.ndarray, image_id: str, meta: ImageMeta
     ) -> List[DetectionResult]:
-        h, w = image.shape[:2]
-        grid, now = 4, meta.capture_time
-        cell_h, cell_w = h // grid, w // grid
-        results: List[DetectionResult] = []
-        for gy in range(grid):
-            for gx in range(grid):
-                x1, y1 = float(gx * cell_w), float(gy * cell_h)
-                x2, y2 = float((gx + 1) * cell_w), float((gy + 1) * cell_h)
-                crop = image[int(y1):int(y2), int(x1):int(x2)]
-                idx = int(crop.mean()) % len(MILITARY_OBJECT_CLASSES)
-                obj_class = MILITARY_OBJECT_CLASSES[idx]
-                confidence = 0.55 + (idx % 10) * 0.02
-                if confidence < DETECTION_CONFIDENCE_THRESHOLD:
-                    continue
-                cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                lat, lon = pixel_to_geo(cx, cy, w, h, meta)
-                mask = np.zeros((h, w), dtype=bool)
-                mask[int(y1):int(y2), int(x1):int(x2)] = True
-                results.append(DetectionResult(
-                    detection_time=now, image_id=image_id,
-                    object_class=obj_class, object_class_index=idx,
-                    confidence=confidence,
-                    bbox_x1=x1, bbox_y1=y1, bbox_x2=x2, bbox_y2=y2,
-                    lat=lat, lon=lon,
-                    mask_rle=_encode_rle(mask), mask_area_px=float(mask.sum()),
-                    source_type=meta.source_type,
-                ))
-        return results
+        """SAM3 모델 미설치 시 빈 결과를 반환한다."""
+        logger.warning(
+            "[SAM3Detector] SAM3 모델 없음 — 탐지 결과 없음. "
+            "SAM3 설치: git clone https://github.com/facebookresearch/sam3.git && pip install -e ."
+        )
+        return []
 
     def _fallback_track(
         self, past_detections: list
