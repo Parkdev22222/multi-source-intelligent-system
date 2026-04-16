@@ -2479,47 +2479,52 @@ async function _openPvizModal(reportId) {
     if (!pRes.ok) { stats.textContent = '데이터 없음'; return; }
     const pData = await pRes.json();
 
-    if (!pData.pairs || pData.pairs.length === 0) {
-      stats.textContent = '페어링 데이터 없음';
-      listEl.innerHTML = '<div style="padding:14px 10px;font-size:10px;color:var(--dim)">페어링 없음</div>';
-      return;
-    }
+    const pairs = pData.pairs || [];
+
+    // 페어링 API 가 image_id 를 못 찾은 경우 보고서 모달에서 캐시해 둔 ID 로 보완
+    const currRawId = pData.current_image_id || _currImageIds[0] || null;
+    const pastRawId = pData.past_image_id    || _pastImageIds[0] || null;
 
     const MAX = 560;
     const [currImgData, pastImgData] = await Promise.all([
-      pData.current_image_id
-        ? fetch(`${API}/api/image/${encodeURIComponent(pData.current_image_id)}/raw?max_size=${MAX}`)
+      currRawId
+        ? fetch(`${API}/api/image/${encodeURIComponent(currRawId)}/raw?max_size=${MAX}`)
             .then(r => r.ok ? r.json() : null)
         : Promise.resolve(null),
-      pData.past_image_id
-        ? fetch(`${API}/api/image/${encodeURIComponent(pData.past_image_id)}/raw?max_size=${MAX}`)
+      pastRawId
+        ? fetch(`${API}/api/image/${encodeURIComponent(pastRawId)}/raw?max_size=${MAX}`)
             .then(r => r.ok ? r.json() : null)
         : Promise.resolve(null),
     ]);
 
-    /* 초기 렌더 – hover 없음 */
+    /* 초기 렌더 – hover 없음 (탐지 결과 없어도 원본 이미지 표시) */
     await Promise.all([
-      pastImgData ? _pvizDrawCanvas(pastC, pastImgData, pData.pairs, 'past',    null) : null,
-      currImgData ? _pvizDrawCanvas(currC, currImgData, pData.pairs, 'current', null) : null,
+      pastImgData ? _pvizDrawCanvas(pastC, pastImgData, pairs, 'past',    null) : null,
+      currImgData ? _pvizDrawCanvas(currC, currImgData, pairs, 'current', null) : null,
     ]);
     requestAnimationFrame(() =>
-      _pvizDrawLines(pData.pairs, pastC, currC, pastImgData, currImgData, null)
+      _pvizDrawLines(pairs, pastC, currC, pastImgData, currImgData, null)
     );
 
-    /* 우측 목록 */
-    _pvizRenderList(listEl, pData.pairs, pastC, currC, pastImgData, currImgData);
+    if (pairs.length === 0) {
+      stats.textContent = '탐지 결과 없음 — 원본 이미지만 표시';
+      listEl.innerHTML = '<div style="padding:14px 10px;font-size:10px;color:var(--dim)">페어링 없음</div>';
+    } else {
+      /* 우측 목록 */
+      _pvizRenderList(listEl, pairs, pastC, currC, pastImgData, currImgData);
 
-    /* 요약 헤더 */
-    const cnt = { matched:0, moved:0, new:0, disappeared:0, past_not_included:0, current_not_included:0 };
-    pData.pairs.forEach(p => { if (cnt[p.status] !== undefined) cnt[p.status]++; });
-    const parts = [];
-    if (cnt.matched)              parts.push(`동일·정지 ${cnt.matched}`);
-    if (cnt.moved)                parts.push(`동일·이동 ${cnt.moved}`);
-    if (cnt.new)                  parts.push(`신규 ${cnt.new}`);
-    if (cnt.disappeared)          parts.push(`소실 ${cnt.disappeared}`);
-    if (cnt.past_not_included)    parts.push(`과거미포함 ${cnt.past_not_included}`);
-    if (cnt.current_not_included) parts.push(`현재미포함 ${cnt.current_not_included}`);
-    stats.textContent = `총 ${pData.pairs.length}건 | ${parts.join(' | ')}`;
+      /* 요약 헤더 */
+      const cnt = { matched:0, moved:0, new:0, disappeared:0, past_not_included:0, current_not_included:0 };
+      pairs.forEach(p => { if (cnt[p.status] !== undefined) cnt[p.status]++; });
+      const parts = [];
+      if (cnt.matched)              parts.push(`동일·정지 ${cnt.matched}`);
+      if (cnt.moved)                parts.push(`동일·이동 ${cnt.moved}`);
+      if (cnt.new)                  parts.push(`신규 ${cnt.new}`);
+      if (cnt.disappeared)          parts.push(`소실 ${cnt.disappeared}`);
+      if (cnt.past_not_included)    parts.push(`과거미포함 ${cnt.past_not_included}`);
+      if (cnt.current_not_included) parts.push(`현재미포함 ${cnt.current_not_included}`);
+      stats.textContent = `총 ${pairs.length}건 | ${parts.join(' | ')}`;
+    }
 
   } catch(e) {
     stats.textContent = `오류: ${e.message}`;
