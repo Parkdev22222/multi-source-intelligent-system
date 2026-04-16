@@ -58,14 +58,19 @@ from src.database.sensor_db import (
 )
 from src.database.pairing_db import (
     insert_pairings_bulk,
-    get_latest_pairings,
     get_pairings_by_session,
+    delete_pairings_by_session,
 )
+from src.database.reports_db import delete_reports_by_session
 from src.detection.image_loader import load_metadata_index, iter_images
 from src.detection.sam2_detector import SAM3Detector, DetectionResult
 from src.pairing.temporal_pairing import pair_by_tracking, pair_by_similarity
 from src.reporting.military_reporter import MilitaryReporter
 from src.graph.graph_indexer import GraphIndexer
+from src.pipeline_status import (
+    write_status as _write_ps, clear_status as _clear_ps,
+    STAGE_SR, STAGE_DETECTION, STAGE_PAIRING, STAGE_REPORTING,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,11 +111,20 @@ class MavenPipeline:
         """
         metas = sorted(load_metadata_index(metadata_json), key=lambda m: m.capture_time)
         image_ids = []
+        _lat = metas[-1].lat_center if metas else None
+        _lon = metas[-1].lon_center if metas else None
+        _detection_stage_set = False
 
         for loaded in iter_images(metas):
+            # SR은 iter_images 내부에서 완료됨 → 루프 첫 진입 시 탐지 단계로 전환
+            if not _detection_stage_set:
+                _write_ps(STAGE_DETECTION, _lat, _lon, session_id)
+                _detection_stage_set = True
             meta = loaded.meta
 
             # Insert image record into Sensor DB
+            # det_width/det_height: bbox 좌표 기준 공간 (SR 적용 후 실제 배열 크기)
+            det_h, det_w = loaded.array.shape[:2]
             img_record = insert_image_record(
                 capture_time=meta.capture_time,
                 source_type=meta.source_type,
@@ -123,6 +137,9 @@ class MavenPipeline:
                 lon_max=meta.lon_max,
                 resolution_m=meta.resolution_m,
                 sensor_platform=meta.sensor_platform,
+                det_width=det_w,
+                det_height=det_h,
+                session_id=session_id,
             )
             image_id = img_record.id
             image_ids.append(image_id)
@@ -152,6 +169,7 @@ class MavenPipeline:
                     mask_rle=det.mask_rle,
                     mask_area_px=det.mask_area_px,
                     source_type=det.source_type,
+                    session_id=session_id,
                 )
                 for det in det_results
             ]
@@ -218,6 +236,24 @@ class MavenPipeline:
                 if img_rec is None:
                     continue
                 image_id = img_rec.id
+
+                # 세션 내 동일 session_id 로 capture_time이 더 이른 ImageRecord 존재 여부 확인.
+                # 없으면 이 이미지가 세션의 "과거 기준 이미지"이므로 페어링 대상이 아님 — 건너뜀.
+                has_session_past = (
+                    sess.query(ImageRecord.id)
+                    .filter(
+                        ImageRecord.session_id == session_id,
+                        ImageRecord.capture_time < capture_time_naive,
+                    )
+                    .first() is not None
+                )
+                if not has_session_past:
+                    logger.info(
+                        f"[Pair] Skip {Path(meta.image_path).name} "
+                        f"— oldest image in session (reference frame, not current)"
+                    )
+                    continue
+
                 current_orm = (
                     sess.query(DR).filter(DR.image_id == image_id).all()
                 )
@@ -237,12 +273,16 @@ class MavenPipeline:
                     for d in current_orm
                 ]
 
-            # --- Fetch past detections (returns records + past batch capture_time) ---
+            # --- Fetch past detections (same session only) ---
+            # 동일 세션의 과거 이미지가 항상 존재함이 위에서 확인됐으므로
+            # session_only=True 로 cross-session 폴백을 완전히 차단.
             past_records, past_capture_time = get_most_recent_past_detections(
                 lat_center=meta.lat_center,
                 lon_center=meta.lon_center,
                 radius_deg=COORDINATE_MATCH_RADIUS_DEG,
                 before_time=meta.capture_time,
+                prefer_session_id=session_id,
+                session_only=True,
             )
 
             # --- Build pairing records ---
@@ -302,9 +342,9 @@ class MavenPipeline:
         generate the military report with context-enriched prompting.
         """
         pairings = get_pairings_by_session(session_id)
-        if not pairings:
-            # Fall back to global latest
-            pairings = get_latest_pairings()
+        # cross-session 폴백 제거: 현재 세션에 pairing이 없으면 빈 보고서를 생성.
+        # 이전에는 get_latest_pairings()로 폴백하여 다른 세션 이미지로 보고서가
+        # 생성되는 버그가 있었음.
 
         # A session may contain pairings from multiple image frames processed
         # sequentially.  Keep only the most recent pairing_time batch so that
@@ -327,6 +367,142 @@ class MavenPipeline:
             historical_context=historical_context,
             target_description=target_description,
         )
+        return report
+
+    # ------------------------------------------------------------------
+    # Re-run from existing detections (사용자 편집 후 재처리)
+    # ------------------------------------------------------------------
+
+    def rerun_from_detections(self, image_id: str, target_description: str = "") -> str:
+        """
+        이미지 1장에 대해 SensorDB에 저장된 탐지 결과(사용자 수정 포함)를 기반으로
+        Temporal Pairing → Report Generation을 재실행한다.
+
+        - session_id는 원본 파이프라인 세션을 그대로 재사용한다.
+        - 기존 pairing_records / report_records(동일 session)는 삭제 후 재삽입된다.
+
+        Args:
+            image_id:           현재 프레임 이미지 ID.
+            target_description: 사용자가 입력한 표적 설명 (선택). 보고서 생성 시 LLM 프롬프트에 반영.
+
+        Returns:
+            새로 생성된 보고서 텍스트.
+        """
+        import numpy as np
+        from pathlib import Path
+        from PIL import Image as PILImage
+
+        from src.config import IMAGES_DIR
+        from src.database.sensor_db import (
+            get_image_record_by_id,
+            get_detections_by_image,
+            get_most_recent_past_detections,
+        )
+        from src.database.pairing_db import delete_pairings_by_session
+        from src.database.reports_db import delete_reports_by_session
+        from src.detection.super_resolution import super_resolve
+
+        # ── 1. 이미지 레코드 조회 ────────────────────────────────────────────
+        img_rec = get_image_record_by_id(image_id)
+        if img_rec is None:
+            raise ValueError(f"Image not found: {image_id}")
+
+        session_id   = img_rec.session_id
+        capture_time = img_rec.capture_time
+
+        logger.info(
+            f"[Rerun] image={image_id[:8]}  session={session_id}  "
+            f"capture={capture_time}"
+        )
+
+        # ── 2. 이미지 파일 로드 + SR ─────────────────────────────────────────
+        img_path = Path(img_rec.image_path)
+        if not img_path.is_absolute():
+            img_path = Path(IMAGES_DIR) / img_rec.image_path
+        if not img_path.exists():
+            raise FileNotFoundError(f"Image file not found: {img_path}")
+
+        pil_raw  = PILImage.open(img_path).convert("RGB")
+        arr      = np.array(pil_raw, dtype=np.uint8)
+        arr      = super_resolve(arr)
+        orig_h, orig_w = arr.shape[:2]
+        pil_image = PILImage.fromarray(arr)
+
+        # ── 3. 현재 탐지 결과 (SensorDB) ────────────────────────────────────
+        orm_dets     = get_detections_by_image(image_id)
+        current_dets = [
+            DetectionResult(
+                detection_id=d.id,
+                detection_time=d.detection_time,
+                image_id=d.image_id,
+                object_class=d.object_class,
+                object_class_index=d.object_class_index or 0,
+                confidence=d.confidence,
+                bbox_x1=d.bbox_x1, bbox_y1=d.bbox_y1,
+                bbox_x2=d.bbox_x2, bbox_y2=d.bbox_y2,
+                lat=d.lat, lon=d.lon,
+                source_type=d.source_type or img_rec.source_type,
+            )
+            for d in orm_dets
+        ]
+        logger.info(f"[Rerun] current detections: {len(current_dets)}")
+
+        # ── 4. 과거 탐지 결과 ────────────────────────────────────────────────
+        past_records, past_capture_time = get_most_recent_past_detections(
+            lat_center=img_rec.lat_center,
+            lon_center=img_rec.lon_center,
+            radius_deg=COORDINATE_MATCH_RADIUS_DEG,
+            before_time=capture_time,
+            prefer_session_id=session_id,
+        )
+        logger.info(f"[Rerun] past detections: {len(past_records)}")
+
+        # ── 5. 기존 pairing 삭제 ─────────────────────────────────────────────
+        delete_pairings_by_session(session_id)
+
+        # ── 6. Temporal Pairing ──────────────────────────────────────────────
+        if TRACKING_MODE == "similarity":
+            pairing_records = pair_by_similarity(
+                current_detections=current_dets,
+                past_detections=past_records,
+                current_image=pil_image,
+                current_capture_time=capture_time,
+                past_capture_time=past_capture_time,
+                region_lat=img_rec.lat_center,
+                region_lon=img_rec.lon_center,
+                session_id=session_id,
+                source_type=img_rec.source_type,
+            )
+        else:
+            tracked_objects = (
+                self.detector.track_objects(pil_image, past_records, orig_w, orig_h)
+                if past_records else []
+            )
+            pairing_records = pair_by_tracking(
+                tracked_objects=tracked_objects,
+                current_detections=current_dets,
+                past_detections=past_records,
+                current_capture_time=capture_time,
+                past_capture_time=past_capture_time,
+                region_lat=img_rec.lat_center,
+                region_lon=img_rec.lon_center,
+                session_id=session_id,
+                source_type=img_rec.source_type,
+            )
+
+        if pairing_records:
+            insert_pairings_bulk(pairing_records)
+            logger.info(f"[Rerun] Inserted {len(pairing_records)} pairing records.")
+
+        # SAM3 모델을 GPU에서 해제 — vLLM 로딩 전 VRAM 확보
+        self.detector.unload()
+
+        # ── 7. 기존 보고서 삭제 ──────────────────────────────────────────────
+        delete_reports_by_session(session_id)
+
+        # ── 8. 보고서 재생성 ─────────────────────────────────────────────────
+        report = self._generate_report(session_id, target_description=target_description)
+        logger.info(f"[Rerun] Report regenerated for session={session_id}")
         return report
 
     # ------------------------------------------------------------------
@@ -365,35 +541,49 @@ class MavenPipeline:
             )
             from scripts.generate_sample_data import generate_sample_data
             generate_sample_data(metadata_json)
+            metas_check = load_metadata_index(metadata_json)
 
-        # --- Step 1: Detection ---
-        logger.info("[Pipeline] Step 1/3 – Image ingestion & SAM3 detection")
-        image_ids = self._detect_and_store(metadata_json, session_id)
-        logger.info(f"[Pipeline] Processed {len(image_ids)} images.")
+        # 상태 표시용 대표 좌표 (마지막 메타의 lat/lon)
+        _lat = metas_check[-1].lat_center if metas_check else None
+        _lon = metas_check[-1].lon_center if metas_check else None
 
-        # --- Step 2: Pairing ---
-        logger.info("[Pipeline] Step 2/3 – Temporal object pairing")
-        n_pairings = self._pair_and_store(metadata_json, session_id)
-        logger.info(f"[Pipeline] Created {n_pairings} pairing records.")
+        try:
+            # --- Step 1: SR + Detection ---
+            logger.info("[Pipeline] Step 1/3 – Image ingestion & SAM3 detection")
+            _write_ps(STAGE_SR, _lat, _lon, session_id)
+            image_ids = self._detect_and_store(metadata_json, session_id)
+            logger.info(f"[Pipeline] Processed {len(image_ids)} images.")
 
-        # --- GraphRAG: index pairings into knowledge graph (non-blocking) ---
-        logger.info("[Pipeline] GraphRAG – Indexing pairings into knowledge graph")
-        session_pairings = get_pairings_by_session(session_id)
-        self.graph_indexer.index_pairings(session_pairings, session_id)
-        graph_stats = self.graph_indexer.stats()
-        logger.info(
-            "[Pipeline] GraphRAG stats: entities=%d, assets=%d, "
-            "relations=%d, communities=%d",
-            graph_stats.get("entities", 0),
-            graph_stats.get("assets", 0),
-            graph_stats.get("relations", 0),
-            graph_stats.get("communities", 0),
-        )
+            # --- Step 2: Pairing ---
+            logger.info("[Pipeline] Step 2/3 – Temporal object pairing")
+            _write_ps(STAGE_PAIRING, _lat, _lon, session_id)
+            n_pairings = self._pair_and_store(metadata_json, session_id)
+            logger.info(f"[Pipeline] Created {n_pairings} pairing records.")
 
-        # --- Step 3: Reporting ---
-        logger.info("[Pipeline] Step 3/3 – Military report generation (EXAONE4-32b)")
-        report = self._generate_report(session_id, report_output_path,
-                                        target_description=target_description)
+            # --- GraphRAG: index pairings into knowledge graph (non-blocking) ---
+            logger.info("[Pipeline] GraphRAG – Indexing pairings into knowledge graph")
+            session_pairings = get_pairings_by_session(session_id)
+            self.graph_indexer.index_pairings(session_pairings, session_id)
+            graph_stats = self.graph_indexer.stats()
+            logger.info(
+                "[Pipeline] GraphRAG stats: entities=%d, assets=%d, "
+                "relations=%d, communities=%d",
+                graph_stats.get("entities", 0),
+                graph_stats.get("assets", 0),
+                graph_stats.get("relations", 0),
+                graph_stats.get("communities", 0),
+            )
+
+            # SAM3 모델을 GPU에서 해제 — vLLM 로딩 전 VRAM 확보
+            self.detector.unload()
+
+            # --- Step 3: Reporting ---
+            logger.info("[Pipeline] Step 3/3 – Military report generation (EXAONE4-32b)")
+            _write_ps(STAGE_REPORTING, _lat, _lon, session_id)
+            report = self._generate_report(session_id, report_output_path,
+                                            target_description=target_description)
+        finally:
+            _clear_ps()
 
         logger.info(f"[Pipeline] Pipeline complete.  session={session_id}")
         return report

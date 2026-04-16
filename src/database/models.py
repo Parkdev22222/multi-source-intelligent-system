@@ -51,6 +51,15 @@ class ImageRecord(Base):
     resolution_m = Column(Float, nullable=True)        # GSD in metres/pixel
     sensor_platform = Column(String(64), nullable=True)  # e.g. "WorldView-3", "MQ-9"
 
+    # Dimensions of the image array actually used during detection (after SR preprocessing).
+    # bbox coordinates in DetectionRecord are in this pixel space.
+    det_width  = Column(Integer, nullable=True)
+    det_height = Column(Integer, nullable=True)
+
+    # Pipeline session that produced the detections on this image.
+    # Links image records back to the report generation session.
+    session_id = Column(String(36), nullable=True)
+
     detections = relationship("DetectionRecord", back_populates="image", cascade="all, delete-orphan")
 
 
@@ -89,6 +98,9 @@ class DetectionRecord(Base):
     source_type = Column(String(32), nullable=True)  # "satellite" | "drone"
     extra = Column(JSON, nullable=True)
 
+    # Pipeline session that generated this detection (same as parent ImageRecord.session_id)
+    session_id = Column(String(36), nullable=True)
+
     image = relationship("ImageRecord", back_populates="detections")
 
 
@@ -103,8 +115,7 @@ class PairingRecord(PairingBase):
 
     Status values:
         "new"        – object appears for the first time (no past match)
-        "matched"    – object present in both frames at the same location (stationary)
-        "moved"      – object present in both frames but position changed significantly
+        "matched"    – object present in both frames
         "disappeared"– object was in the past frame but absent in current
     """
 

@@ -21,11 +21,18 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from src.config import (
+    DOCTRINE_ENABLED,
+    DOCTRINE_MAX_CHARS,
+    DOCTRINE_TOP_K,
     LLM_BACKEND,
     LLM_GPU_MEMORY_UTILIZATION,
+    LLM_MAX_MODEL_LEN,
     LLM_MAX_NEW_TOKENS,
     LLM_MODEL_NAME,
+    LLM_TENSOR_PARALLEL_SIZE,
     LLM_TEMPERATURE,
+    LLM_TRANSLATE_MAX_TOKENS,
+    LLM_TRANSLATE_TO_KOREAN,
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
 )
@@ -39,22 +46,52 @@ logger = logging.getLogger(__name__)
 # Prompt builder
 # ---------------------------------------------------------------------------
 
-def _build_system_prompt() -> str:
-    return (
-        "You are a military IMINT analyst. Produce a concise formal intelligence report "
-        "from AI-based satellite/drone object detection data. "
-        "Use standard section headers. Be factual. "
-        "Focus exclusively on newly appeared and disappeared objects as indicators of activity. "
-        "Do not analyse or comment on stationary or repositioned objects. "
-        "IMPORTANT: 'DISAPPEARED' means the object was observed in the PAST imagery but was "
-        "NOT detected in the CURRENT (most recent) imagery. It does NOT mean the object is "
-        "confirmed destroyed or permanently gone — it may have moved outside the sensor FOV, "
-        "be obscured, or relocated. Always qualify disappearance as 'no longer observed in "
-        "current imagery' rather than implying confirmed destruction or elimination."
+def _build_system_prompt(doctrine_context: str = "") -> str:
+    base = (
+        "당신은 군사 IMINT(영상정보) 분석관입니다. "
+        "AI 기반 위성/드론 객체 탐지 데이터를 바탕으로 간결하고 공식적인 정보 보고서를 작성하세요. "
+        "반드시 한국어로 작성하세요. "
+        "표준 섹션 헤더를 사용하고 사실에 근거하여 작성하세요. "
+        "활동 지표인 신규 출현 객체와 소실 객체를 중심으로 분석하되, "
+        "정지·이동 객체의 종류(CLASS_SUMMARY)는 해당 지역 전력 구성 파악 및 위협 평가에 활용하세요. "
+        "각 객체 클래스(TANK, APC, HELICOPTER, artillery, civilian building 등)의 군사적 의미를 반영하세요. "
+        "정지 또는 위치 이동 객체를 변화 분석에서 개별 나열하지는 마세요. "
+        "중요: 'DISAPPEARED(소실)'은 과거 영상에서 탐지되었으나 현재(최신) 영상에서 탐지되지 않은 객체를 의미합니다. "
+        "객체가 완전히 소멸되거나 파괴되었음을 의미하지 않습니다. "
+        "센서 시야 밖으로 이동했거나, 은폐되거나, 위치를 옮겼을 수 있습니다. "
+        "소실 표현 시 반드시 '현재 영상에서 더 이상 관측되지 않음'으로 표현하세요. "
+        "중요: 'PAST_NOT_INCLUDED(과거 미포함)'은 현재 탐지 객체가 과거 영상의 촬영 범위 밖에 위치함을 의미합니다. "
+        "과거 센서가 해당 지역을 촬영하지 않아 객체의 이전 존재 여부를 확인할 수 없습니다. "
+        "이러한 객체는 확인된 신규 활동이 아닌 추가 수집이 필요한 미검증 관측으로 취급하세요. "
+        "중요: 'CURRENT_NOT_INCLUDED(현재 미포함)'은 과거 탐지 객체가 현재 영상의 촬영 범위 밖에 위치함을 의미합니다. "
+        "현재 센서가 해당 지역을 촬영하지 않아 객체의 현재 존재 여부를 확인할 수 없습니다. "
+        "이러한 객체는 확인된 소실이 아닌 촬영 공백으로 취급하세요."
     )
+    if doctrine_context:
+        base += (
+            "\n\n다음은 참고용으로 제공된 군사 교리 문서 발췌문입니다. "
+            "위협 평가, 교전 규칙, 권고 조치 수립 시 관련 내용을 참고하세요. "
+            "교리 내용을 직접 인용하지 말고 분석에 자연스럽게 통합하세요.\n\n"
+            + doctrine_context
+        )
+    return base
 
 
 _MAX_DETAIL = 20   # max individual records shown per change category
+
+# 차량류 클래스 – 보고서에 개별 항목 대신 건수(CLASS_SUMMARY)만 표시
+_VEHICLE_CLASSES: frozenset = frozenset({
+    "military tank",
+    "armored personnel carrier",
+    "military truck",
+    "military jeep",
+    "civilian vehicle",
+})
+
+
+def _is_vehicle(p) -> bool:
+    cls = (p.current_object_class or p.past_object_class or "").lower()
+    return cls in _VEHICLE_CLASSES
 
 
 def _class_counts(objs) -> str:
@@ -77,15 +114,16 @@ def _build_user_prompt(
     def fmt_dt(dt: Optional[datetime]) -> str:
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else "N/A"
 
-    new_objs = [p for p in pairings if p.status == "new"]
-    disappeared_objs = [p for p in pairings if p.status == "disappeared"]
+    new_objs          = [p for p in pairings if p.status == "new"]
+    disappeared_objs  = [p for p in pairings if p.status == "disappeared"]
+    past_not_inc      = [p for p in pairings if p.status == "past_not_included"]
+    cur_not_inc       = [p for p in pairings if p.status == "current_not_included"]
+    matched_objs      = [p for p in pairings if p.status == "matched"]
 
-    # matched/moved 객체는 보고서에서 제외 — 집계 참고용으로만 카운트
-    n_matched = sum(1 for p in pairings if p.status == "matched")
-    n_moved   = sum(1 for p in pairings if p.status == "moved")
+    n_matched = len(matched_objs)
 
-    # 현재 프레임 탐지 건수 = new + matched + moved (visualize_detections.py 기준과 동일)
-    n_current_detections = len(new_objs) + n_matched + n_moved
+    # 현재 프레임 탐지 건수 = new + matched + past_not_included
+    n_current_detections = len(new_objs) + n_matched + len(past_not_inc)
 
     lats = [p.lat_center for p in pairings]
     lons = [p.lon_center for p in pairings]
@@ -97,6 +135,46 @@ def _build_user_prompt(
     time_past = min(past_times).strftime("%Y-%m-%dT%H:%M:%SZ") if past_times else "UNKNOWN"
     time_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
+    def _append_section(section_objs, conf_key: str):
+        """섹션 내 객체를 출력.
+        차량류(_VEHICLE_CLASSES): CLASS_SUMMARY 건수만 표시 (개별 항목 생략).
+        비차량류: 개별 항목 (좌표·신뢰도) 표시.
+        """
+        vehicles     = [p for p in section_objs if _is_vehicle(p)]
+        non_vehicles = [p for p in section_objs if not _is_vehicle(p)]
+
+        if vehicles:
+            lines.append(f"  VEHICLE_COUNT: {_class_counts(vehicles)}"
+                         f"  (총 {len(vehicles)}대 — 위치 상세 생략)")
+
+        if non_vehicles:
+            lines.append(f"  CLASS_SUMMARY: {_class_counts(non_vehicles)}")
+            top = sorted(non_vehicles,
+                         key=lambda p: (getattr(p, conf_key) or 0),
+                         reverse=True)
+            for p in top[:_MAX_DETAIL]:
+                if conf_key == "current_confidence":
+                    lines.append(
+                        f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
+                        f" ({p.current_lat:.3f},{p.current_lon:.3f})"
+                        f" DETECTED={fmt_dt(p.current_capture_time)}"
+                    )
+                else:
+                    lines.append(
+                        f"  {p.past_object_class} CONF={p.past_confidence:.2f}"
+                        f" ({p.past_lat:.3f},{p.past_lon:.3f})"
+                        f" LAST_SEEN={fmt_dt(p.past_capture_time)}"
+                    )
+            if len(non_vehicles) > _MAX_DETAIL:
+                lines.append(
+                    f"  ... +{len(non_vehicles) - _MAX_DETAIL} more:"
+                    f" {_class_counts(non_vehicles[_MAX_DETAIL:])}"
+                )
+
+        if not vehicles and not non_vehicles:
+            lines.append("  (none)")
+
+
     lines = []
     if target_description.strip():
         lines += [
@@ -107,60 +185,73 @@ def _build_user_prompt(
     lines += [
         f"PAST_OBS: {time_past}  CURRENT_OBS: {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
         f"CURRENT_FRAME_DETECTIONS: {n_current_detections}"
-        f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}  MOVED:{n_moved})",
-        f"PAST_ONLY (disappeared from current): {len(disappeared_objs)}",
-        "NOTE: NEW = detected in CURRENT_OBS but absent in PAST_OBS.",
-        "NOTE: DISAPPEARED = detected in PAST_OBS but NOT observed in CURRENT_OBS"
-        " (location unknown — may have relocated or exited sensor coverage).",
-        "NOTE: Report covers only NEW and DISAPPEARED objects.",
+        f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}"
+        f"  PAST_NOT_INCLUDED:{len(past_not_inc)})",
+        f"PAST_ONLY: disappeared={len(disappeared_objs)}"
+        f"  current_not_included={len(cur_not_inc)}",
+        "NOTE: NEW = in overlap zone of both images, detected CURRENT but absent PAST.",
+        "NOTE: DISAPPEARED = in overlap zone of both images, detected PAST but absent CURRENT.",
+        "NOTE: PAST_NOT_INCLUDED = current detection outside past image FOV"
+        " — cannot confirm if new.",
+        "NOTE: CURRENT_NOT_INCLUDED = past detection outside current image FOV"
+        " — cannot confirm if gone.",
+        "NOTE: Vehicle classes (tank/APC/truck/jeep/vehicle) are reported as counts only.",
+        "NOTE: Report covers NEW, DISAPPEARED, PAST_NOT_INCLUDED, CURRENT_NOT_INCLUDED objects.",
     ]
 
-    # --- NEW objects (high-value: list top _MAX_DETAIL by confidence) ---
-    lines.append(f"\n=== NEW OBJECTS (first observed at CURRENT_OBS: {time_current}) ===")
-    top_new = sorted(new_objs, key=lambda p: p.current_confidence or 0, reverse=True)
-    for p in top_new[:_MAX_DETAIL]:
+    # --- STATIONARY objects (class breakdown only – for threat context) ---
+    if matched_objs:
         lines.append(
-            f"  {p.current_object_class} CONF={p.current_confidence:.2f}"
-            f" ({p.current_lat:.3f},{p.current_lon:.3f})"
-            f" DETECTED={fmt_dt(p.current_capture_time)}"
+            f"\n=== STATIONARY OBJECTS (overlap zone, present in BOTH frames — class breakdown for context) ==="
         )
-    if len(new_objs) > _MAX_DETAIL:
-        lines.append(f"  ... +{len(new_objs) - _MAX_DETAIL} more: {_class_counts(new_objs[_MAX_DETAIL:])}")
-    if not new_objs:
-        lines.append("  (none)")
+        lines.append(f"  CLASS_SUMMARY: {_class_counts(matched_objs)}")
+
+    # --- NEW objects ---
+    lines.append(f"\n=== NEW OBJECTS (overlap zone, first observed at CURRENT_OBS: {time_current}) ===")
+    _append_section(new_objs, "current_confidence")
 
     # --- DISAPPEARED objects ---
     lines.append(
         f"\n=== DISAPPEARED OBJECTS"
-        f" (present at PAST_OBS: {time_past}, NOT observed at CURRENT_OBS: {time_current}) ==="
+        f" (overlap zone, present at PAST_OBS: {time_past}, NOT observed at CURRENT_OBS: {time_current}) ==="
     )
-    top_gone = sorted(disappeared_objs, key=lambda p: p.past_confidence or 0, reverse=True)
-    for p in top_gone[:_MAX_DETAIL]:
-        lines.append(
-            f"  {p.past_object_class} CONF={p.past_confidence:.2f}"
-            f" ({p.past_lat:.3f},{p.past_lon:.3f})"
-            f" LAST_SEEN={fmt_dt(p.past_capture_time)}"
-        )
-    if len(disappeared_objs) > _MAX_DETAIL:
-        lines.append(f"  ... +{len(disappeared_objs) - _MAX_DETAIL} more: {_class_counts(disappeared_objs[_MAX_DETAIL:])}")
-    if not disappeared_objs:
-        lines.append("  (none)")
+    _append_section(disappeared_objs, "past_confidence")
+
+    # --- PAST_NOT_INCLUDED objects (coverage gap – current detection, no past coverage) ---
+    lines.append(
+        f"\n=== PAST_NOT_INCLUDED OBJECTS"
+        f" (detected CURRENT_OBS: {time_current}, outside past image FOV — unverifiable) ==="
+    )
+    _append_section(past_not_inc, "current_confidence")
+
+    # --- CURRENT_NOT_INCLUDED objects (coverage gap – past detection, no current coverage) ---
+    lines.append(
+        f"\n=== CURRENT_NOT_INCLUDED OBJECTS"
+        f" (detected PAST_OBS: {time_past}, outside current image FOV — unverifiable) ==="
+    )
+    _append_section(cur_not_inc, "past_confidence")
 
     # --- GraphRAG historical context (prepended before task) ---
     if historical_context:
         lines = [historical_context] + lines
 
     lines += [
-        "\n=== TASK ===",
-        "Write a military intelligence report based ONLY on the NEW and DISAPPEARED objects above.",
-        "Use PAST_OBS and CURRENT_OBS timestamps (not today's date) as the observation times.",
-        "Where GRAPHRAG HISTORICAL CONTEXT is provided, reference relevant historical patterns "
-        "to enrich THREAT ASSESSMENT and INTELLIGENCE GAPS sections.",
-        "For DISAPPEARED objects, state they were 'no longer observed in current imagery' — "
-        "do NOT imply they are destroyed, eliminated, or permanently gone.",
-        "Do NOT mention stationary or repositioned/moved objects.",
-        "Sections: 1.CLASSIFICATION 2.EXECUTIVE SUMMARY 3.SITUATION 4.CHANGE ANALYSIS"
-        " 5.THREAT ASSESSMENT 6.INTELLIGENCE GAPS 7.RECOMMENDED ACTIONS 8.APPENDIX",
+        "\n=== 작성 지시 ===",
+        "위 데이터를 바탕으로 군사 정보 보고서를 한국어로 작성하세요.",
+        "  1) NEW(신규) 및 DISAPPEARED(소실) 객체: 두 영상의 공통 촬영 구역에서 확인된 변화.",
+        "  2) PAST_NOT_INCLUDED(과거 미포함) 객체: '현재 영상에서 탐지되었으나 과거 촬영 범위 밖에 위치"
+        " — 신규 활동 여부 미확인'으로 표기.",
+        "  3) CURRENT_NOT_INCLUDED(현재 미포함) 객체: '과거 영상에서 탐지되었으나 현재 촬영 범위 밖에 위치"
+        " — 현재 상태 불명, 추가 수집 필요'로 표기.",
+        "  4) STATIONARY(정지) 객체: 변화 분석 섹션에서 직접 나열하지 말고,"
+        " 탐지된 객체 종류(CLASS_SUMMARY)를 바탕으로 해당 지역의 전력 구성 및 위협 수준 평가에 활용하세요.",
+        "  5) 차량류(VEHICLE_COUNT): tank·APC·truck·jeep·vehicle은 개별 위치 없이 총 댓수와 종류만 보고서에 기재하세요.",
+        "  6) GRAPHRAG 과거 컨텍스트가 제공된 경우, 위협 평가(6절) 및 정보공백(7절) 분석에 과거 패턴을 반영하세요.",
+        "각 객체 종류(TANK, APC, HELICOPTER, civilian building 등)의 군사적 의미를 분석에 반영하세요.",
+        "관측 시각은 오늘 날짜가 아닌 PAST_OBS 및 CURRENT_OBS 타임스탬프를 사용하세요.",
+        "DISAPPEARED 객체는 '현재 영상에서 더 이상 관측되지 않음'으로 표현하세요.",
+        "섹션 구성: 1.분류등급 2.핵심요약 3.상황 4.변화분석"
+        " 5.촬영공백구역 6.위협평가 7.정보공백 8.권고조치 9.부록",
     ]
 
     return "\n".join(lines)
@@ -183,11 +274,13 @@ class _VllmBackend:
             quantization="awq",
             dtype="float16",
             gpu_memory_utilization=LLM_GPU_MEMORY_UTILIZATION,
-            max_model_len=4096,
+            max_model_len=LLM_MAX_MODEL_LEN,
+            tensor_parallel_size=LLM_TENSOR_PARALLEL_SIZE,
         )
         logger.info(f"[Reporter] {LLM_MODEL_NAME} loaded.")
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: Optional[int] = None) -> str:
         from vllm import SamplingParams
 
         if self._llm is None:
@@ -199,7 +292,7 @@ class _VllmBackend:
         ]
         sampling_params = SamplingParams(
             temperature=LLM_TEMPERATURE,
-            max_tokens=LLM_MAX_NEW_TOKENS,
+            max_tokens=max_tokens if max_tokens is not None else LLM_MAX_NEW_TOKENS,
         )
         outputs = self._llm.chat(messages, sampling_params=sampling_params)
         return outputs[0].outputs[0].text
@@ -211,44 +304,49 @@ class _FallbackBackend:
     Produces a structured summary directly from pairing records.
     """
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
-        # Extract the data section from the user_prompt (everything before INSTRUCTIONS)
-        data_section = user_prompt.split("=== INSTRUCTIONS ===")[0].strip()
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: Optional[int] = None) -> str:
+        # Extract the data section from the user_prompt (everything before 작성 지시)
+        data_section = user_prompt.split("=== 작성 지시 ===")[0].strip()
         return textwrap.dedent(f"""
-            1. CLASSIFICATION: UNCLASSIFIED // FOR OFFICIAL USE ONLY (AUTO-GENERATED)
+            1. 분류등급: 비밀해제 // 공무상 사용 (자동 생성)
 
-            2. EXECUTIVE SUMMARY
-            This report was generated by the rule-based fallback engine because no LLM
-            backend (HuggingFace / Ollama) was available. The raw detection pairing data
-            is reproduced verbatim below for manual analysis.
+            2. 핵심요약
+            LLM 백엔드(vLLM / Ollama)를 사용할 수 없어 규칙 기반 폴백 엔진으로 보고서가 생성되었습니다.
+            정밀 분석을 위해 아래의 원시 탐지 페어링 데이터를 수동으로 검토하세요.
 
-            3. SITUATION
-            AI-based object detection and temporal pairing have completed successfully.
-            Refer to the CHANGE ANALYSIS section for object-level status breakdown.
+            3. 상황
+            AI 기반 객체 탐지 및 시계열 페어링이 정상 완료되었습니다.
+            객체별 상태 분류는 아래 변화 분석 섹션을 참고하세요.
 
-            4. CHANGE ANALYSIS
+            4. 변화분석
             {data_section}
 
-            5. THREAT ASSESSMENT
-            Manual review required. LLM-based threat assessment unavailable.
+            5. 촬영공백구역
+            LLM 기반 촬영 공백 분석 미수행.
 
-            6. INTELLIGENCE GAPS
-            - LLM threat analysis not performed (model not loaded).
-            - Install transformers + EXAONE model or configure Ollama for full analysis.
+            6. 위협평가
+            수동 검토 필요. LLM 기반 위협 평가를 사용할 수 없습니다.
+            (탐지 객체 종류 참고: {data_section.split('CLASS_SUMMARY:')[1].split(chr(10))[0].strip() if 'CLASS_SUMMARY:' in data_section else '정보 없음'})
 
-            7. RECOMMENDED ACTIONS
-            - Review moved/new/disappeared objects in the pairing database.
-            - Configure LLM backend and re-run for full intelligence assessment.
+            7. 정보공백
+            - LLM 위협 분석 미수행 (모델 미로드).
+            - 전체 분석을 위해 transformers + EXAONE 모델을 설치하거나 Ollama를 설정하세요.
 
-            8. APPENDIX
-            See pairing database (data/db/object_pairings.db) for complete object inventory.
+            8. 권고조치
+            - 페어링 데이터베이스의 이동/신규/소실 객체를 검토하세요.
+            - LLM 백엔드를 설정하고 재실행하여 전체 정보 평가를 수행하세요.
+
+            9. 부록
+            전체 객체 목록은 페어링 데이터베이스(data/db/object_pairings.db)를 참고하세요.
         """).strip()
 
 
 class _OllamaBackend:
     """Calls a locally running Ollama server."""
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: Optional[int] = None) -> str:
         import urllib.request
 
         payload = json.dumps({
@@ -260,7 +358,7 @@ class _OllamaBackend:
             "stream": False,
             "options": {
                 "temperature": LLM_TEMPERATURE,
-                "num_predict": LLM_MAX_NEW_TOKENS,
+                "num_predict": max_tokens if max_tokens is not None else LLM_MAX_NEW_TOKENS,
             },
         }).encode()
 
@@ -296,15 +394,51 @@ class _SafeBackend:
         self._primary = primary
         self._fallback = _FallbackBackend()
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    def generate(self, system_prompt: str, user_prompt: str,
+                 max_tokens: Optional[int] = None) -> str:
         try:
-            return self._primary.generate(system_prompt, user_prompt)
+            return self._primary.generate(system_prompt, user_prompt, max_tokens=max_tokens)
         except Exception as exc:
             logger.warning(
                 f"[Reporter] LLM backend failed ({exc}). "
                 "Using rule-based fallback report."
             )
-            return self._fallback.generate(system_prompt, user_prompt)
+            return self._fallback.generate(system_prompt, user_prompt, max_tokens=max_tokens)
+
+
+# ---------------------------------------------------------------------------
+# Korean translation helper
+# ---------------------------------------------------------------------------
+
+def _build_translation_system_prompt() -> str:
+    return (
+        "당신은 군사 정보 문서를 전문으로 하는 한국어 번역가입니다. "
+        "아래 보고서가 이미 한국어로 작성된 경우 그대로 출력하세요. "
+        "영어로 작성된 경우 한국어로 번역하세요. "
+        "규칙:\n"
+        "1. 좌표, 타임스탬프, 신뢰도 점수, 객체 클래스명(TANK, APC 등), 고유명사는 번역하지 말고 원문 그대로 유지.\n"
+        "2. 서술·분석·설명 텍스트는 충실하게 한국어로 번역.\n"
+        "3. 내용을 추가·생략·재해석하지 마세요 — 번역만 수행.\n"
+        "4. 번역된 텍스트만 출력하고, 서문이나 설명은 포함하지 마세요."
+    )
+
+
+def _translate_report_to_korean(backend, english_text: str) -> str:
+    """
+    이미 로드된 EXAONE 백엔드를 재사용해 보고서를 한국어로 번역한다.
+    번역 실패 시 원문(영어)을 그대로 반환한다.
+    """
+    try:
+        korean_text = backend.generate(
+            _build_translation_system_prompt(),
+            english_text,
+            max_tokens=LLM_TRANSLATE_MAX_TOKENS,
+        )
+        logger.info("[Reporter] 한국어 번역 완료.")
+        return korean_text
+    except Exception as exc:
+        logger.warning(f"[Reporter] 번역 실패 ({exc}) — 원문(영어)을 사용합니다.")
+        return english_text
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +450,20 @@ class MilitaryReporter:
 
     def __init__(self):
         self._backend = _SafeBackend(_get_backend())
+
+        # 교리 RAG 초기화 (DOCTRINE_ENABLED=true 일 때만 로드)
+        self._retriever = None
+        if DOCTRINE_ENABLED:
+            try:
+                from src.reporting.doctrine_retriever import DoctrineRetriever
+                self._retriever = DoctrineRetriever()
+                if self._retriever.is_ready:
+                    logger.info("[Reporter] 교리 RAG 활성화됨.")
+                else:
+                    logger.warning("[Reporter] 교리 RAG 비활성화 — 벡터 DB를 먼저 구축하세요.")
+                    self._retriever = None
+            except Exception as exc:
+                logger.warning(f"[Reporter] DoctrineRetriever 로드 실패 ({exc}) — RAG 없이 진행.")
 
     def generate_report(
         self,
@@ -346,7 +494,30 @@ class MilitaryReporter:
             return "NO DATA: No pairing records available for report generation."
 
         report_time = datetime.now(tz=timezone.utc)
-        system_prompt = _build_system_prompt()
+        # --- 교리 RAG: 탐지 객체 클래스 기반으로 관련 교리 문서 검색 ---
+        doctrine_context = ""
+        if self._retriever is not None:
+            object_classes = [
+                p.current_object_class or p.past_object_class
+                for p in pairings
+                if p.status in ("new", "disappeared", "past_not_included", "current_not_included")
+            ]
+            lats = [p.lat_center for p in pairings]
+            lons = [p.lon_center for p in pairings]
+            region_lat = sum(lats) / len(lats) if lats else 0.0
+            region_lon = sum(lons) / len(lons) if lons else 0.0
+
+            doctrine_context = self._retriever.get_context(
+                object_classes=object_classes,
+                region_lat=region_lat,
+                region_lon=region_lon,
+                top_k=DOCTRINE_TOP_K,
+                max_chars_per_chunk=DOCTRINE_MAX_CHARS,
+            )
+            if doctrine_context:
+                logger.info("[Reporter] 교리 컨텍스트 삽입 완료.")
+
+        system_prompt = _build_system_prompt(doctrine_context)
         user_prompt = _build_user_prompt(
             pairings,
             historical_context=historical_context,
@@ -356,6 +527,11 @@ class MilitaryReporter:
         logger.info(f"[Reporter] Generating military report for {len(pairings)} pairings...")
         report_text = self._backend.generate(system_prompt, user_prompt)
 
+        # 한국어 번역 (LLM_TRANSLATE=false 환경변수로 비활성화 가능)
+        if LLM_TRANSLATE_TO_KOREAN:
+            logger.info("[Reporter] 보고서를 한국어로 번역 중...")
+            report_text = _translate_report_to_korean(self._backend, report_text)
+
         # Derive observation period from pairing records (metadata.json capture times)
         past_times = [p.past_capture_time for p in pairings if p.past_capture_time]
         current_times = [p.current_capture_time for p in pairings if p.current_capture_time]
@@ -363,22 +539,27 @@ class MilitaryReporter:
         obs_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
         # Prepend metadata header
-        n_current = sum(1 for p in pairings if p.status in ('new', 'matched', 'moved'))
-        n_new_rep = sum(1 for p in pairings if p.status == 'new')
-        n_matched_rep = sum(1 for p in pairings if p.status == 'matched')
-        n_moved_rep = sum(1 for p in pairings if p.status == 'moved')
-        n_disappeared_rep = sum(1 for p in pairings if p.status == 'disappeared')
+        n_new_rep          = sum(1 for p in pairings if p.status == 'new')
+        n_matched_rep      = sum(1 for p in pairings if p.status == 'matched')
+        n_disappeared_rep  = sum(1 for p in pairings if p.status == 'disappeared')
+        n_past_not_inc     = sum(1 for p in pairings if p.status == 'past_not_included')
+        n_cur_not_inc      = sum(1 for p in pairings if p.status == 'current_not_included')
+        n_current = n_new_rep + n_matched_rep + n_past_not_inc
+        lang_note = "한국어 (EXAONE 번역)" if LLM_TRANSLATE_TO_KOREAN else "English"
         header = (
             f"{'='*72}\n"
             f"  MILITARY INTELLIGENCE REPORT\n"
             f"  Generated by: Multi-Source Intelligent System (MSIS)\n"
             f"  Model: {LLM_MODEL_NAME}\n"
+            f"  Language: {lang_note}\n"
             f"  Past observation:    {obs_past}\n"
             f"  Current observation: {obs_current}\n"
             f"  Report generated:    {report_time.strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
             f"  Current frame detections: {n_current}"
-            f"  (new={n_new_rep} / stationary={n_matched_rep} / moved={n_moved_rep})\n"
+            f"  (new={n_new_rep} / matched={n_matched_rep}"
+            f" / past_not_included={n_past_not_inc})\n"
             f"  Disappeared (past only):  {n_disappeared_rep}\n"
+            f"  Current not included:     {n_cur_not_inc}\n"
             f"  Total pairing records:    {len(pairings)}\n"
             f"{'='*72}\n\n"
         )

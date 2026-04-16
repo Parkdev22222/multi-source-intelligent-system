@@ -29,6 +29,11 @@ vllm>=0.18.0
 # --- Ollama Python client (optional, for ollama LLM backend) ---
 # ollama>=0.2.0
 
+# --- Super-Resolution (SAM3 전처리) ---
+# Real-ESRGAN: AI 기반 위성 이미지 업스케일 (미설치 시 PIL LANCZOS 폴백)
+basicsr>=1.4.2
+realesrgan>=0.3.0
+
 # --- Utilities ---
 tqdm>=4.65.0
 
@@ -37,6 +42,8 @@ fastapi>=0.110.0          # REST API backend
 uvicorn[standard]>=0.29.0 # ASGI server
 python-multipart>=0.0.9   # FastAPI form/file upload support
 sgp4>=2.22                # TLE propagation (satellite position from orbital elements)
+global-land-mask>=0.4.1   # 위경도 → 육지/바다 판별 (바다 위 파이프라인 건너뜀)
+python-hwpx>=2.9.0        # HWPX (한글과컴퓨터) 파일 생성
 
 # --- GraphRAG Knowledge Graph ---
 networkx>=3.0             # In-memory graph operations + Louvain community detection

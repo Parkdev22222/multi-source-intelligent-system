@@ -4,8 +4,7 @@ Unit tests for time-based pairing status assignment.
 Verifies that:
   - "new"         → only objects from the LATER frame (current_capture_time)
   - "disappeared" → only objects from the EARLIER frame (past_capture_time)
-  - "matched"     → objects present in BOTH frames (same position)
-  - "moved"       → objects present in BOTH frames (different position)
+  - "matched"     → objects present in BOTH frames
 
   - Time-ordering guard rejects inverted timestamps
   - Timezone-aware datetimes do NOT raise TypeError (offset-naive/aware mismatch)
@@ -334,7 +333,7 @@ class TestMatchedStatus(unittest.TestCase):
             region_lat=10.0, region_lon=20.0,
             session_id="test",
         )
-        matched = [r for r in result if r.status in ("matched", "moved")]
+        matched = [r for r in result if r.status == "matched"]
         self.assertEqual(len(matched), 1, "Should produce exactly one matched record")
         self.assertEqual(matched[0].current_capture_time, T_CURRENT)
         self.assertEqual(matched[0].past_capture_time, T_PAST)
@@ -347,7 +346,7 @@ class TestMatchedStatus(unittest.TestCase):
         result = _run_similarity(cur, past,
                                  current_time=T_CURRENT, past_time=T_PAST,
                                  sim_matrix=[[0.9]])
-        matched = [r for r in result if r.status in ("matched", "moved")]
+        matched = [r for r in result if r.status == "matched"]
         self.assertEqual(len(matched), 1)
         self.assertEqual(matched[0].current_capture_time, T_CURRENT)
         self.assertEqual(matched[0].past_capture_time, T_PAST)
@@ -364,7 +363,6 @@ class TestMatchedStatus(unittest.TestCase):
         self.assertIn("new", statuses)
         self.assertIn("disappeared", statuses)
         self.assertNotIn("matched", statuses)
-        self.assertNotIn("moved", statuses)
 
 
 class TestMixedScenario(unittest.TestCase):
@@ -393,9 +391,9 @@ class TestMixedScenario(unittest.TestCase):
 
         # Verify time fields
         for r in result:
-            if r.status in ("matched", "moved", "new"):
+            if r.status in ("matched", "new"):
                 self.assertEqual(r.current_capture_time, T_CURRENT)
-            if r.status in ("matched", "moved", "disappeared"):
+            if r.status in ("matched", "disappeared"):
                 self.assertEqual(r.past_capture_time, T_PAST)
 
 

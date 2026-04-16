@@ -21,6 +21,8 @@ from typing import Iterator, List, Optional
 import numpy as np
 from PIL import Image
 
+from src.detection.super_resolution import super_resolve
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,10 +96,10 @@ def load_metadata_index(metadata_json: str) -> List[ImageMeta]:
 def iter_images(metas: List[ImageMeta]) -> Iterator[LoadedImage]:
     """
     Yield LoadedImage objects (metadata + numpy array) for each valid image file.
-    Images are converted to RGB uint8 and resized to at most 2048 px on the long side
-    to avoid memory issues, while preserving aspect ratio.
+    Images are converted to RGB uint8, then Super-Resolution으로 업스케일
+    (최대 SR_TARGET_W×SR_TARGET_H, 비율 유지).
+    Real-ESRGAN 미설치 시 PIL LANCZOS로 폴백.
     """
-    max_dim = 2048
     for meta in metas:
         p = Path(meta.image_path)
         if not p.exists():
@@ -105,11 +107,8 @@ def iter_images(metas: List[ImageMeta]) -> Iterator[LoadedImage]:
             continue
         try:
             img = Image.open(p).convert("RGB")
-            w, h = img.size
-            if max(w, h) > max_dim:
-                scale = max_dim / max(w, h)
-                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
             arr = np.array(img, dtype=np.uint8)
+            arr = super_resolve(arr)
             logger.debug(f"[ImageLoader] Loaded {p.name}  shape={arr.shape}")
             yield LoadedImage(meta=meta, array=arr)
         except Exception as e:

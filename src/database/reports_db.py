@@ -68,16 +68,17 @@ def insert_report(
         return record
 
 
-def get_all_reports(limit: int = 100) -> List[ReportRecord]:
+def get_all_reports(limit: int = None) -> List[ReportRecord]:
     """Return all reports ordered by saved_time descending."""
     engine = get_engine()
     with Session(engine) as session:
-        records = (
+        q = (
             session.query(ReportRecord)
             .order_by(ReportRecord.saved_time.desc())
-            .limit(limit)
-            .all()
         )
+        if limit is not None:
+            q = q.limit(limit)
+        records = q.all()
         for r in records:
             session.expunge(r)
         return records
@@ -103,6 +104,20 @@ def update_report_content(report_id: str, new_content: str) -> bool:
         session.commit()
         logger.info(f"[ReportsDB] Updated report_content id={report_id}")
         return True
+
+
+def delete_reports_by_session(session_id: str) -> int:
+    """세션의 모든 report_records를 삭제한다. 보고서 재생성 전 호출."""
+    engine = get_engine()
+    with Session(engine) as session:
+        deleted = (
+            session.query(ReportRecord)
+            .filter(ReportRecord.session_id == session_id)
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+    logger.info(f"[ReportsDB] Deleted {deleted} reports for session {session_id}")
+    return deleted
 
 
 def get_reports_by_session(session_id: str) -> List[ReportRecord]:
