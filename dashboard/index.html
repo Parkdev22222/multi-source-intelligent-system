@@ -296,6 +296,35 @@
     .rpt-act-btn.regen { border-color:#ff9900; color:#ff9900; }
     .rpt-act-btn.regen:hover { background:#ff990022; }
     .rpt-act-btn.regen:disabled { opacity:.4; cursor:not-allowed; }
+    #rpt-target-desc-row {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: #080f1a;
+      border-bottom: 1px solid var(--border);
+    }
+    #rpt-target-desc-row label {
+      font-size: 10px;
+      color: var(--dim);
+      white-space: nowrap;
+      letter-spacing: .4px;
+    }
+    #rpt-target-desc {
+      flex: 1;
+      background: #07101f;
+      border: 1px solid #2a4a6a;
+      border-radius: 3px;
+      color: var(--text);
+      font-size: 11px;
+      padding: 4px 8px;
+      font-family: inherit;
+      resize: none;
+      min-height: 32px;
+      max-height: 72px;
+      overflow-y: auto;
+    }
+    #rpt-target-desc::placeholder { color: #4a6a8a; }
     #det-session-nav { display:flex; align-items:center; gap:6px; flex-shrink:0; }
     #det-session-nav-label { font-size:9px; color:var(--dim); letter-spacing:.3px; white-space:nowrap; }
     .det-sess-img-btn { font-size:9px; padding:3px 8px; border-radius:3px; border:1px solid var(--border); background:transparent; color:var(--dim); cursor:pointer; font-family:var(--font); white-space:nowrap; }
@@ -973,6 +1002,11 @@
         <button class="rpt-act-btn dl" id="download-btn" style="display:none">⬇ 다운로드</button>
         <span id="report-hdr-close">✕</span>
       </div>
+    </div>
+    <div id="rpt-target-desc-row">
+      <label for="rpt-target-desc">표적 설명</label>
+      <textarea id="rpt-target-desc" rows="1"
+                placeholder="표적에 대한 추가 설명을 입력하면 보고서에 반영됩니다 (예: 북부 항구 군사시설)"></textarea>
     </div>
     <div id="report-meta">로딩 중...</div>
     <div id="report-img-row">
@@ -2249,6 +2283,7 @@ async function openReportById(id, fname) {
   content.textContent = '';
   dlBtn.style.display  = 'none';
   document.getElementById('rpt-regen-btn').style.display = 'none';
+  document.getElementById('rpt-target-desc-row').style.display = 'none';
   editRpt.style.display = editCurr.style.display = editPast.style.display = 'none';
   document.getElementById('pviz-toggle-btn').style.display = 'none';
   document.getElementById('pviz-modal').classList.remove('open');
@@ -2306,6 +2341,7 @@ async function openReportById(id, fname) {
     };
     editRpt.style.display = 'inline-block';
     document.getElementById('rpt-regen-btn').style.display = 'inline-block';
+    document.getElementById('rpt-target-desc-row').style.display = 'flex';
 
     // 위성사진 패널 처리
     const hasPast = imgs?.past_images?.length > 0;
@@ -3336,13 +3372,18 @@ document.getElementById('pairing-cancel-btn').addEventListener('click', () => {
 document.getElementById('rpt-regen-btn').addEventListener('click', async () => {
   const imageId = _currImageIds[0];
   if (!imageId) { meta_toast('재생성할 현재 이미지 없음'); return; }
-  const regenBtn = document.getElementById('rpt-regen-btn');
+  const regenBtn  = document.getElementById('rpt-regen-btn');
+  const targetDesc = document.getElementById('rpt-target-desc').value.trim();
   regenBtn.disabled = true;
   regenBtn.textContent = '재생성 중...';
   try {
     const res = await fetch(
       `${API}/api/image/${encodeURIComponent(imageId)}/regenerate-report`,
-      { method: 'POST' }
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_description: targetDesc }),
+      }
     );
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '재생성 실패');
     const data = await res.json();
@@ -3426,6 +3467,7 @@ async function openReport(lat, lon) {
     content.textContent = report.report_content || '(내용 없음)';
     dlBtn.style.display = 'inline-block';
     document.getElementById('rpt-regen-btn').style.display  = 'inline-block';
+    document.getElementById('rpt-target-desc-row').style.display = 'flex';
     document.getElementById('edit-report-btn').style.display = 'inline-block';
     dlBtn.onclick = async () => {
       try {
@@ -3452,6 +3494,8 @@ function closeReportModal() {
   document.getElementById('report-modal').classList.remove('open');
   document.getElementById('download-btn').style.display = 'none';
   document.getElementById('rpt-regen-btn').style.display = 'none';
+  document.getElementById('rpt-target-desc-row').style.display = 'none';
+  document.getElementById('rpt-target-desc').value = '';
   ['edit-report-btn','edit-curr-det-btn','edit-past-det-btn'].forEach(bid =>
     document.getElementById(bid).style.display = 'none');
   // 보고서 편집 모드 초기화

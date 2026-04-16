@@ -359,13 +359,17 @@ class MavenPipeline:
     # Re-run from existing detections (사용자 편집 후 재처리)
     # ------------------------------------------------------------------
 
-    def rerun_from_detections(self, image_id: str) -> str:
+    def rerun_from_detections(self, image_id: str, target_description: str = "") -> str:
         """
         이미지 1장에 대해 SensorDB에 저장된 탐지 결과(사용자 수정 포함)를 기반으로
         Temporal Pairing → Report Generation을 재실행한다.
 
         - session_id는 원본 파이프라인 세션을 그대로 재사용한다.
         - 기존 pairing_records / report_records(동일 session)는 삭제 후 재삽입된다.
+
+        Args:
+            image_id:           현재 프레임 이미지 ID.
+            target_description: 사용자가 입력한 표적 설명 (선택). 보고서 생성 시 LLM 프롬프트에 반영.
 
         Returns:
             새로 생성된 보고서 텍스트.
@@ -483,7 +487,7 @@ class MavenPipeline:
         delete_reports_by_session(session_id)
 
         # ── 8. 보고서 재생성 ─────────────────────────────────────────────────
-        report = self._generate_report(session_id)
+        report = self._generate_report(session_id, target_description=target_description)
         logger.info(f"[Rerun] Report regenerated for session={session_id}")
         return report
 

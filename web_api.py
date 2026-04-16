@@ -1451,14 +1451,23 @@ def api_update_detections(image_id: str, body: DetectionsUpdateBody):
     return {"updated": count, "image_id": image_id}
 
 
+class _RegenBody(BaseModel):
+    target_description: str = ""
+
+
 @app.post("/api/image/{image_id}/regenerate-report")
-def api_regenerate_report(image_id: str, background_tasks: BackgroundTasks):
+def api_regenerate_report(
+    image_id: str,
+    background_tasks: BackgroundTasks,
+    body: _RegenBody = Body(default=_RegenBody()),
+):
     """
     수정된 탐지 결과를 바탕으로 Temporal Pairing + 보고서 재생성.
 
     - SensorDB의 현재 탐지 결과(사용자 수정 포함)를 읽어 pairing 재실행
     - 동일 session_id의 기존 pairing_records / report_records를 교체
     - 새 보고서 내용과 report_id 반환
+    - target_description: 사용자가 입력한 표적 설명 (선택, 보고서 생성에 반영)
     """
     rec = get_image_record_by_id(image_id)
     if rec is None:
@@ -1469,7 +1478,9 @@ def api_regenerate_report(image_id: str, background_tasks: BackgroundTasks):
     try:
         from pipeline import MavenPipeline
         pipeline = MavenPipeline()
-        report_text = pipeline.rerun_from_detections(image_id)
+        report_text = pipeline.rerun_from_detections(
+            image_id, target_description=body.target_description
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
