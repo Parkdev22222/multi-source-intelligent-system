@@ -3729,6 +3729,7 @@ let _pickMode          = false;   // 지도 WP 선택 모드
 let _selectedSatId     = null;    // 현재 선택된 위성 ID
 let _satMissionsCache  = {};      // {sat_id: {sat_id, sat_name, waypoints, assigned_at}}
 let _campaignPollTimer = null;    // 캠페인 폴링 타이머
+let _lastCampaignStatus = 'idle'; // 마지막으로 수신한 캠페인 상태 ('idle'|'running'|'complete'|'failed')
 
 /* ═══ WP 마커 관리 ═══════════════════════════════════════════════════ */
 const _wpMarkers = [];   // [{item:DOM, marker:L.marker|null}]
@@ -4034,6 +4035,9 @@ function _renderSatList(data) {
 }
 
 function _updateCampaignBar(data) {
+  // 캠페인이 실행 중이면 _applyCampaignStatus 가 텍스트를 관리하므로 덮어쓰지 않음
+  if (_lastCampaignStatus === 'running') return;
+
   const configured = Object.values(data).filter(sm => sm.waypoints.length > 0);
   const totalWp    = configured.reduce((s, sm) => s + sm.waypoints.length, 0);
   const startBtn   = document.getElementById('campaign-start-btn');
@@ -4109,18 +4113,20 @@ async function _pollCampaign() {
     const res  = await fetch(`${API}/api/campaign/status`);
     const data = await res.json();
     _applyCampaignStatus(data);
-    // 위성 목록 + 현재 선택 위성 WP 상태 갱신
-    await loadSatMissions(false);
-    if (_selectedSatId && _satMissionsCache[_selectedSatId]) {
-      _renderWpEditor(_satMissionsCache[_selectedSatId]);
-    }
     if (data.status !== 'running') {
+      // 완료/실패/idle 전환 시에만 위성 목록·편집창 갱신 및 폴링 중단
+      // (실행 중에는 호출하면 _updateCampaignBar 가 "실행 중" 텍스트를 덮어쓰는 깜빡임 발생)
+      await loadSatMissions(false);
+      if (_selectedSatId && _satMissionsCache[_selectedSatId]) {
+        _renderWpEditor(_satMissionsCache[_selectedSatId]);
+      }
       if (_campaignPollTimer) { clearInterval(_campaignPollTimer); _campaignPollTimer = null; }
     }
   } catch(e) { console.warn('[Campaign] 폴링 오류', e); }
 }
 
 function _applyCampaignStatus(c) {
+  _lastCampaignStatus = c.status || 'idle';
   const txt       = document.getElementById('campaign-status-txt');
   const progBar   = document.getElementById('campaign-prog-bar');
   const startBtn  = document.getElementById('campaign-start-btn');
