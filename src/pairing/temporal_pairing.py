@@ -142,6 +142,21 @@ def _bbox_iou(
 #                            (current imagery does not cover this area; cannot determine if gone)
 # ---------------------------------------------------------------------------
 
+def _get_image_fov_bounds(image_id: Optional[str]) -> Optional[tuple]:
+    """
+    Return (lat_min, lat_max, lon_min, lon_max) for a single ImageRecord.
+    Preferred over _collect_fov_bounds() when the image ID is known directly —
+    works even when the detection list for that image is empty.
+    Returns None when image_id is None or the record has no valid bounds.
+    """
+    if not image_id:
+        return None
+    rec = get_image_record_by_id(image_id)
+    if rec is None or None in (rec.lat_min, rec.lat_max, rec.lon_min, rec.lon_max):
+        return None
+    return (rec.lat_min, rec.lat_max, rec.lon_min, rec.lon_max)
+
+
 def _collect_fov_bounds(detections: list) -> Optional[tuple]:
     """
     Return the union of geographic bounds (lat_min, lat_max, lon_min, lon_max)
@@ -457,6 +472,8 @@ def pair_by_tracking(
     region_lon: float,
     session_id: str,
     source_type: str = "satellite",
+    current_image_id: Optional[str] = None,
+    past_image_id: Optional[str] = None,
 ) -> List[PairingRecord]:
     """
     Build PairingRecord list using Sam3Tracker object IDs.
@@ -658,7 +675,9 @@ def pair_by_tracking(
     # 2. "new" / "past_not_included"
     #    현재 탐지 객체가 과거 이미지 FOV 밖이면 "past_not_included"
     # ------------------------------------------------------------------
-    past_fov = _collect_fov_bounds(past_detections)
+    # 과거 이미지 ID가 직접 제공된 경우 ImageRecord에서 FOV를 바로 조회
+    # (past_detections가 비어 있어도 정확한 FOV 판단 가능)
+    past_fov = _get_image_fov_bounds(past_image_id) or _collect_fov_bounds(past_detections)
     for cur in current_detections:
         if cur.detection_id in matched_current_ids:
             continue
@@ -687,7 +706,9 @@ def pair_by_tracking(
     # 3. "disappeared" / "current_not_included"
     #    과거 탐지 객체가 현재 이미지 FOV 밖이면 "current_not_included"
     # ------------------------------------------------------------------
-    cur_fov = _collect_fov_bounds(current_detections)
+    # 현재 이미지 ID가 직접 제공된 경우 ImageRecord에서 FOV를 바로 조회
+    # (current_detections가 비어 있어도 정확한 FOV 판단 가능)
+    cur_fov = _get_image_fov_bounds(current_image_id) or _collect_fov_bounds(current_detections)
     for past in past_detections:
         # tracked_past_ids 가 아닌 matched_past_ids 로 guard:
         # Step 0 에서 geo-matched 된 객체(matched_past_ids 에 추가, tracked_past_ids 에는 없을 수 있음)도
@@ -1139,6 +1160,8 @@ def pair_by_similarity(
     region_lon: float,
     session_id: str,
     source_type: str = "satellite",
+    current_image_id: Optional[str] = None,
+    past_image_id: Optional[str] = None,
 ) -> List[PairingRecord]:
     """
     Build PairingRecord list by matching current detections to past detections
@@ -1255,8 +1278,8 @@ def pair_by_similarity(
 
     if not current_detections or not past_detections:
         # Nothing to match – apply FOV check for each unmatched detection
-        _past_fov_early  = _collect_fov_bounds(past_detections)
-        _cur_fov_early   = _collect_fov_bounds(current_detections)
+        _past_fov_early = _get_image_fov_bounds(past_image_id) or _collect_fov_bounds(past_detections)
+        _cur_fov_early  = _get_image_fov_bounds(current_image_id) or _collect_fov_bounds(current_detections)
         for cur in current_detections:
             s = "new" if _in_fov(cur.lat, cur.lon, _past_fov_early) else "past_not_included"
             pairing_records.append(PairingRecord(
@@ -1404,7 +1427,7 @@ def pair_by_similarity(
     # ------------------------------------------------------------------
     # 2. "new" / "past_not_included"
     # ------------------------------------------------------------------
-    past_fov_sim = _collect_fov_bounds(past_detections)
+    past_fov_sim = _get_image_fov_bounds(past_image_id) or _collect_fov_bounds(past_detections)
     for cur in current_detections:
         if cur.detection_id in matched_cur_ids:
             continue
@@ -1424,7 +1447,7 @@ def pair_by_similarity(
     # ------------------------------------------------------------------
     # 3. "disappeared" / "current_not_included"
     # ------------------------------------------------------------------
-    cur_fov_sim = _collect_fov_bounds(current_detections)
+    cur_fov_sim = _get_image_fov_bounds(current_image_id) or _collect_fov_bounds(current_detections)
     for past in past_detections:
         if past.id in matched_past_ids:
             continue

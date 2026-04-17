@@ -285,6 +285,19 @@ class MavenPipeline:
                 session_only=True,
             )
 
+            # 과거 이미지 ID: 탐지 결과가 없어도 FOV 판단에 사용
+            with Session(engine) as _s:
+                _past_img = (
+                    _s.query(ImageRecord)
+                    .filter(
+                        ImageRecord.session_id == session_id,
+                        ImageRecord.capture_time < capture_time_naive,
+                    )
+                    .order_by(ImageRecord.capture_time.desc())
+                    .first()
+                )
+                past_image_id_for_fov = _past_img.id if _past_img else None
+
             # --- Build pairing records ---
             orig_h, orig_w = loaded.array.shape[:2]
 
@@ -301,6 +314,8 @@ class MavenPipeline:
                     region_lon=meta.lon_center,
                     session_id=session_id,
                     source_type=meta.source_type,
+                    current_image_id=image_id,
+                    past_image_id=past_image_id_for_fov,
                 )
             else:
                 # Strategy A (default): SAM3 video tracker
@@ -319,6 +334,8 @@ class MavenPipeline:
                     region_lon=meta.lon_center,
                     session_id=session_id,
                     source_type=meta.source_type,
+                    current_image_id=image_id,
+                    past_image_id=past_image_id_for_fov,
                 )
 
             if pairing_records:
@@ -463,6 +480,22 @@ class MavenPipeline:
         )
         logger.info(f"[Rerun] past detections: {len(past_records)}")
 
+        # 과거 이미지 ID: 탐지 결과가 없어도 FOV 판단에 사용
+        capture_naive_rerun = capture_time.replace(tzinfo=None) if getattr(capture_time, "tzinfo", None) else capture_time
+        from sqlalchemy.orm import Session as _OrmSess2
+        from src.database.models import ImageRecord as _IRec2
+        with _OrmSess2(get_engine()) as _s2:
+            _past_img2 = (
+                _s2.query(_IRec2)
+                .filter(
+                    _IRec2.session_id == session_id,
+                    _IRec2.capture_time < capture_naive_rerun,
+                )
+                .order_by(_IRec2.capture_time.desc())
+                .first()
+            )
+            past_image_id_rerun = _past_img2.id if _past_img2 else None
+
         # ── 5. 기존 pairing 삭제 ─────────────────────────────────────────────
         delete_pairings_by_session(session_id)
 
@@ -478,6 +511,8 @@ class MavenPipeline:
                 region_lon=img_rec.lon_center,
                 session_id=session_id,
                 source_type=img_rec.source_type,
+                current_image_id=img_rec.id,
+                past_image_id=past_image_id_rerun,
             )
         else:
             tracked_objects = (
@@ -494,6 +529,8 @@ class MavenPipeline:
                 region_lon=img_rec.lon_center,
                 session_id=session_id,
                 source_type=img_rec.source_type,
+                current_image_id=img_rec.id,
+                past_image_id=past_image_id_rerun,
             )
 
         if pairing_records:
@@ -750,6 +787,19 @@ class MavenPipeline:
                 session_only=True,
             )
 
+            # 과거 이미지 ID: 탐지 결과가 없어도 FOV 판단에 사용
+            with OrmSession(engine) as _fov_sess:
+                _past_img_fov = (
+                    _fov_sess.query(ImageRecord)
+                    .filter(
+                        ImageRecord.session_id == session_id,
+                        ImageRecord.capture_time < ct_naive,
+                    )
+                    .order_by(ImageRecord.capture_time.desc())
+                    .first()
+                )
+                past_image_id_analyze = _past_img_fov.id if _past_img_fov else None
+
             # 이미지 파일 로드 (SAM3 추적기용)
             img_path = _Path(img_info["image_path"])
             if not img_path.is_absolute():
@@ -776,6 +826,8 @@ class MavenPipeline:
                     region_lon=img_info["lon_center"],
                     session_id=session_id,
                     source_type=img_info["source_type"],
+                    current_image_id=img_info["id"],
+                    past_image_id=past_image_id_analyze,
                 )
             else:
                 tracked_objects = (
@@ -793,6 +845,8 @@ class MavenPipeline:
                     region_lon=img_info["lon_center"],
                     session_id=session_id,
                     source_type=img_info["source_type"],
+                    current_image_id=img_info["id"],
+                    past_image_id=past_image_id_analyze,
                 )
 
             if pairing_records:
