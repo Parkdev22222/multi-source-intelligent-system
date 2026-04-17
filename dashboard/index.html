@@ -805,6 +805,104 @@
       #mission-modal-body { flex-direction: column; overflow-y: auto; }
       #sat-mission-list-panel { width: 100%; border-right: none; border-bottom: 1px solid #1e3a5f; max-height: 160px; }
     }
+
+    /* ══════════════════════════════════════════
+       단계별 탐지 워크플로우 모달
+       ══════════════════════════════════════════ */
+    #detect-step-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.72); z-index: 3000;
+      align-items: center; justify-content: center;
+    }
+    #detect-step-overlay.open { display: flex; }
+    #detect-step-modal {
+      background: #080f1e; border: 1px solid #1e4a7a;
+      border-radius: 10px; width: 900px; max-width: 97vw;
+      max-height: 92vh; display: flex; flex-direction: column;
+      color: var(--text); font-size: 13px; overflow: hidden;
+    }
+    #ds-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; border-bottom: 1px solid #1e4a7a;
+      background: #050c1a; flex-shrink: 0;
+    }
+    #ds-title { font-size: 14px; color: var(--amber); letter-spacing: 1px; font-weight: bold; }
+    #ds-session-info { font-size: 10px; color: var(--dim); }
+    #ds-close { cursor: pointer; color: var(--dim); font-size: 18px; }
+    #ds-close:hover { color: #fff; }
+    #ds-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+    #ds-image-area {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      background: #040a14; padding: 12px; overflow: hidden; position: relative;
+    }
+    #ds-image-area img {
+      max-width: 100%; max-height: 100%; object-fit: contain;
+      border: 1px solid #1e3a5f; border-radius: 4px;
+    }
+    #ds-image-loading {
+      position: absolute; color: var(--dim); font-size: 12px; text-align: center;
+    }
+    #ds-sidebar {
+      width: 260px; flex-shrink: 0; display: flex; flex-direction: column;
+      border-left: 1px solid #1e4a7a; background: #070e1c; overflow-y: auto;
+    }
+    .ds-sidebar-section { padding: 16px 14px; border-bottom: 1px solid #1a2a40; }
+    .ds-section-title {
+      font-size: 10px; color: var(--amber); letter-spacing: 1px;
+      margin-bottom: 10px; text-transform: uppercase;
+    }
+    .ds-step-badge {
+      display: inline-block; background: #0d2040; border: 1px solid #1e4a7a;
+      border-radius: 12px; font-size: 9px; color: #7dd3fc; padding: 2px 8px;
+      margin-bottom: 8px; letter-spacing: .5px;
+    }
+    .ds-step-badge.done { background: #0a2a18; border-color: #1a5a3a; color: #4ade80; }
+    .ds-action-btn {
+      display: block; width: 100%; padding: 10px 12px; margin-bottom: 8px;
+      border-radius: 5px; border: 1px solid; cursor: pointer;
+      font-size: 12px; font-family: var(--font); font-weight: bold;
+      text-align: center; letter-spacing: .3px; transition: background .15s;
+    }
+    .ds-action-btn.sam3 {
+      background: #0a1e3a; border-color: #2a6aaa; color: #7dd3fc;
+    }
+    .ds-action-btn.sam3:hover:not(:disabled) { background: #0f2a50; border-color: #4a8aca; }
+    .ds-action-btn.manual {
+      background: #1a1200; border-color: #5a4a00; color: var(--amber);
+    }
+    .ds-action-btn.manual:hover:not(:disabled) { background: #241800; border-color: #8a7000; }
+    .ds-action-btn.analyze {
+      background: #0a2a18; border-color: #1a6a3a; color: #4ade80;
+    }
+    .ds-action-btn.analyze:hover:not(:disabled) { background: #0e3820; border-color: #2a8a50; }
+    .ds-action-btn:disabled { opacity: .4; cursor: not-allowed; }
+    #ds-detect-result {
+      padding: 10px 12px; background: #060c18; border: 1px solid #1e3a5f;
+      border-radius: 4px; margin-bottom: 8px; font-size: 11px;
+    }
+    #ds-detect-count { color: #4ade80; font-weight: bold; margin-bottom: 4px; }
+    #ds-detect-list { color: var(--dim); font-size: 10px; max-height: 80px; overflow-y: auto; }
+    #ds-target-desc-wrap { margin-bottom: 8px; }
+    #ds-target-desc-wrap label { font-size: 10px; color: var(--dim); display: block; margin-bottom: 4px; }
+    #ds-target-desc {
+      width: 100%; box-sizing: border-box; background: #060c18;
+      border: 1px solid #1e3a5f; border-radius: 3px; color: var(--text);
+      font-size: 11px; padding: 5px 7px; resize: vertical; min-height: 38px;
+      font-family: var(--font);
+    }
+    #ds-target-desc:focus { outline: none; border-color: #3a6aaa; }
+    #ds-step2-section { border-bottom: none; }
+    #ds-status-msg { font-size: 10px; color: var(--dim); text-align: center; padding: 6px 0; min-height: 20px; }
+    #ds-image-nav {
+      display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .ds-img-nav-btn {
+      font-size: 10px; padding: 3px 8px; border-radius: 3px;
+      border: 1px solid #1e3a5f; background: #0a1220; color: var(--dim);
+      cursor: pointer; font-family: var(--font);
+    }
+    .ds-img-nav-btn.active { border-color: var(--amber); color: var(--amber); background: #1a1200; }
+    .ds-img-nav-btn:hover:not(.active) { border-color: #3a6aaa; color: var(--text); }
   </style>
 </head>
 <body>
@@ -1130,6 +1228,61 @@
   </div>
   <div id="pairing-editor-body">
     <div id="pairing-editor-content"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     단계별 탐지 워크플로우 모달
+     ══════════════════════════════════════════════════════ -->
+<div id="detect-step-overlay">
+  <div id="detect-step-modal">
+    <div id="ds-header">
+      <div>
+        <div id="ds-title">⊕ 탐지 방식 선택</div>
+        <div id="ds-session-info">세션 ID: —</div>
+      </div>
+      <span id="ds-close" title="닫기">✕</span>
+    </div>
+    <div id="ds-body">
+      <!-- 왼쪽: 위성 영상 -->
+      <div id="ds-image-area">
+        <div id="ds-image-loading">위성 영상 로딩 중...</div>
+        <div id="ds-image-nav"></div>
+      </div>
+      <!-- 오른쪽: 단계 컨트롤 -->
+      <div id="ds-sidebar">
+        <!-- Step 1 -->
+        <div class="ds-sidebar-section">
+          <div class="ds-section-title">Step 1 — 객체 탐지</div>
+          <div class="ds-step-badge" id="ds-step1-badge">대기 중</div>
+          <button class="ds-action-btn sam3" id="ds-sam3-btn">
+            ⊕ SAM3 자동탐지 실행
+          </button>
+          <button class="ds-action-btn manual" id="ds-manual-btn">
+            ✏ 직접 바운딩 박스 생성
+          </button>
+          <!-- 탐지 결과 요약 -->
+          <div id="ds-detect-result" style="display:none">
+            <div id="ds-detect-count">탐지 완료</div>
+            <div id="ds-detect-list"></div>
+          </div>
+        </div>
+        <!-- Step 2 -->
+        <div class="ds-sidebar-section" id="ds-step2-section">
+          <div class="ds-section-title">Step 2 — 분석 &amp; 보고서</div>
+          <div class="ds-step-badge" id="ds-step2-badge">탐지 완료 후 활성화</div>
+          <div id="ds-target-desc-wrap">
+            <label for="ds-target-desc">표적 설명 (선택)</label>
+            <textarea id="ds-target-desc"
+              placeholder="예: 북부 항구 군사시설"></textarea>
+          </div>
+          <button class="ds-action-btn analyze" id="ds-analyze-btn" disabled>
+            ▶ 분석 시작 → 보고서 생성
+          </button>
+          <div id="ds-status-msg"></div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -3677,6 +3830,279 @@ function _setLiveIndicator(state) {
                                 'SSE 연결 중...';
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   단계별 탐지 워크플로우 – Detection Step Modal
+   ══════════════════════════════════════════════════════════════════ */
+
+let _dsSessionId   = null;   // 현재 모달의 세션 ID
+let _dsImageIds    = [];     // 세션 이미지 ID 목록
+let _dsCurrentImgIdx = 0;   // 현재 표시 중인 이미지 인덱스 (현재 프레임 기준)
+let _dsDetectionDone = false;
+
+function _dsOpen(sessionId, imageIds, lat, lon, targetDesc) {
+  _dsSessionId    = sessionId;
+  _dsImageIds     = imageIds || [];
+  _dsCurrentImgIdx = 0;
+  _dsDetectionDone = false;
+
+  document.getElementById('ds-session-info').textContent =
+    `세션: ${sessionId.slice(0, 8)}… | 이미지 ${_dsImageIds.length}장 | lat=${(lat||0).toFixed(4)} lon=${(lon||0).toFixed(4)}`;
+
+  // 표적 설명 초기값
+  const descEl = document.getElementById('ds-target-desc');
+  descEl.value = targetDesc || '';
+
+  // Step 1 초기화
+  document.getElementById('ds-step1-badge').textContent = '대기 중';
+  document.getElementById('ds-step1-badge').className   = 'ds-step-badge';
+  document.getElementById('ds-detect-result').style.display = 'none';
+  document.getElementById('ds-sam3-btn').disabled  = false;
+  document.getElementById('ds-manual-btn').disabled = false;
+
+  // Step 2 초기화
+  document.getElementById('ds-step2-badge').textContent = '탐지 완료 후 활성화';
+  document.getElementById('ds-step2-badge').className   = 'ds-step-badge';
+  document.getElementById('ds-analyze-btn').disabled    = true;
+  document.getElementById('ds-status-msg').textContent  = '';
+
+  // 이미지 네비게이션 버튼 (가장 최신 = 현재 프레임 / 나머지 = 과거 프레임)
+  _dsRenderImgNav();
+
+  // 이미지 로드 (가장 최신 프레임 우선 표시)
+  if (_dsImageIds.length > 0) {
+    const showIdx = Math.max(0, _dsImageIds.length - 1);
+    _dsLoadImage(_dsImageIds[showIdx]);
+    _dsCurrentImgIdx = showIdx;
+  }
+
+  document.getElementById('detect-step-overlay').classList.add('open');
+}
+
+function _dsClose() {
+  document.getElementById('detect-step-overlay').classList.remove('open');
+  _dsSessionId    = null;
+  _dsImageIds     = [];
+  _dsDetectionDone = false;
+}
+
+function _dsRenderImgNav() {
+  const nav = document.getElementById('ds-image-nav');
+  nav.innerHTML = '';
+  if (_dsImageIds.length <= 1) return;
+  _dsImageIds.forEach((id, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'ds-img-nav-btn' + (i === _dsCurrentImgIdx ? ' active' : '');
+    btn.textContent = i === _dsImageIds.length - 1 ? '현재 프레임' : `이전 프레임 ${i + 1}`;
+    btn.addEventListener('click', () => {
+      _dsCurrentImgIdx = i;
+      _dsRenderImgNav();
+      _dsLoadImage(id);
+    });
+    nav.appendChild(btn);
+  });
+}
+
+async function _dsLoadImage(imageId) {
+  const area    = document.getElementById('ds-image-area');
+  const loading = document.getElementById('ds-image-loading');
+  loading.style.display = 'block';
+  loading.textContent   = '위성 영상 로딩 중...';
+
+  // 기존 img 태그 제거
+  const prev = area.querySelector('img');
+  if (prev) prev.remove();
+
+  try {
+    const res = await fetch(`${API}/api/image/${encodeURIComponent(imageId)}/thumb`);
+    if (!res.ok) throw new Error('이미지 로드 실패');
+    const data = await res.json();
+    loading.style.display = 'none';
+    const img = document.createElement('img');
+    img.src = `data:image/png;base64,${data.image_b64}`;
+    img.alt = '위성 영상';
+    area.appendChild(img);
+  } catch (e) {
+    loading.textContent = `이미지 로드 실패: ${e.message}`;
+  }
+}
+
+// SAM3 자동탐지 실행
+document.getElementById('ds-sam3-btn').addEventListener('click', async () => {
+  if (!_dsSessionId || _dsImageIds.length === 0) return;
+
+  const sam3Btn   = document.getElementById('ds-sam3-btn');
+  const manualBtn = document.getElementById('ds-manual-btn');
+  sam3Btn.disabled   = true;
+  manualBtn.disabled = true;
+  sam3Btn.textContent = '탐지 실행 중...';
+
+  document.getElementById('ds-step1-badge').textContent = 'SAM3 실행 중...';
+
+  // 현재 프레임(가장 최신 이미지)에만 탐지 실행
+  const currImageId = _dsImageIds[_dsImageIds.length - 1];
+  let totalDets = 0;
+  const detClasses = {};
+
+  try {
+    const res = await fetch(
+      `${API}/api/image/${encodeURIComponent(currImageId)}/detect-sam3`,
+      { method: 'POST' }
+    );
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '탐지 실패');
+    const data = await res.json();
+    totalDets = data.detection_count || 0;
+    (data.detections || []).forEach(d => {
+      detClasses[d.object_class] = (detClasses[d.object_class] || 0) + 1;
+    });
+
+    // 탐지된 이미지 갱신 (bbox 표시)
+    _dsLoadRendered(currImageId);
+
+    _dsMarkDetectionDone('SAM3', totalDets, detClasses);
+  } catch (e) {
+    meta_toast(`SAM3 탐지 오류: ${e.message}`);
+    document.getElementById('ds-step1-badge').textContent = '오류';
+    sam3Btn.disabled  = false;
+    manualBtn.disabled = false;
+    sam3Btn.textContent = '⊕ SAM3 자동탐지 실행';
+  }
+});
+
+// 탐지 후 bbox 렌더링 이미지 갱신
+async function _dsLoadRendered(imageId) {
+  const area    = document.getElementById('ds-image-area');
+  const loading = document.getElementById('ds-image-loading');
+  loading.style.display = 'block';
+  loading.textContent   = '탐지 결과 렌더링 중...';
+  const prev = area.querySelector('img');
+  if (prev) prev.remove();
+  try {
+    const res = await fetch(
+      `${API}/api/image/${encodeURIComponent(imageId)}/rendered?t=${Date.now()}`
+    );
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    loading.style.display = 'none';
+    const img = document.createElement('img');
+    img.src = `data:image/png;base64,${data.image_b64}`;
+    img.alt = '탐지 결과';
+    area.appendChild(img);
+  } catch {
+    loading.style.display = 'none';
+    _dsLoadImage(imageId);
+  }
+}
+
+// 수동 바운딩 박스 생성
+document.getElementById('ds-manual-btn').addEventListener('click', async () => {
+  if (!_dsSessionId || _dsImageIds.length === 0) return;
+  const currImageId = _dsImageIds[_dsImageIds.length - 1];
+
+  // 탐지 편집기를 열고, 저장 완료 후 Step2 활성화 처리
+  _dsPendingManualImageId = currImageId;
+  openDetEditor(currImageId, '현재 프레임 – 직접 탐지');
+});
+
+let _dsPendingManualImageId = null;
+
+function _dsMarkDetectionDone(method, count, classes) {
+  _dsDetectionDone = true;
+
+  document.getElementById('ds-step1-badge').textContent = `완료 (${method})`;
+  document.getElementById('ds-step1-badge').className   = 'ds-step-badge done';
+
+  const resultEl = document.getElementById('ds-detect-result');
+  resultEl.style.display = 'block';
+  document.getElementById('ds-detect-count').textContent =
+    `탐지된 객체: ${count}건`;
+  document.getElementById('ds-detect-list').innerHTML =
+    Object.entries(classes)
+      .map(([cls, n]) => `<span>${cls}: ${n}건</span>`)
+      .join(' &nbsp;·&nbsp; ') || '탐지 결과 없음';
+
+  document.getElementById('ds-step2-badge').textContent = '준비됨';
+  document.getElementById('ds-step2-badge').className   = 'ds-step2-badge done';
+  document.getElementById('ds-analyze-btn').disabled    = false;
+  document.getElementById('ds-status-msg').textContent  = '탐지 결과를 확인하고 분석을 시작하세요.';
+
+  document.getElementById('ds-sam3-btn').textContent  = '⊕ SAM3 자동탐지 실행';
+  document.getElementById('ds-sam3-btn').disabled     = false;
+  document.getElementById('ds-manual-btn').disabled   = false;
+}
+
+// Step 2: 분석 시작
+document.getElementById('ds-analyze-btn').addEventListener('click', async () => {
+  if (!_dsSessionId) return;
+  const analyzeBtn = document.getElementById('ds-analyze-btn');
+  analyzeBtn.disabled  = true;
+  analyzeBtn.textContent = '분석 중...';
+  document.getElementById('ds-status-msg').textContent = '페어링 및 Graph RAG 처리 중...';
+
+  const targetDesc = document.getElementById('ds-target-desc').value.trim();
+  try {
+    const res = await fetch(
+      `${API}/api/session/${encodeURIComponent(_dsSessionId)}/analyze`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_description: targetDesc }),
+      }
+    );
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '분석 실패');
+    const data = await res.json();
+    document.getElementById('ds-status-msg').textContent = '보고서 생성 완료!';
+    _dsClose();
+    if (data.report_id) {
+      meta_toast(`판독 보고서 생성 완료 – ID: ${data.report_id.slice(0, 8)}`);
+      await openReportById(data.report_id);
+    } else {
+      meta_toast('보고서 생성 완료');
+    }
+    await loadAllReports();
+    await loadAllDetections();
+  } catch (e) {
+    document.getElementById('ds-status-msg').textContent = `오류: ${e.message}`;
+    analyzeBtn.disabled   = false;
+    analyzeBtn.textContent = '▶ 분석 시작 → 보고서 생성';
+    meta_toast(`분석 오류: ${e.message}`);
+  }
+});
+
+// 탐지 편집기 저장 완료 후 단계 모달 상태 업데이트
+// (기존 det-save-btn handler 뒤에 훅)
+(function() {
+  const origSaveListener = document.getElementById('det-save-btn');
+  const _origSave = origSaveListener.onclick;
+  // MutationObserver로 det-editor-modal 닫힘 감지
+  const detEditorModal = document.getElementById('det-editor-modal');
+  const obs = new MutationObserver(() => {
+    if (!detEditorModal.classList.contains('open') && _dsPendingManualImageId) {
+      // 편집기가 닫혔고, 수동 탐지 중이었으면 탐지 결과 조회 후 Step2 활성화
+      const imgId = _dsPendingManualImageId;
+      _dsPendingManualImageId = null;
+      if (_dsSessionId) {
+        fetch(`${API}/api/detections/by-image/${encodeURIComponent(imgId)}`)
+          .then(r => r.json())
+          .then(data => {
+            const dets = data.detections || [];
+            const classes = {};
+            dets.forEach(d => { classes[d.object_class] = (classes[d.object_class]||0)+1; });
+            _dsMarkDetectionDone('수동', dets.length, classes);
+          })
+          .catch(() => _dsMarkDetectionDone('수동', 0, {}));
+      }
+    }
+  });
+  obs.observe(detEditorModal, { attributes: true, attributeFilter: ['class'] });
+})();
+
+// 닫기 버튼
+document.getElementById('ds-close').addEventListener('click', _dsClose);
+document.getElementById('detect-step-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('detect-step-overlay')) _dsClose();
+});
+
+
 function setupSSE() {
   if (typeof EventSource === 'undefined') return;  // 미지원 환경
   if (_sseInstance) { _sseInstance.close(); _sseInstance = null; }
@@ -3711,6 +4137,18 @@ function setupSSE() {
         await pollSimStatus();   // 상태 표시줄도 즉시 갱신
       } else if (msg.type === 'pipeline_stage') {
         renderAnalysisMarker(msg);
+      } else if (msg.type === 'image_ingested') {
+        // 단계별 워크플로우: 이미지 적재 완료 → 탐지 방식 선택 모달 열기
+        popImgCache = {}; popDetCache = {};
+        await loadAllImages();
+        _dsOpen(
+          msg.session_id,
+          msg.image_ids || [],
+          msg.lat,
+          msg.lon,
+          msg.target_description || '',
+        );
+        await pollSimStatus();
       }
     } catch(err) { console.warn('[SSE msg]', err); }
   };

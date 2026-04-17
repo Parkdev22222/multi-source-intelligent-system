@@ -169,6 +169,42 @@ def _notify_pipeline_stage(status: dict):
                 pass
 
 
+def _notify_image_ingested(
+    session_id: str,
+    image_ids: list,
+    lat: float | None = None,
+    lon: float | None = None,
+    target_description: str = "",
+):
+    """이미지 적재 완료 이벤트 브로드캐스트 – 단계별 워크플로우 UI 트리거."""
+    payload = json.dumps({
+        "type":               "image_ingested",
+        "session_id":         session_id,
+        "image_ids":          image_ids,
+        "lat":                lat,
+        "lon":                lon,
+        "target_description": target_description,
+        "ts":                 datetime.utcnow().isoformat(),
+    })
+    with _sse_lock:
+        dead = []
+        for q in list(_sse_clients):
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            try:
+                _sse_clients.remove(q)
+            except ValueError:
+                pass
+
+
+# ── session_id → (sat_id, wp_id) 매핑: analyze 엔드포인트가 WP 완료 처리에 사용 ──
+_session_wp_map: dict = {}  # {session_id: (sat_id, wp_id)}
+_swp_lock = threading.Lock()
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # 임무계획 (Mission Planning) — JSON 파일 영속 저장
 # ══════════════════════════════════════════════════════════════════════════
@@ -422,15 +458,12 @@ def _auto_sim_worker():
                 with _auto_lock:
                     _auto_state["running"] = True
                 try:
-                    _before_rpt_id = _get_latest_report_id()
-                    from simulator_runner import run_step_at
-                    result = run_step_at(
+                    from simulator_runner import run_ingest_at
+                    result = run_ingest_at(
                         lat=wp_ref["lat"],
                         lon=wp_ref["lon"],
                         name=item["sat_name"],
-                        target_description=wp_ref.get("target_description", ""),
                     )
-                    _finish_wp(wp_ref, result, before_report_id=_before_rpt_id)
                     _auto_state["run_count"]   += 1
                     _auto_state["last_run"]     = datetime.utcnow().isoformat()
                     _auto_state["last_success"] = result["success"]
@@ -441,7 +474,23 @@ def _auto_sim_worker():
                         "lat":  wp_ref["lat"],
                         "lon":  wp_ref["lon"],
                     }
-                    if wp_ref["status"] == "failed":
+                    if result["success"] and result.get("session_id"):
+                        sess_id = result["session_id"]
+                        wp_ref["status"]         = "ingested"
+                        wp_ref["session_id"]     = sess_id
+                        wp_ref["image_ids"]      = result.get("image_ids", [])
+                        wp_ref["target_description"] = wp_ref.get("target_description", "")
+                        with _swp_lock:
+                            _session_wp_map[sess_id] = (sat_id, wp_id)
+                        _notify_image_ingested(
+                            sess_id,
+                            result.get("image_ids", []),
+                            lat=wp_ref["lat"],
+                            lon=wp_ref["lon"],
+                            target_description=wp_ref.get("target_description", ""),
+                        )
+                    else:
+                        wp_ref["status"] = "failed"
                         with _camp_lock:
                             _campaign["failed_count"] += 1
                 except Exception as exc:
@@ -455,14 +504,12 @@ def _auto_sim_worker():
                         _campaign["done"]    += 1
                         _campaign["current"]  = None
                     _save_sat_missions()
-                    # WP 완료 즉시 idle 브로드캐스트 — 다음 WP가 빠르게 시작해도
-                    # 폴링 스레드가 idle을 놓치지 않도록 명시적으로 전송
                     _notify_pipeline_stage({"stage": "idle", "label": "", "lat": None, "lon": None})
                     _notify_db_updated(
                         run_count=_auto_state["run_count"],
                         success=_auto_state.get("last_success", False),
                         elapsed=_auto_state.get("last_elapsed", 0),
-                        changed=["reports", "detections"],
+                        changed=["images"],
                     )
                     with _auto_lock:
                         _auto_state["running"] = False
@@ -512,38 +559,52 @@ def _auto_sim_worker():
                 with _auto_lock:
                     _auto_state["running"] = True
                 try:
-                    _before_rpt_id = _get_latest_report_id()
-                    from simulator_runner import run_step_at
-                    result = run_step_at(
+                    from simulator_runner import run_ingest_at
+                    result = run_ingest_at(
                         lat=next_wp["lat"],
                         lon=next_wp["lon"],
                         name=next_wp.get("name", "임무 위성"),
-                        target_description=next_wp.get("target_description", ""),
                     )
-                    _finish_wp(next_wp, result, before_report_id=_before_rpt_id)
-                    _auto_state["run_count"]  += 1
-                    _auto_state["last_run"]    = datetime.utcnow().isoformat()
-                    _auto_state["last_success"]= result["success"]
-                    _auto_state["last_elapsed"]= result["elapsed_s"]
-                    _auto_state["last_images"] = result.get("images", [])
-                    _auto_state["last_active"] = {
+                    _auto_state["run_count"]   += 1
+                    _auto_state["last_run"]     = datetime.utcnow().isoformat()
+                    _auto_state["last_success"] = result["success"]
+                    _auto_state["last_elapsed"] = result["elapsed_s"]
+                    _auto_state["last_images"]  = result.get("images", [])
+                    _auto_state["last_active"]  = {
                         "name": next_wp.get("name", "임무 위성"),
                         "lat":  next_wp["lat"],
                         "lon":  next_wp["lon"],
                     }
+                    if result["success"] and result.get("session_id"):
+                        sess_id = result["session_id"]
+                        next_wp["status"]     = "ingested"
+                        next_wp["session_id"] = sess_id
+                        next_wp["image_ids"]  = result.get("image_ids", [])
+                        # 미션 ID + WP ID를 session 맵에 저장
+                        with _swp_lock:
+                            _session_wp_map[sess_id] = ("__mission__", next_wp["id"], _active_mission_id)
+                        _notify_image_ingested(
+                            sess_id,
+                            result.get("image_ids", []),
+                            lat=next_wp["lat"],
+                            lon=next_wp["lon"],
+                            target_description=next_wp.get("target_description", ""),
+                        )
+                    else:
+                        next_wp["status"] = "failed"
+                        next_wp["error"]  = result.get("stderr_tail", "")[:300]
                 except Exception as exc:
                     next_wp["status"] = "failed"
                     next_wp["error"]  = str(exc)[:300]
                     logger.error("[AutoSim/Mission] WP 실행 오류: %s", exc)
                 finally:
                     _save_missions_to_file()
-                    # WP 완료 즉시 idle 브로드캐스트
                     _notify_pipeline_stage({"stage": "idle", "label": "", "lat": None, "lon": None})
                     _notify_db_updated(
                         run_count=_auto_state["run_count"],
                         success=_auto_state.get("last_success", False),
                         elapsed=_auto_state.get("last_elapsed", 0),
-                        changed=["reports", "detections"],
+                        changed=["images"],
                     )
                     with _auto_lock:
                         _auto_state["running"] = False
@@ -778,7 +839,7 @@ def api_simulator_status():
         m = _missions.get(_active_mission_id)
         if m:
             total     = len(m["waypoints"])
-            completed = sum(1 for wp in m["waypoints"] if wp["status"] in ("complete", "failed"))
+            completed = sum(1 for wp in m["waypoints"] if wp["status"] in ("complete", "ingested", "failed"))
             running_wp = next((wp for wp in m["waypoints"] if wp["status"] == "running"), None)
             mission_info = {
                 "id":          m["id"],
@@ -1506,6 +1567,128 @@ def api_regenerate_report(
         "image_id":   image_id,
         "session_id": rec.session_id,
         "report_id":  new_report.id if new_report else None,
+        "report_content": report_text,
+    }
+
+
+@app.post("/api/image/{image_id}/detect-sam3")
+def api_detect_sam3(image_id: str):
+    """
+    단계별 워크플로우 Phase 2a (SAM3 경로):
+    Sensor DB에 저장된 이미지에 SAM3 탐지를 실행하고 결과를 DB에 저장한다.
+    """
+    rec = get_image_record_by_id(image_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="이미지 없음")
+
+    try:
+        from pipeline import MavenPipeline
+        pipeline = MavenPipeline()
+        orm_dets = pipeline.detect_sam3_for_image(image_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.error("[API] detect-sam3 error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    _notify_db_updated(changed=["detections", "images"])
+
+    return {
+        "success":         True,
+        "image_id":        image_id,
+        "session_id":      rec.session_id,
+        "detection_count": len(orm_dets),
+        "detections": [
+            {
+                "id":           d.id,
+                "object_class": d.object_class,
+                "confidence":   round(d.confidence, 3),
+                "bbox":         {
+                    "x1": d.bbox_x1, "y1": d.bbox_y1,
+                    "x2": d.bbox_x2, "y2": d.bbox_y2,
+                },
+                "lat": d.lat,
+                "lon": d.lon,
+            }
+            for d in orm_dets
+        ],
+    }
+
+
+class _AnalyzeBody(BaseModel):
+    target_description: str = ""
+
+
+@app.post("/api/session/{session_id}/analyze")
+def api_session_analyze(
+    session_id: str,
+    body: _AnalyzeBody = Body(default=_AnalyzeBody()),
+):
+    """
+    단계별 워크플로우 Phase 2b:
+    탐지 결과(SAM3 또는 수동)가 저장된 세션에 대해
+    Temporal Pairing → Graph RAG 인덱싱 → 판독 보고서 생성을 실행한다.
+    완료 시 관련 WP를 'complete'로 갱신한다.
+    """
+    try:
+        from pipeline import MavenPipeline
+        pipeline = MavenPipeline()
+        report_text = pipeline.run_pairing_and_report(
+            session_id, target_description=body.target_description
+        )
+    except Exception as exc:
+        logger.error("[API] session analyze error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # 관련 WP 완료 처리
+    with _swp_lock:
+        wp_info = _session_wp_map.pop(session_id, None)
+
+    after_rpt_id = _get_latest_report_id()
+
+    if wp_info:
+        if len(wp_info) == 2:
+            # 캠페인 모드: (sat_id, wp_id)
+            sat_id, wp_id = wp_info
+            with _sat_lock:
+                sm = _sat_missions.get(sat_id, {})
+                wp = next((w for w in sm.get("waypoints", []) if w["id"] == wp_id), None)
+                if wp:
+                    wp["status"] = "complete"
+                    if after_rpt_id:
+                        wp["report_id"] = after_rpt_id
+            _save_sat_missions()
+        else:
+            # 임무 모드: ("__mission__", wp_id, mission_id)
+            _, wp_id, mission_id = wp_info
+            mission = _missions.get(mission_id)
+            if mission:
+                wp = next((w for w in mission["waypoints"] if w["id"] == wp_id), None)
+                if wp:
+                    wp["status"] = "complete"
+                    if after_rpt_id:
+                        wp["report_id"] = after_rpt_id
+                # 모든 WP가 complete/ingested/failed 이면 미션 완료
+                non_done = [
+                    w for w in mission["waypoints"]
+                    if w["status"] not in ("complete", "ingested", "failed")
+                ]
+                if not non_done:
+                    mission["status"]      = "complete"
+                    mission["finished_at"] = datetime.utcnow().isoformat()
+            _save_missions_to_file()
+
+    # 보고서 레코드 조회
+    from src.database.reports_db import get_reports_by_session
+    reports = get_reports_by_session(session_id)
+    new_report = reports[0] if reports else None
+
+    _notify_db_updated(changed=["reports", "detections"])
+
+    return {
+        "success":        True,
+        "session_id":     session_id,
+        "report_id":      new_report.id if new_report else None,
         "report_content": report_text,
     }
 

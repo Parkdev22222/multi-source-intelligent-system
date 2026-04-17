@@ -340,21 +340,27 @@ class MavenPipeline:
         """
         Retrieve latest pairings, build GraphRAG historical context, and
         generate the military report with context-enriched prompting.
+        Graph RAG indexing is always performed here so context is available
+        from the very first run (not only after explicit regeneration).
         """
         pairings = get_pairings_by_session(session_id)
-        # cross-session 폴백 제거: 현재 세션에 pairing이 없으면 빈 보고서를 생성.
-        # 이전에는 get_latest_pairings()로 폴백하여 다른 세션 이미지로 보고서가
-        # 생성되는 버그가 있었음.
-
-        # A session may contain pairings from multiple image frames processed
-        # sequentially.  Keep only the most recent pairing_time batch so that
-        # the report reflects the single latest PAST→CURRENT comparison instead
-        # of mixing detections from earlier frames into the counts.
         if pairings:
             latest_pt = max(p.pairing_time for p in pairings)
             pairings = [p for p in pairings if p.pairing_time == latest_pt]
 
-        # --- GraphRAG: retrieve historical context from the knowledge graph ---
+        # --- GraphRAG: index current pairings then retrieve historical context ---
+        if pairings:
+            self.graph_indexer.index_pairings(pairings, session_id)
+            graph_stats = self.graph_indexer.stats()
+            logger.info(
+                "[Pipeline] GraphRAG indexed: entities=%d, assets=%d, "
+                "relations=%d, communities=%d",
+                graph_stats.get("entities", 0),
+                graph_stats.get("assets", 0),
+                graph_stats.get("relations", 0),
+                graph_stats.get("communities", 0),
+            )
+
         historical_context = self.graph_indexer.get_historical_context(pairings)
         if historical_context:
             logger.info("[Pipeline] GraphRAG historical context retrieved (%d chars).",
@@ -506,6 +512,310 @@ class MavenPipeline:
         return report
 
     # ------------------------------------------------------------------
+    # Step-based API (단계별 실행)
+    # ------------------------------------------------------------------
+
+    def ingest_only(self, metadata_json: str, session_id: str) -> List[str]:
+        """
+        Phase 1: 이미지 적재만 수행 (SAM3 탐지 없음).
+        ImageRecord를 Sensor DB에 저장하고 image_id 목록을 반환한다.
+        """
+        metas = sorted(load_metadata_index(metadata_json), key=lambda m: m.capture_time)
+        if not metas:
+            logger.warning("[Ingest] metadata.json에 항목 없음")
+            return []
+
+        _lat = metas[-1].lat_center
+        _lon = metas[-1].lon_center
+        _write_ps(STAGE_SR, _lat, _lon, session_id)
+
+        image_ids: List[str] = []
+        for loaded in iter_images(metas):
+            meta = loaded.meta
+            det_h, det_w = loaded.array.shape[:2]
+            img_record = insert_image_record(
+                capture_time=meta.capture_time,
+                source_type=meta.source_type,
+                image_path=meta.image_path,
+                lat_center=meta.lat_center,
+                lon_center=meta.lon_center,
+                lat_min=meta.lat_min,
+                lat_max=meta.lat_max,
+                lon_min=meta.lon_min,
+                lon_max=meta.lon_max,
+                resolution_m=meta.resolution_m,
+                sensor_platform=meta.sensor_platform,
+                det_width=det_w,
+                det_height=det_h,
+                session_id=session_id,
+            )
+            image_ids.append(img_record.id)
+            logger.info(
+                "[Ingest] ImageRecord 저장 완료 %s (탐지 없음)", img_record.id[:8]
+            )
+
+        _clear_ps()
+        return image_ids
+
+    def detect_sam3_for_image(self, image_id: str) -> List[DetectionRecord]:
+        """
+        Phase 2a (SAM3 경로): 저장된 이미지 1장에 SAM3 탐지를 실행하고
+        DetectionRecord를 Sensor DB에 저장 후 반환한다.
+        """
+        import numpy as np
+        from PIL import Image as PILImage
+        from src.database.sensor_db import get_image_record_by_id
+        from src.detection.super_resolution import super_resolve
+
+        img_rec = get_image_record_by_id(image_id)
+        if img_rec is None:
+            raise ValueError(f"Image not found: {image_id}")
+
+        img_path = Path(img_rec.image_path)
+        if not img_path.is_absolute():
+            img_path = Path(IMAGES_DIR) / img_rec.image_path
+        if not img_path.exists():
+            raise FileNotFoundError(f"이미지 파일 없음: {img_path}")
+
+        pil_raw = PILImage.open(img_path).convert("RGB")
+        arr = np.array(pil_raw, dtype=np.uint8)
+        arr = super_resolve(arr)
+        det_h, det_w = arr.shape[:2]
+
+        # LoadedImage-like duck type
+        class _FakeMeta:
+            image_path = img_rec.image_path
+            capture_time = img_rec.capture_time
+            source_type = img_rec.source_type
+            lat_center = img_rec.lat_center
+            lon_center = img_rec.lon_center
+            lat_min = img_rec.lat_min
+            lat_max = img_rec.lat_max
+            lon_min = img_rec.lon_min
+            lon_max = img_rec.lon_max
+            resolution_m = img_rec.resolution_m or 0.5
+            sensor_platform = img_rec.sensor_platform or "unknown"
+
+        class _FakeLoaded:
+            array = arr
+            meta = _FakeMeta()
+
+        det_results: List[DetectionResult] = self.detector.detect(_FakeLoaded(), image_id)
+
+        if not det_results:
+            logger.info("[Detect/SAM3] 탐지 결과 없음 (image=%s)", image_id[:8])
+            return []
+
+        capture_naive = img_rec.capture_time
+        if hasattr(capture_naive, "tzinfo") and capture_naive.tzinfo is not None:
+            capture_naive = capture_naive.replace(tzinfo=None)
+
+        orm_detections = [
+            DetectionRecord(
+                id=det.detection_id,
+                image_id=image_id,
+                detection_time=capture_naive,
+                object_class=det.object_class,
+                object_class_index=det.object_class_index,
+                confidence=det.confidence,
+                bbox_x1=det.bbox_x1,
+                bbox_y1=det.bbox_y1,
+                bbox_x2=det.bbox_x2,
+                bbox_y2=det.bbox_y2,
+                lat=det.lat,
+                lon=det.lon,
+                mask_rle=det.mask_rle,
+                mask_area_px=det.mask_area_px,
+                source_type=det.source_type,
+                session_id=img_rec.session_id,
+            )
+            for det in det_results
+        ]
+        insert_detections_bulk(orm_detections)
+        logger.info(
+            "[Detect/SAM3] %d건 저장 완료 (image=%s)", len(orm_detections), image_id[:8]
+        )
+        return orm_detections
+
+    def run_pairing_and_report(
+        self,
+        session_id: str,
+        target_description: str = "",
+    ) -> str:
+        """
+        Phase 2b: 탐지 완료 후 Temporal Pairing → Graph RAG → 보고서 생성.
+        Sensor DB에 저장된 탐지 결과(SAM3 또는 수동)를 기반으로 실행한다.
+        """
+        import numpy as np
+        from datetime import timezone
+        from pathlib import Path as _Path
+        from PIL import Image as PILImage
+        from src.database.sensor_db import get_engine, get_most_recent_past_detections
+        from src.database.models import ImageRecord, DetectionRecord as DR
+        from src.detection.super_resolution import super_resolve
+        from sqlalchemy.orm import Session as OrmSession
+
+        engine = get_engine()
+
+        # 세션의 모든 이미지 조회 (capture_time 오름차순)
+        with OrmSession(engine) as sess:
+            img_recs = (
+                sess.query(ImageRecord)
+                .filter(ImageRecord.session_id == session_id)
+                .order_by(ImageRecord.capture_time.asc())
+                .all()
+            )
+            img_list = [
+                {
+                    "id": r.id,
+                    "image_path": r.image_path,
+                    "capture_time": r.capture_time,
+                    "source_type": r.source_type or "satellite",
+                    "lat_center": r.lat_center,
+                    "lon_center": r.lon_center,
+                    "lat_min": r.lat_min,
+                    "lat_max": r.lat_max,
+                    "lon_min": r.lon_min,
+                    "lon_max": r.lon_max,
+                    "resolution_m": r.resolution_m or 0.5,
+                    "sensor_platform": r.sensor_platform or "unknown",
+                    "session_id": r.session_id,
+                }
+                for r in img_recs
+            ]
+
+        if not img_list:
+            logger.warning("[Analyze] 세션 %s 에 이미지 없음", session_id)
+            return ""
+
+        _lat = img_list[-1]["lat_center"]
+        _lon = img_list[-1]["lon_center"]
+        _write_ps(STAGE_PAIRING, _lat, _lon, session_id)
+
+        total_pairings = 0
+        for img_info in img_list:
+            ct = img_info["capture_time"]
+            ct_naive = ct.replace(tzinfo=None) if getattr(ct, "tzinfo", None) else ct
+
+            # 세션 내 더 오래된 이미지가 있는지 확인
+            with OrmSession(engine) as sess:
+                has_past = (
+                    sess.query(ImageRecord.id)
+                    .filter(
+                        ImageRecord.session_id == session_id,
+                        ImageRecord.capture_time < ct_naive,
+                    )
+                    .first()
+                    is not None
+                )
+            if not has_past:
+                logger.info(
+                    "[Analyze] Skip %s — 세션 내 가장 오래된 이미지(기준 프레임)",
+                    _Path(img_info["image_path"]).name,
+                )
+                continue
+
+            # 현재 탐지 결과 조회
+            with OrmSession(engine) as sess:
+                current_orm = (
+                    sess.query(DR).filter(DR.image_id == img_info["id"]).all()
+                )
+                current_dets = [
+                    DetectionResult(
+                        detection_id=d.id,
+                        detection_time=d.detection_time,
+                        image_id=d.image_id,
+                        object_class=d.object_class,
+                        object_class_index=d.object_class_index or 0,
+                        confidence=d.confidence,
+                        bbox_x1=d.bbox_x1,
+                        bbox_y1=d.bbox_y1,
+                        bbox_x2=d.bbox_x2,
+                        bbox_y2=d.bbox_y2,
+                        lat=d.lat,
+                        lon=d.lon,
+                        source_type=d.source_type or img_info["source_type"],
+                    )
+                    for d in current_orm
+                ]
+
+            ct_aware = ct_naive.replace(tzinfo=timezone.utc)
+
+            past_records, past_capture_time = get_most_recent_past_detections(
+                lat_center=img_info["lat_center"],
+                lon_center=img_info["lon_center"],
+                radius_deg=COORDINATE_MATCH_RADIUS_DEG,
+                before_time=ct_aware,
+                prefer_session_id=session_id,
+                session_only=True,
+            )
+
+            # 이미지 파일 로드 (SAM3 추적기용)
+            img_path = _Path(img_info["image_path"])
+            if not img_path.is_absolute():
+                img_path = _Path(IMAGES_DIR) / img_info["image_path"]
+
+            if not img_path.exists():
+                logger.warning("[Analyze] 이미지 파일 없음: %s", img_path)
+                continue
+
+            pil_raw = PILImage.open(img_path).convert("RGB")
+            arr = np.array(pil_raw, dtype=np.uint8)
+            arr = super_resolve(arr)
+            orig_h, orig_w = arr.shape[:2]
+            pil_image = PILImage.fromarray(arr)
+
+            if TRACKING_MODE == "similarity":
+                pairing_records = pair_by_similarity(
+                    current_detections=current_dets,
+                    past_detections=past_records,
+                    current_image=pil_image,
+                    current_capture_time=ct_aware,
+                    past_capture_time=past_capture_time,
+                    region_lat=img_info["lat_center"],
+                    region_lon=img_info["lon_center"],
+                    session_id=session_id,
+                    source_type=img_info["source_type"],
+                )
+            else:
+                tracked_objects = (
+                    self.detector.track_objects(pil_image, past_records, orig_w, orig_h)
+                    if past_records
+                    else []
+                )
+                pairing_records = pair_by_tracking(
+                    tracked_objects=tracked_objects,
+                    current_detections=current_dets,
+                    past_detections=past_records,
+                    current_capture_time=ct_aware,
+                    past_capture_time=past_capture_time,
+                    region_lat=img_info["lat_center"],
+                    region_lon=img_info["lon_center"],
+                    session_id=session_id,
+                    source_type=img_info["source_type"],
+                )
+
+            if pairing_records:
+                insert_pairings_bulk(pairing_records)
+                total_pairings += len(pairing_records)
+
+        logger.info(
+            "[Analyze] 세션 %s: %d pairing records 생성", session_id, total_pairings
+        )
+
+        # SAM3 모델 해제 후 LLM 로딩
+        self.detector.unload()
+
+        _write_ps(STAGE_REPORTING, _lat, _lon, session_id)
+        try:
+            report = self._generate_report(session_id, target_description=target_description)
+        finally:
+            _clear_ps()
+
+        logger.info("[Analyze] 보고서 생성 완료 session=%s", session_id)
+        return report
+
+    # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
@@ -559,20 +869,6 @@ class MavenPipeline:
             _write_ps(STAGE_PAIRING, _lat, _lon, session_id)
             n_pairings = self._pair_and_store(metadata_json, session_id)
             logger.info(f"[Pipeline] Created {n_pairings} pairing records.")
-
-            # --- GraphRAG: index pairings into knowledge graph (non-blocking) ---
-            logger.info("[Pipeline] GraphRAG – Indexing pairings into knowledge graph")
-            session_pairings = get_pairings_by_session(session_id)
-            self.graph_indexer.index_pairings(session_pairings, session_id)
-            graph_stats = self.graph_indexer.stats()
-            logger.info(
-                "[Pipeline] GraphRAG stats: entities=%d, assets=%d, "
-                "relations=%d, communities=%d",
-                graph_stats.get("entities", 0),
-                graph_stats.get("assets", 0),
-                graph_stats.get("relations", 0),
-                graph_stats.get("communities", 0),
-            )
 
             # SAM3 모델을 GPU에서 해제 — vLLM 로딩 전 VRAM 확보
             self.detector.unload()
