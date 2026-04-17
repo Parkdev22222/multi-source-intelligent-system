@@ -583,6 +583,117 @@ def run_step_at(
     }
 
 
+def run_ingest_at(
+    lat: float,
+    lon: float,
+    name: str = "임무 위성",
+    image_mode: str = None,
+) -> dict:
+    """
+    사용자 지정 위경도에서 이미지 적재만 수행 (단계별 워크플로우 Phase 1).
+
+    탐지·페어링·보고서 생성은 하지 않는다.
+    대신 stdout의 "INGEST_RESULT:<json>" 마커에서 session_id와 image_ids를 추출한다.
+
+    Returns:
+        {
+          success:     bool,
+          elapsed_s:   float,
+          session_id:  str | None,
+          image_ids:   list[str],
+          images:      list[str],   # 이미지 파일 상대경로
+          active:      dict,
+        }
+    """
+    mode = image_mode or IMAGE_MODE
+    t0   = time.time()
+
+    logger.info(
+        "[SimRunner/Ingest] 적재 전용 실행: lat=%.4f lon=%.4f name=%s", lat, lon, name
+    )
+
+    # ── 이미지 선택 ────────────────────────────────────────────────────────
+    explicit_times = None
+    crop_fracs     = None
+    if mode == "crop":
+        imgs, past_time, curr_time, crop_fracs = _pick_and_crop_image(
+            axis=CROP_AXIS, crop_size=CROP_SIZE, crop_offset=CROP_OFFSET,
+        )
+        explicit_times = [past_time, curr_time]
+    elif mode == "crops_dir":
+        imgs, past_time, curr_time, crop_fracs = _pick_from_crops_dir()
+        explicit_times = [past_time, curr_time]
+    else:
+        imgs = _pick_images(2)
+
+    logger.info("[SimRunner/Ingest] 이미지: %s", imgs)
+
+    # ── metadata.json 업데이트 ────────────────────────────────────────────
+    sat_stub = {"lat": lat, "lon": lon, "name": name, "id": f"MISSION_{name}"}
+    use_crop_geo = mode in ("crop", "crops_dir")
+    meta = _build_metadata(
+        sat_stub, imgs, explicit_times=explicit_times,
+        crop_axis=CROP_AXIS if use_crop_geo else None,
+        crop_size_ratio=CROP_SIZE if use_crop_geo else None,
+        crop_fracs=crop_fracs,
+    )
+    METADATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    METADATA_PATH.write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    logger.info("[SimRunner/Ingest] metadata.json 업데이트 완료")
+
+    # ── main.py --ingest-only 실행 ────────────────────────────────────────
+    REPORT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        sys.executable, str(BASE_DIR / "main.py"),
+        "--metadata", str(METADATA_PATH),
+        "--ingest-only",
+    ]
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=600,
+        cwd=str(BASE_DIR),
+    )
+    elapsed = time.time() - t0
+    success = proc.returncode == 0
+
+    # ── stdout에서 INGEST_RESULT 파싱 ─────────────────────────────────────
+    session_id = None
+    image_ids: list = []
+    for line in (proc.stdout or "").splitlines():
+        if line.startswith("INGEST_RESULT:"):
+            try:
+                parsed = json.loads(line[len("INGEST_RESULT:"):])
+                session_id = parsed.get("session_id")
+                image_ids  = parsed.get("image_ids", [])
+            except Exception as exc:
+                logger.warning("[SimRunner/Ingest] INGEST_RESULT 파싱 오류: %s", exc)
+            break
+
+    if success:
+        logger.info(
+            "[SimRunner/Ingest] 완료 (%.1fs) session=%s images=%d",
+            elapsed, session_id, len(image_ids),
+        )
+    else:
+        logger.error(
+            "[SimRunner/Ingest] 오류 (rc=%d):\n%s",
+            proc.returncode, proc.stderr[-1500:],
+        )
+
+    return {
+        "success":     success,
+        "elapsed_s":   round(elapsed, 2),
+        "session_id":  session_id,
+        "image_ids":   image_ids,
+        "image_mode":  mode,
+        "active":      sat_stub,
+        "images":      imgs,
+        "stdout_tail": proc.stdout[-1000:] if proc.stdout else "",
+        "stderr_tail": proc.stderr[-500:]  if proc.stderr else "",
+    }
+
+
 # ── 독립 실행 ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     logging.basicConfig(
