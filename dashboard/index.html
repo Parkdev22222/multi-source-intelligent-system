@@ -3996,11 +3996,14 @@ async function _dsLoadRendered(imageId) {
 // 수동 바운딩 박스 생성
 document.getElementById('ds-manual-btn').addEventListener('click', async () => {
   if (!_dsSessionId || _dsImageIds.length === 0) return;
-  const currImageId = _dsImageIds[_dsImageIds.length - 1];
+  // 현재 표시 중인 프레임(과거/현재 모두 지원)으로 편집기 열기
+  const targetImageId = _dsImageIds[_dsCurrentImgIdx];
+  const isCurrentFrame = _dsCurrentImgIdx === _dsImageIds.length - 1;
+  const frameLabel = isCurrentFrame ? '현재 프레임 – 직접 탐지' : `이전 프레임 ${_dsCurrentImgIdx + 1} – 직접 탐지`;
 
   // 탐지 편집기를 열고, 저장 완료 후 Step2 활성화 처리
-  _dsPendingManualImageId = currImageId;
-  openDetEditor(currImageId, '현재 프레임 – 직접 탐지');
+  _dsPendingManualImageId = targetImageId;
+  openDetEditor(targetImageId, frameLabel);
 });
 
 let _dsPendingManualImageId = null;
