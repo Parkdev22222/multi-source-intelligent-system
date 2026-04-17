@@ -483,11 +483,14 @@ class SAM3Detector:
             output = processor.set_text_prompt(state=inference_state, prompt=class_name)
             masks, boxes, scores = output["masks"], output["boxes"], output["scores"]
         """
-        inference_state = self._processor.set_image(pil_image)
-        output = self._processor.set_text_prompt(
-            state=inference_state,
-            prompt=class_name,
-        )
+        with torch.no_grad():
+            inference_state = self._processor.set_image(pil_image)
+            output = self._processor.set_text_prompt(
+                state=inference_state,
+                prompt=class_name,
+            )
+        # inference_state는 GPU 텐서를 보유하므로 즉시 해제
+        del inference_state
 
         masks_out  = output.get("masks",  [])   # list[np.ndarray] | ndarray (N, H, W)
         boxes_out  = output.get("boxes",  [])   # (N, 4)  xyxy float
@@ -629,6 +632,10 @@ class SAM3Detector:
             if TILE_MULTISCALE:
                 logger.info("[SAM3Detector] 스케일1(대형): 전체 이미지 탐지")
                 for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
+                    # 클래스마다 캐시 해제 — 전체 이미지 forward는 VRAM 소모가 크다
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                     try:
                         all_results.extend(
                             self._detect_class(
@@ -636,6 +643,13 @@ class SAM3Detector:
                                 orig_w, orig_h, now, image_id, meta,
                             )
                         )
+                    except torch.cuda.OutOfMemoryError:
+                        logger.warning(
+                            f"[SAM3Detector] 스케일1 OOM on class '{class_name}' — skipping"
+                        )
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                     except Exception as exc:
                         logger.warning(
                             f"[SAM3Detector] 스케일1 class '{class_name}': {exc}"
@@ -690,6 +704,9 @@ class SAM3Detector:
             logger.debug("[SAM3Detector] 스케일3 완료: GPU 캐시 해제")
         else:
             for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 try:
                     all_results.extend(
                         self._detect_class(
@@ -697,6 +714,13 @@ class SAM3Detector:
                             orig_w, orig_h, now, image_id, meta,
                         )
                     )
+                except torch.cuda.OutOfMemoryError:
+                    logger.warning(
+                        f"[SAM3Detector] OOM on class '{class_name}' — skipping"
+                    )
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                 except Exception as exc:
                     logger.warning(
                         f"[SAM3Detector] Error on class '{class_name}': {exc}"
