@@ -627,8 +627,8 @@ def pair_by_tracking(
             current_detection_id=best_current.detection_id if best_current else None,
             current_object_class=best_current.object_class if best_current else tracked.past_object_class,
             current_confidence=best_current.confidence if best_current else tracked.score,
-            current_lat=cur_lat,
-            current_lon=cur_lon,
+            current_lat=best_current.lat if best_current else None,
+            current_lon=best_current.lon if best_current else None,
             current_capture_time=current_capture_time,
             current_bbox={
                 "x1": best_current.bbox_x1, "y1": best_current.bbox_y1,
@@ -641,8 +641,8 @@ def pair_by_tracking(
             past_detection_id=tracked.past_detection_id,
             past_object_class=past.object_class if past else tracked.past_object_class,
             past_confidence=past.confidence if past else None,
-            past_lat=past_lat,
-            past_lon=past_lon,
+            past_lat=past.lat if past else None,
+            past_lon=past.lon if past else None,
             past_capture_time=past_capture_time,
             past_bbox={
                 "x1": past.bbox_x1, "y1": past.bbox_y1,
@@ -1202,6 +1202,56 @@ def pair_by_similarity(
         d for d in past_detections
         if d.id not in _seen_past_s and not _seen_past_s.add(d.id)
     ]
+
+    # ------------------------------------------------------------------
+    # Step 0. Static class geo-based pre-matching (같은 위경도 건물 → 무조건 matched)
+    # CLIP 점수와 무관하게, 같은 클래스 건물이 MOVE_DISTANCE_THRESHOLD_DEG 이내이면
+    # 가장 가까운 쌍부터 greedy로 matched 페어링 생성.
+    # ------------------------------------------------------------------
+    _s_cur  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
+    _s_past = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
+    _geo_pre_cur_ids:  set = set()
+    _geo_pre_past_ids: set = set()
+    if _s_cur and _s_past:
+        _gcands = sorted(
+            (_geo_distance(c.lat, c.lon, p.lat, p.lon), ci, pi)
+            for ci, c in enumerate(_s_cur)
+            for pi, p in enumerate(_s_past)
+            if c.object_class.lower() == p.object_class.lower()
+            and _geo_distance(c.lat, c.lon, p.lat, p.lon) <= MOVE_DISTANCE_THRESHOLD_DEG
+        )
+        _gc_seen: set = set()
+        _gp_seen: set = set()
+        for _dist, _ci, _pi in _gcands:
+            if _ci in _gc_seen or _pi in _gp_seen:
+                continue
+            _c = _s_cur[_ci]
+            _p = _s_past[_pi]
+            _gc_seen.add(_ci)
+            _gp_seen.add(_pi)
+            _geo_pre_cur_ids.add(_c.detection_id)
+            _geo_pre_past_ids.add(_p.id)
+            pairing_records.append(PairingRecord(
+                pairing_time=now, lat_center=region_lat, lon_center=region_lon,
+                current_detection_id=_c.detection_id,
+                current_object_class=_c.object_class,
+                current_confidence=_c.confidence,
+                current_lat=_c.lat, current_lon=_c.lon,
+                current_capture_time=current_capture_time,
+                current_bbox={"x1": _c.bbox_x1, "y1": _c.bbox_y1,
+                              "x2": _c.bbox_x2, "y2": _c.bbox_y2},
+                past_detection_id=_p.id,
+                past_object_class=_p.object_class,
+                past_confidence=_p.confidence,
+                past_lat=_p.lat, past_lon=_p.lon,
+                past_capture_time=past_capture_time,
+                past_bbox={"x1": _p.bbox_x1, "y1": _p.bbox_y1,
+                           "x2": _p.bbox_x2, "y2": _p.bbox_y2},
+                status="matched", source_type=source_type, session_id=session_id,
+            ))
+    # 이미 geo-matched된 탐지는 CLIP 처리에서 제외
+    current_detections = [d for d in current_detections if d.detection_id not in _geo_pre_cur_ids]
+    past_detections    = [d for d in past_detections    if d.id not in _geo_pre_past_ids]
 
     if not current_detections or not past_detections:
         # Nothing to match – apply FOV check for each unmatched detection
