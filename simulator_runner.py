@@ -190,11 +190,10 @@ def _pick_from_crops_dir() -> tuple:
     올바른 과거/현재 순서가 자동으로 유지된다.
 
     Returns:
-        (img_paths, past_time, current_time, crop_fracs)
+        (img_paths, past_time, current_time, None)
           img_paths:  상대 경로 2개 리스트 — [과거, 현재] 순서
-          crop_fracs: _build_metadata() 에 전달할 시작 비율 리스트
-                      crop_A 가 과거면 [0.0, CROP_OFFSET],
-                      crop_B 가 과거면 [CROP_OFFSET, 0.0]
+          None:       crop_fracs 자리 — crops_dir 는 동일 지역 시간차 촬영이므로
+                      geo 오프셋을 적용하지 않는다 (use_crop_geo=False 와 동일 효과).
     """
     if not CROPS_DIR.exists():
         raise RuntimeError(
@@ -224,26 +223,23 @@ def _pick_from_crops_dir() -> tuple:
     b_mtime = datetime.fromtimestamp(b_path.stat().st_mtime, tz=timezone.utc)
 
     # mtime 기준으로 과거/현재 순서 결정
-    # crop_A = frac 0.0 기준점, crop_B = CROP_OFFSET 기준점
     if a_mtime <= b_mtime:
         past_path, curr_path = a_path, b_path
         past_time, curr_time = a_mtime, b_mtime
-        crop_fracs = [0.0, CROP_OFFSET]          # A=과거(0.0), B=현재(offset)
     else:
         past_path, curr_path = b_path, a_path
         past_time, curr_time = b_mtime, a_mtime
-        crop_fracs = [CROP_OFFSET, 0.0]          # B=과거(offset), A=현재(0.0)
 
     paths = [
         str(past_path.relative_to(SAMPLE_DIR.parent)),
         str(curr_path.relative_to(SAMPLE_DIR.parent)),
     ]
     logger.info(
-        "[SimRunner/crops_dir] 쌍 선택: %s (과거=%s, frac=%.2f) / %s (현재=%s, frac=%.2f)",
-        past_path.name, past_time.strftime("%H:%M:%S"), crop_fracs[0],
-        curr_path.name, curr_time.strftime("%H:%M:%S"), crop_fracs[1],
+        "[SimRunner/crops_dir] 쌍 선택: %s (과거=%s) / %s (현재=%s) — 동일 지역, geo 오프셋 없음",
+        past_path.name, past_time.strftime("%H:%M:%S"),
+        curr_path.name, curr_time.strftime("%H:%M:%S"),
     )
-    return paths, past_time, curr_time, crop_fracs
+    return paths, past_time, curr_time, None
 
 
 def _extract_tiff_capture_time(path: Path) -> datetime:
@@ -447,7 +443,7 @@ def run_step(
         logger.info(f"[SimRunner] 분리 이미지 모드 — 이미지: {imgs}")
 
     # ── 3. metadata.json 업데이트 ─────────────────────────────────────────
-    use_crop_geo = mode in ("crop", "crops_dir")
+    use_crop_geo = mode == "crop"
     meta = _build_metadata(
         active, imgs, explicit_times=explicit_times,
         crop_axis=CROP_AXIS if use_crop_geo else None,
@@ -538,7 +534,7 @@ def run_step_at(
 
     # ── metadata.json 업데이트 ────────────────────────────────────────────
     sat_stub = {"lat": lat, "lon": lon, "name": name, "id": f"MISSION_{name}"}
-    use_crop_geo = mode in ("crop", "crops_dir")
+    use_crop_geo = mode == "crop"
     meta = _build_metadata(
         sat_stub, imgs, explicit_times=explicit_times,
         crop_axis=CROP_AXIS if use_crop_geo else None,
