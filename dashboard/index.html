@@ -3845,11 +3845,16 @@ let _dsImageIds    = [];     // 세션 이미지 ID 목록
 let _dsCurrentImgIdx = 0;   // 현재 표시 중인 이미지 인덱스 (현재 프레임 기준)
 let _dsDetectionDone = false;
 
-function _dsOpen(sessionId, imageIds, lat, lon, targetDesc) {
+function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   _dsSessionId    = sessionId;
   _dsImageIds     = imageIds || [];
   _dsCurrentImgIdx = 0;
   _dsDetectionDone = false;
+
+  // 모달 타이틀: WP 번호·이름으로 어느 WP 설정인지 명시
+  const wpLabel = wpSeq ? `WP${wpSeq}${wpName ? ' — ' + wpName : ''}` : '';
+  document.getElementById('ds-title').textContent =
+    wpLabel ? `⊕ 탐지 방식 선택 · ${wpLabel}` : '⊕ 탐지 방식 선택';
 
   document.getElementById('ds-session-info').textContent =
     `세션: ${sessionId.slice(0, 8)}… | 이미지 ${_dsImageIds.length}장 | lat=${(lat||0).toFixed(4)} lon=${(lon||0).toFixed(4)}`;
@@ -4156,6 +4161,8 @@ function setupSSE() {
           msg.lat,
           msg.lon,
           msg.target_description || '',
+          msg.wp_name  || '',
+          msg.wp_seq   || 0,
         );
         await pollSimStatus();
       }
@@ -4414,6 +4421,8 @@ function _addWpRow(lat, lon, name, desc, wpData) {
         wpData.lat,
         wpData.lon,
         wpData.target_description || '',
+        wpData.name  || '',
+        (wpData.seq ?? -1) + 1,   // seq는 0-based → 1-based 표시
       );
     });
   }

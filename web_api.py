@@ -175,6 +175,8 @@ def _notify_image_ingested(
     lat: float | None = None,
     lon: float | None = None,
     target_description: str = "",
+    wp_name: str = "",
+    wp_seq: int = 0,
 ):
     """이미지 적재 완료 이벤트 브로드캐스트 – 단계별 워크플로우 UI 트리거."""
     payload = json.dumps({
@@ -184,6 +186,8 @@ def _notify_image_ingested(
         "lat":                lat,
         "lon":                lon,
         "target_description": target_description,
+        "wp_name":            wp_name,
+        "wp_seq":             wp_seq,
         "ts":                 datetime.utcnow().isoformat(),
     })
     with _sse_lock:
@@ -488,6 +492,8 @@ def _auto_sim_worker():
                             lat=wp_ref["lat"],
                             lon=wp_ref["lon"],
                             target_description=wp_ref.get("target_description", ""),
+                            wp_name=wp_ref.get("name", ""),
+                            wp_seq=wp_ref.get("seq", 0) + 1,
                         )
                     else:
                         wp_ref["status"] = "failed"
@@ -589,6 +595,8 @@ def _auto_sim_worker():
                             lat=next_wp["lat"],
                             lon=next_wp["lon"],
                             target_description=next_wp.get("target_description", ""),
+                            wp_name=next_wp.get("name", ""),
+                            wp_seq=next_wp.get("seq", 0) + 1,
                         )
                     else:
                         next_wp["status"] = "failed"
