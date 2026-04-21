@@ -3879,10 +3879,10 @@ function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   // 이미지 네비게이션 버튼 (가장 최신 = 현재 프레임 / 나머지 = 과거 프레임)
   _dsRenderImgNav();
 
-  // 이미지 로드 (가장 최신 프레임 우선 표시)
+  // 이미지 로드 (가장 최신 프레임 우선 표시, 탐지 결과 있으면 bbox 이미지 사용)
   if (_dsImageIds.length > 0) {
     const showIdx = Math.max(0, _dsImageIds.length - 1);
-    _dsLoadImage(_dsImageIds[showIdx]);
+    _dsLoadImageSmart(_dsImageIds[showIdx]);
     _dsCurrentImgIdx = showIdx;
   }
 
@@ -3907,10 +3907,24 @@ function _dsRenderImgNav() {
     btn.addEventListener('click', () => {
       _dsCurrentImgIdx = i;
       _dsRenderImgNav();
-      _dsLoadImage(id);
+      _dsLoadImageSmart(id);
     });
     nav.appendChild(btn);
   });
+}
+
+// 탐지 결과가 있으면 bbox 렌더링 이미지, 없으면 원본 이미지를 표시
+async function _dsLoadImageSmart(imageId) {
+  try {
+    const r = await fetch(`${API}/api/detections/by-image/${encodeURIComponent(imageId)}`);
+    if (r.ok) {
+      const data = await r.json();
+      if ((data.count ?? (data.detections || []).length) > 0) {
+        return _dsLoadRendered(imageId);
+      }
+    }
+  } catch (_) { /* 실패 시 원본으로 폴백 */ }
+  return _dsLoadImage(imageId);
 }
 
 async function _dsLoadImage(imageId) {
