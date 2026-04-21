@@ -3884,7 +3884,12 @@ async function _sam3ProcessNext() {
       detClasses[d.object_class] = (detClasses[d.object_class] || 0) + 1;
     });
     if (_dsSessionId === sessionId) {
-      _dsLoadRendered(imageId);
+      // 현재 뷰가 탐지된 프레임을 보고 있을 때만 렌더링 갱신
+      // 토큰 증가로 동시에 진행 중인 _dsLoadImageSmart 취소
+      if (_dsImageIds[_dsCurrentImgIdx] === imageId) {
+        ++_dsLoadToken;
+        _dsLoadRendered(imageId);
+      }
       _dsMarkDetectionDone('SAM3', totalDets, detClasses);
     }
   } catch (e) {
@@ -4029,7 +4034,7 @@ document.getElementById('ds-sam3-btn').addEventListener('click', () => {
   document.getElementById('ds-manual-btn').disabled = true;
   sam3Btn.textContent = '탐지 진행중...';
   document.getElementById('ds-step1-badge').textContent = 'SAM3 실행 중...';
-  const currImageId = _dsImageIds[_dsImageIds.length - 1];
+  const currImageId = _dsImageIds[_dsCurrentImgIdx];
   _sam3Enqueue(_dsSessionId, currImageId);
 });
 
