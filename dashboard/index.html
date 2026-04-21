@@ -1262,7 +1262,7 @@
           <div class="ds-section-title">Step 1 — 객체 탐지</div>
           <div class="ds-step-badge" id="ds-step1-badge">대기 중</div>
           <button class="ds-action-btn sam3" id="ds-sam3-btn">
-            ⊕ SAM3 자동탐지 실행
+            ⊕ SAM3 기반 판독
           </button>
           <button class="ds-action-btn manual" id="ds-manual-btn">
             ✏ 직접 바운딩 박스 생성
@@ -3846,6 +3846,61 @@ let _dsCurrentImgIdx = 0;   // 현재 표시 중인 이미지 인덱스 (현재 
 let _dsDetectionDone = false;
 let _dsLoadToken   = 0;      // 비동기 이미지 로드 중복 방지용 토큰
 
+// SAM3 순차 실행 큐
+const _sam3Queue = [];
+let _sam3ActiveJob = null;   // 현재 실행 중인 작업 { sessionId, imageId }
+
+function _sam3IsJobActive(sessionId) {
+  return (_sam3ActiveJob && _sam3ActiveJob.sessionId === sessionId) ||
+         _sam3Queue.some(j => j.sessionId === sessionId);
+}
+
+function _sam3Enqueue(sessionId, imageId) {
+  _sam3Queue.push({ sessionId, imageId });
+  if (!_sam3ActiveJob) _sam3ProcessNext();
+}
+
+async function _sam3ProcessNext() {
+  if (_sam3Queue.length === 0) { _sam3ActiveJob = null; return; }
+  _sam3ActiveJob = _sam3Queue.shift();
+  const { sessionId, imageId } = _sam3ActiveJob;
+
+  // 현재 모달이 이 세션이면 '실행 중' 상태로 UI 업데이트
+  if (_dsSessionId === sessionId) {
+    document.getElementById('ds-step1-badge').textContent = 'SAM3 실행 중...';
+    document.getElementById('ds-sam3-btn').textContent    = '탐지 진행중...';
+  }
+
+  try {
+    const res = await fetch(
+      `${API}/api/image/${encodeURIComponent(imageId)}/detect-sam3`,
+      { method: 'POST' }
+    );
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '탐지 실패');
+    const data = await res.json();
+    const totalDets = data.detection_count || 0;
+    const detClasses = {};
+    (data.detections || []).forEach(d => {
+      detClasses[d.object_class] = (detClasses[d.object_class] || 0) + 1;
+    });
+    if (_dsSessionId === sessionId) {
+      _dsLoadRendered(imageId);
+      _dsMarkDetectionDone('SAM3', totalDets, detClasses);
+    }
+  } catch (e) {
+    if (_dsSessionId === sessionId) {
+      meta_toast(`SAM3 탐지 오류: ${e.message}`);
+      document.getElementById('ds-step1-badge').textContent = '오류';
+      document.getElementById('ds-sam3-btn').textContent    = '⊕ SAM3 기반 판독';
+      document.getElementById('ds-sam3-btn').disabled       = false;
+      document.getElementById('ds-manual-btn').disabled     = false;
+    }
+  }
+
+  _sam3ActiveJob = null;
+  _sam3ProcessNext();
+}
+
 function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   _dsSessionId    = sessionId;
   _dsImageIds     = imageIds || [];
@@ -3868,7 +3923,10 @@ function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   document.getElementById('ds-step1-badge').textContent = '대기 중';
   document.getElementById('ds-step1-badge').className   = 'ds-step-badge';
   document.getElementById('ds-detect-result').style.display = 'none';
-  document.getElementById('ds-sam3-btn').disabled  = false;
+  const _initSam3Btn = document.getElementById('ds-sam3-btn');
+  const _initJobActive = _sam3IsJobActive(sessionId);
+  _initSam3Btn.textContent = _initJobActive ? '탐지 진행중...' : '⊕ SAM3 기반 판독';
+  _initSam3Btn.disabled    = _initJobActive;
   document.getElementById('ds-manual-btn').disabled = false;
 
   // Step 2 초기화
@@ -3962,46 +4020,17 @@ async function _dsLoadImage(imageId) {
   }
 }
 
-// SAM3 자동탐지 실행
-document.getElementById('ds-sam3-btn').addEventListener('click', async () => {
+// SAM3 탐지 — 클릭 즉시 큐에 등록, 순차 실행
+document.getElementById('ds-sam3-btn').addEventListener('click', () => {
   if (!_dsSessionId || _dsImageIds.length === 0) return;
-
-  const sam3Btn   = document.getElementById('ds-sam3-btn');
-  const manualBtn = document.getElementById('ds-manual-btn');
-  sam3Btn.disabled   = true;
-  manualBtn.disabled = true;
-  sam3Btn.textContent = '탐지 실행 중...';
-
+  const sam3Btn = document.getElementById('ds-sam3-btn');
+  if (sam3Btn.disabled) return; // 이미 대기/실행 중
+  sam3Btn.disabled = true;
+  document.getElementById('ds-manual-btn').disabled = true;
+  sam3Btn.textContent = '탐지 진행중...';
   document.getElementById('ds-step1-badge').textContent = 'SAM3 실행 중...';
-
-  // 현재 프레임(가장 최신 이미지)에만 탐지 실행
   const currImageId = _dsImageIds[_dsImageIds.length - 1];
-  let totalDets = 0;
-  const detClasses = {};
-
-  try {
-    const res = await fetch(
-      `${API}/api/image/${encodeURIComponent(currImageId)}/detect-sam3`,
-      { method: 'POST' }
-    );
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '탐지 실패');
-    const data = await res.json();
-    totalDets = data.detection_count || 0;
-    (data.detections || []).forEach(d => {
-      detClasses[d.object_class] = (detClasses[d.object_class] || 0) + 1;
-    });
-
-    // 탐지된 이미지 갱신 (bbox 표시)
-    _dsLoadRendered(currImageId);
-
-    _dsMarkDetectionDone('SAM3', totalDets, detClasses);
-  } catch (e) {
-    meta_toast(`SAM3 탐지 오류: ${e.message}`);
-    document.getElementById('ds-step1-badge').textContent = '오류';
-    sam3Btn.disabled  = false;
-    manualBtn.disabled = false;
-    sam3Btn.textContent = '⊕ SAM3 자동탐지 실행';
-  }
+  _sam3Enqueue(_dsSessionId, currImageId);
 });
 
 // 탐지 후 bbox 렌더링 이미지 갱신
@@ -4063,7 +4092,7 @@ function _dsMarkDetectionDone(method, count, classes) {
   document.getElementById('ds-analyze-btn').disabled    = false;
   document.getElementById('ds-status-msg').textContent  = '탐지 결과를 확인하고 분석을 시작하세요.';
 
-  document.getElementById('ds-sam3-btn').textContent  = '⊕ SAM3 자동탐지 실행';
+  document.getElementById('ds-sam3-btn').textContent  = '⊕ SAM3 기반 판독';
   document.getElementById('ds-sam3-btn').disabled     = false;
   document.getElementById('ds-manual-btn').disabled   = false;
 }
