@@ -710,7 +710,13 @@
     .wps-running  { background: #1a2a00; color: #aaff44; animation: pulse-glow .9s infinite alternate; }
     .wps-complete { background: #0a2a1a; color: #00ff88; }
     .wps-failed   { background: #2a0a0a; color: #ff4444; }
+    .wps-ingested { background: #1c1400; color: #fbbf24; }
     .wp-rpt-link  { font-size: 10px; color: #7dd3fc; cursor: pointer; text-decoration: underline; }
+    .wp-detect-btn {
+      font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer;
+      background: #0f2040; border: 1px solid #3b82f6; color: #93c5fd;
+    }
+    .wp-detect-btn:hover { background: #1d4ed8; color: #fff; }
     @keyframes pulse-glow {
       from { box-shadow: none; }
       to   { box-shadow: 0 0 6px #aaff44aa; }
@@ -4326,20 +4332,24 @@ function _addWpRow(lat, lon, name, desc, wpData) {
   const item   = document.createElement('div');
   item.className = 'mission-wp-item';
   if (wpData) {
-    const cls = { running:'wp-running', complete:'wp-complete', failed:'wp-failed' }[wpData.status];
+    const cls = { running:'wp-running', complete:'wp-complete', failed:'wp-failed', ingested:'wp-ingested' }[wpData.status];
     if (cls) item.classList.add(cls);
   }
 
   const latVal = (lat !== undefined && lat !== null && !isNaN(lat)) ? Number(lat).toFixed(6) : '';
   const lonVal = (lon !== undefined && lon !== null && !isNaN(lon)) ? Number(lon).toFixed(6) : '';
   const status = wpData?.status || 'pending';
-  const stLabel = { pending:'대기', running:'실행중', complete:'완료', failed:'실패' }[status] || '';
-  const stCls   = { pending:'wps-pending', running:'wps-running', complete:'wps-complete', failed:'wps-failed' }[status] || 'wps-pending';
+  const stLabel = { pending:'대기', running:'실행중', complete:'완료', failed:'실패', ingested:'이미지 적재완료' }[status] || '';
+  const stCls   = { pending:'wps-pending', running:'wps-running', complete:'wps-complete', failed:'wps-failed', ingested:'wps-ingested' }[status] || 'wps-pending';
   const rptHtml = wpData?.report_id
     ? `<span class="wp-rpt-link" data-report-id="${wpData.report_id}">보고서 ↗</span>` : '';
+  // ingested 상태: 탐지 설정 버튼 (닫기 후 재진입용)
+  const detectBtnHtml = (status === 'ingested' && wpData?.session_id)
+    ? `<button class="wp-detect-btn" title="탐지 방식 선택 화면 열기">⊕ 탐지 설정</button>` : '';
   const resultHtml = wpData && wpData.status !== 'pending'
     ? `<div class="wp-result-row">
          <span class="wp-status-badge ${stCls}">${stLabel}</span>
+         ${detectBtnHtml}
          ${rptHtml}
          ${wpData.elapsed_s ? `<span style="font-size:9px;color:var(--dim)">${wpData.elapsed_s}s</span>` : ''}
          ${wpData.error && wpData.status !== 'complete' ? `<span style="font-size:9px;color:var(--red)" title="${wpData.error}">오류</span>` : ''}
@@ -4392,6 +4402,21 @@ function _addWpRow(lat, lon, name, desc, wpData) {
       openReportById(el.dataset.reportId, null);
     });
   });
+
+  // 탐지 설정 버튼 – ingested 상태에서 탐지 선택 모달 재진입
+  const detectBtn = item.querySelector('.wp-detect-btn');
+  if (detectBtn && wpData) {
+    detectBtn.addEventListener('click', () => {
+      _closeMissionModal();
+      _dsOpen(
+        wpData.session_id,
+        wpData.image_ids || [],
+        wpData.lat,
+        wpData.lon,
+        wpData.target_description || '',
+      );
+    });
+  }
 
   list.appendChild(item);
   _wpMarkers.push({ item, marker: null });
