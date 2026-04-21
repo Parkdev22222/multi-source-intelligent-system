@@ -3844,6 +3844,7 @@ let _dsSessionId   = null;   // 현재 모달의 세션 ID
 let _dsImageIds    = [];     // 세션 이미지 ID 목록
 let _dsCurrentImgIdx = 0;   // 현재 표시 중인 이미지 인덱스 (현재 프레임 기준)
 let _dsDetectionDone = false;
+let _dsLoadToken   = 0;      // 비동기 이미지 로드 중복 방지용 토큰
 
 function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   _dsSessionId    = sessionId;
@@ -3915,15 +3916,26 @@ function _dsRenderImgNav() {
 
 // 탐지 결과가 있으면 bbox 렌더링 이미지, 없으면 원본 이미지를 표시
 async function _dsLoadImageSmart(imageId) {
+  const token = ++_dsLoadToken;
+  // 기존 img 태그 모두 즉시(동기) 제거 — 비동기 gap 동안 이전 이미지 잔류 방지
+  const area = document.getElementById('ds-image-area');
+  area.querySelectorAll('img').forEach(el => el.remove());
+  const loading = document.getElementById('ds-image-loading');
+  loading.style.display = 'block';
+  loading.textContent = '위성 영상 로딩 중...';
+
   try {
     const r = await fetch(`${API}/api/detections/by-image/${encodeURIComponent(imageId)}`);
+    if (token !== _dsLoadToken) return; // 더 새로운 로드가 시작됨 → 중단
     if (r.ok) {
       const data = await r.json();
+      if (token !== _dsLoadToken) return;
       if ((data.count ?? (data.detections || []).length) > 0) {
         return _dsLoadRendered(imageId);
       }
     }
   } catch (_) { /* 실패 시 원본으로 폴백 */ }
+  if (token !== _dsLoadToken) return;
   return _dsLoadImage(imageId);
 }
 
@@ -3933,9 +3945,8 @@ async function _dsLoadImage(imageId) {
   loading.style.display = 'block';
   loading.textContent   = '위성 영상 로딩 중...';
 
-  // 기존 img 태그 제거
-  const prev = area.querySelector('img');
-  if (prev) prev.remove();
+  // 기존 img 태그 모두 제거
+  area.querySelectorAll('img').forEach(el => el.remove());
 
   try {
     const res = await fetch(`${API}/api/image/${encodeURIComponent(imageId)}/thumb`);
@@ -3999,8 +4010,7 @@ async function _dsLoadRendered(imageId) {
   const loading = document.getElementById('ds-image-loading');
   loading.style.display = 'block';
   loading.textContent   = '탐지 결과 렌더링 중...';
-  const prev = area.querySelector('img');
-  if (prev) prev.remove();
+  area.querySelectorAll('img').forEach(el => el.remove());
   try {
     const res = await fetch(
       `${API}/api/image/${encodeURIComponent(imageId)}/rendered?t=${Date.now()}`
