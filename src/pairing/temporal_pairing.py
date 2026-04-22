@@ -42,6 +42,7 @@ from src.config import (
     CLIP_MODEL_NAME,
     COORDINATE_MATCH_RADIUS_DEG,
     MOVE_DISTANCE_THRESHOLD_DEG,
+    STATIC_EXACT_MATCH_DEG,
     SIMILARITY_CLIP_WEIGHT,
     SIMILARITY_MATCH_THRESHOLD,
     SIMILARITY_SIZE_WEIGHT,
@@ -63,10 +64,14 @@ logger = logging.getLogger(__name__)
 IOU_MATCH_THRESHOLD = 0.25
 
 # ---------------------------------------------------------------------------
-# Static (building) object classes – cannot physically move between frames.
+# Static (fixed-position) object classes – physically immovable between frames.
+# These include all permanent ground infrastructure whose lat/lon cannot change.
+#
 # Pairing rules:
-#   1. Only pair two detections whose geo distance ≤ MOVE_DISTANCE_THRESHOLD_DEG
-#      (same location constraint).
+#   1. ONLY pair two detections whose geo distance ≤ STATIC_EXACT_MATCH_DEG
+#      (≈11 m – same-point constraint; allows for satellite-image projection
+#      errors while rejecting clearly different structures).
+#      Any pair beyond this threshold is treated as two distinct objects.
 #   2. When one side is missing a detection, attempt cross-image similarity:
 #      crop the same geo region from both images and compare with CLIP.
 #      If similarity ≥ _STATIC_SIM_THRESHOLD → synthesise a DetectionRecord
@@ -78,6 +83,7 @@ _STATIC_CLASSES: frozenset = frozenset({
     "fuel storage",
     "supply depot",
     "military building",
+    "radar installation",   # 고정 레이더 시설 – 이동 불가
 })
 _STATIC_SIM_THRESHOLD: float = 0.5   # CLIP cosine similarity threshold
 
@@ -557,10 +563,10 @@ def pair_by_tracking(
 
     # ------------------------------------------------------------------
     # 0. Static class geo-based pre-matching
-    #    건물류(static classes)는 물리적으로 이동 불가이므로 SAM3 tracker(픽셀 IoU)
-    #    보다 먼저 위경도 근접도 기준으로 매칭한다.
-    #    같은 클래스이고 geo 거리 ≤ MOVE_DISTANCE_THRESHOLD_DEG 인 쌍 중 가장
-    #    가까운 쌍부터 greedy 할당. 일치 시 "matched".
+    #    고정 시설물(건물·레이더 등)은 물리적으로 이동 불가.
+    #    SAM3 tracker(픽셀 IoU)보다 먼저 위경도 근접도 기준으로 매칭한다.
+    #    같은 클래스이고 geo 거리 ≤ STATIC_EXACT_MATCH_DEG(≈11m) 인 쌍 중 가장
+    #    가까운 쌍부터 greedy 할당. 임계값 초과 쌍은 절대 매칭하지 않는다.
     # ------------------------------------------------------------------
     static_cur_list  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
     static_past_list = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
@@ -572,7 +578,7 @@ def pair_by_tracking(
                 if cur.object_class.lower() != past.object_class.lower():
                     continue
                 dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
-                if dist <= MOVE_DISTANCE_THRESHOLD_DEG:
+                if dist <= STATIC_EXACT_MATCH_DEG:
                     geo_candidates.append((dist, ci, pi))
         geo_candidates.sort()          # 가장 가까운 쌍부터
         geo_matched_ci: set = set()
@@ -1253,9 +1259,10 @@ def pair_by_similarity(
     ]
 
     # ------------------------------------------------------------------
-    # Step 0. Static class geo-based pre-matching (같은 위경도 건물 → 무조건 matched)
-    # CLIP 점수와 무관하게, 같은 클래스 건물이 MOVE_DISTANCE_THRESHOLD_DEG 이내이면
+    # Step 0. Static class geo-based pre-matching
+    # CLIP 점수와 무관하게, 같은 클래스 고정 시설물이 STATIC_EXACT_MATCH_DEG(≈11m) 이내이면
     # 가장 가까운 쌍부터 greedy로 matched 페어링 생성.
+    # 임계값 초과 쌍은 절대 매칭하지 않는다 (다른 위치의 건물을 동일 건물로 식별하지 않음).
     # ------------------------------------------------------------------
     _s_cur  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
     _s_past = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
@@ -1267,7 +1274,7 @@ def pair_by_similarity(
             for ci, c in enumerate(_s_cur)
             for pi, p in enumerate(_s_past)
             if c.object_class.lower() == p.object_class.lower()
-            and _geo_distance(c.lat, c.lon, p.lat, p.lon) <= MOVE_DISTANCE_THRESHOLD_DEG
+            and _geo_distance(c.lat, c.lon, p.lat, p.lon) <= STATIC_EXACT_MATCH_DEG
         )
         _gc_seen: set = set()
         _gp_seen: set = set()
@@ -1361,9 +1368,10 @@ def pair_by_similarity(
             # 동일 클래스인 경우만 같은 객체 후보로 허용
             if cur.object_class.lower() != past.object_class.lower():
                 continue
-            # 건물류: 위경도가 동일(MOVE_DISTANCE_THRESHOLD_DEG 이내)한 쌍만 허용
+            # 고정 시설물: STATIC_EXACT_MATCH_DEG(≈11m) 이내에 있는 쌍만 허용
+            # → 다른 위치의 건물·레이더를 CLIP 유사도로 잘못 매칭하는 것을 방지
             if cur.object_class.lower() in _STATIC_CLASSES:
-                if _geo_distance(cur.lat, cur.lon, past.lat, past.lon) > MOVE_DISTANCE_THRESHOLD_DEG:
+                if _geo_distance(cur.lat, cur.lon, past.lat, past.lon) > STATIC_EXACT_MATCH_DEG:
                     continue
             if clip_sim_matrix is not None:
                 base_score = float(clip_sim_matrix[ci, pi])
