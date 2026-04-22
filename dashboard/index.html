@@ -1307,6 +1307,7 @@ let _reportMapMarkers = [];       // 보고서 위치 마커 배열
 const REPORT_MARKER_MIN_ZOOM = 6; // 이 줌 이상에서 보고서 마커 표시
 
 /* ── 호버 핀 마커 – 목록 항목 hover 시 지도 위에 위치 표시 ── */
+// 지도에 호버 핀 마커를 생성하여 표시
 function showHoverMarker(lat, lon, pinClass) {
   if (!map || lat == null || lon == null || isNaN(lat) || isNaN(lon)) return;
   removeHoverMarker();
@@ -1318,11 +1319,13 @@ function showHoverMarker(lat, lon, pinClass) {
     zIndexOffset: 600,
   }).addTo(map);
 }
+// 호버 핀 마커를 지도에서 제거
 function removeHoverMarker() {
   if (_hoverMarker) { _hoverMarker.remove(); _hoverMarker = null; }
 }
 
 /* ── 지도 초기화 ── */
+// Leaflet 지도를 초기화하고 GeoJSON 레이어를 로드
 function initMap() {
   map = L.map('map', { center: [30, 100], zoom: 3, preferCanvas: true });
 
@@ -1348,9 +1351,11 @@ function initMap() {
       const LABEL_MIN_ZOOM = 3;
       const _labelMarkers = [];
 
+      // 폴리곤 좌표에서 무게중심 위경도를 계산
       function _polygonCentroid(coords) {
         // 가장 큰 링의 무게중심 계산
         let areaMax = 0, cx = 0, cy = 0;
+        // 단일 링의 면적 중심 좌표를 반환
         function ringCentroid(ring) {
           let a = 0, x = 0, y = 0;
           for (let i = 0, n = ring.length - 1; i < n; i++) {
@@ -1364,6 +1369,7 @@ function initMap() {
           a /= 2;
           return { area: Math.abs(a), x: x / (6 * a), y: y / (6 * a) };
         }
+        // GeoJSON 지오메트리에서 외곽 링 배열을 추출
         function flatten(geom) {
           if (geom.type === 'Polygon') return [geom.coordinates[0]];
           if (geom.type === 'MultiPolygon') return geom.coordinates.map(p => p[0]);
@@ -1394,6 +1400,7 @@ function initMap() {
         _labelMarkers.push(m);
       }
 
+      // 줌·뷰포트 범위에 따라 국가명 레이블 표시/숨김
       function _updateLabels() {
         const z = map.getZoom();
         const bounds = map.getBounds();
@@ -1428,6 +1435,7 @@ const FLY_ZOOM = 10;        // 항목 호버 시 줌 레벨
 const FLY_DURATION = 0.6;   // flyTo 애니메이션 초
 
 let _flyTimer = null;
+// 디바운스 후 지도를 주어진 좌표로 부드럽게 이동
 function flyToLocation(lat, lon) {
   if (lat == null || lon == null) return;
   clearTimeout(_flyTimer);
@@ -1438,6 +1446,7 @@ function flyToLocation(lat, lon) {
 }
 
 /* ── 보고서 위치 마커 렌더링 ── */
+// 지도에 보고서 위치 마커를 갱신하여 렌더링
 function renderReportMarkers() {
   // 기존 마커 제거
   _reportMapMarkers.forEach(m => m.remove());
@@ -1484,6 +1493,7 @@ function renderReportMarkers() {
 }
 
 /* ── 위성 위치 로드 (모의기) ── */
+// API에서 위성 목록을 불러와 지도와 사이드바를 갱신
 async function loadSatellites() {
   try {
     const res = await fetch(`${API}/api/satellites`);
@@ -1499,6 +1509,7 @@ async function loadSatellites() {
 }
 
 /* ── 마커 렌더링 ── */
+// 모든 위성 마커를 지도에 다시 렌더링
 function renderMarkers() {
   satMarkers.forEach(m => m.remove());
   satMarkers = [];
@@ -1528,6 +1539,7 @@ function renderMarkers() {
 /* ── 파이프라인 분석 단계 마커 ── */
 let _analysisMarker = null;
 
+// 파이프라인 분석 단계 상태를 지도 마커로 표시
 function renderAnalysisMarker(status) {
   // idle 이거나 좌표 없으면 마커 제거
   if (!status || status.stage === 'idle' || status.lat == null || status.lon == null) {
@@ -1548,6 +1560,7 @@ function renderAnalysisMarker(status) {
 }
 
 /* ── 사이드바 목록 ── */
+// 위성 목록을 사이드바에 렌더링
 function renderSidebarList() {
   const list = document.getElementById('sat-list');
   list.innerHTML = '';
@@ -1565,6 +1578,7 @@ function renderSidebarList() {
 }
 
 /* ── 위성 정보 업데이트 (호버) ── */
+// 선택된 위성의 상세 정보를 패널에 표시
 function showSatDetail(sat) {
   document.getElementById('dp-sat-name').textContent = sat.name;
   document.getElementById('dp-sat-detail').innerHTML =
@@ -1581,6 +1595,7 @@ document.getElementById('dp-close').addEventListener('click', () => {
 /* ══════════════════════════════════════════════════
    DB 전체 이미지/탐지 목록 렌더링
    ══════════════════════════════════════════════════ */
+// ISO 시간 문자열을 한국어 형식으로 변환
 function fmtTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -1589,6 +1604,7 @@ function fmtTime(iso) {
 }
 
 /* ── 위성 영상 목록 로드 ── */
+// DB에서 위성 영상 목록을 불러와 UI에 렌더링
 async function loadAllImages() {
   try {
     const res = await fetch(`${API}/api/images`);
@@ -1642,6 +1658,7 @@ async function loadAllImages() {
 }
 
 /* ── SAM3 탐지 결과 목록 로드 ── */
+// 탐지 결과가 있는 영상 목록을 불러와 UI에 표시
 async function loadAllDetections() {
   try {
     const res = await fetch(`${API}/api/images`);
@@ -1713,6 +1730,7 @@ let   popRenderedCache = {};   // imageId → rendered (bbox) b64
 let   popDetCache      = {};   // imageId → detections[]
 let   hidePopupTimer = null;
 
+// 마우스 위치에 맞게 팝업 위치를 조정
 function movePopup(e) {
   const pw = popup.offsetWidth  || 300;
   const ph = popup.offsetHeight || 200;
@@ -1724,6 +1742,7 @@ function movePopup(e) {
   popup.style.top  = y + 'px';
 }
 
+// 호버 팝업을 숨기고 내용을 초기화
 function hidePopup() {
   popup.style.display = 'none';
   popup.classList.remove('det-mode');
@@ -1733,6 +1752,7 @@ function hidePopup() {
 }
 
 /* 이미지 팝업 (위성 영상 섹션 hover) */
+// 위성 영상 항목 hover 시 썸네일 팝업을 표시
 async function showImagePopup(imgMeta, e) {
   popHdr.textContent = `위성 영상 | ${fmtTime(imgMeta.capture_time)}`;
   popImg.style.display = 'none';
@@ -1765,6 +1785,7 @@ async function showImagePopup(imgMeta, e) {
 }
 
 /* 탐지 정보 팝업 (SAM3 섹션 hover) — 왼쪽: bbox 이미지, 오른쪽: 탐지 목록 */
+// 탐지 항목 hover 시 bbox 이미지와 탐지 목록 팝업을 표시
 async function showDetectionPopup(imageId, imgMeta, e) {
   popHdr.textContent = `SAM3 탐지 결과 | ${fmtTime(imgMeta.capture_time)}`;
   popImg.style.display = 'none';
@@ -1847,6 +1868,7 @@ async function showDetectionPopup(imageId, imgMeta, e) {
 }
 
 /* ── 시뮬레이션 1스텝 실행 ── */
+// 수동 시뮬레이션 1스텝을 실행하고 UI를 갱신
 document.getElementById('run-btn').addEventListener('click', async () => {
   const btn = document.getElementById('run-btn');
   const status = document.getElementById('sim-status');
@@ -1915,6 +1937,7 @@ document.getElementById('run-btn').addEventListener('click', async () => {
 document.getElementById('refresh-btn').addEventListener('click', loadSatellites);
 
 /* ── 시스템 초기화 버튼 ── */
+// 파이프라인 상태 및 임무를 서버에서 초기화
 document.getElementById('reset-btn').addEventListener('click', async () => {
   if (!confirm('pipeline_status, sat_missions, 파이프라인 프로세스를 초기화합니다.\n계속하시겠습니까?')) return;
 
@@ -1941,6 +1964,7 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
 });
 
 /* ── 위경도 → 지역명 분류 ── */
+// 위경도 좌표를 대륙·지역명 문자열로 변환
 function getRegion(lat, lon) {
   if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return '기타';
   // 북미
@@ -1973,6 +1997,7 @@ const _ALERT_COUNTRIES = {
   'Russian Federation':                          '러시아',
 };
 
+// 국가명을 받아 경보 국가 한글 레이블을 반환
 function getAlertLabel(countryName) {
   return countryName ? (_ALERT_COUNTRIES[countryName] ?? null) : null;
 }
@@ -1985,6 +2010,7 @@ let _rptRegion        = '전체'; // 지역 필터
 let _selectedCountry  = null;  // 국가 드롭다운 선택값 (null = 전체)
 let _countryDDInited  = false; // document click 리스너 중복 방지
 
+// 필터 조건에 맞는 보고서 목록을 렌더링
 function renderRptList() {
   const list        = document.getElementById('rpt-list');
   const dateFrom    = document.getElementById('rpt-date-from')?.value || '';
@@ -2054,6 +2080,7 @@ function renderRptList() {
 }
 
 // 날짜 입력 이벤트 연결 (DOM 준비 후 한 번만)
+// 날짜 필터 입력에 이벤트 리스너를 등록
 function _bindRptFilterInputs() {
   const dateFrom = document.getElementById('rpt-date-from');
   const dateTo   = document.getElementById('rpt-date-to');
@@ -2061,6 +2088,7 @@ function _bindRptFilterInputs() {
   if (dateTo)   dateTo.addEventListener('input',   renderRptList);
 }
 
+// DB에서 모든 보고서를 불러와 필터 UI와 목록을 초기화
 async function loadAllReports() {
   const list       = document.getElementById('rpt-list');
   const count      = document.getElementById('rpt-count');
@@ -2227,6 +2255,7 @@ const _cropState = {
 
 /* ── 크롭 에디터 함수 ── */
 
+// 크롭 영역 사각형과 핸들을 캔버스에 그림
 function _cropDraw() {
   const { img, canvas, ctx, rects } = _cropState;
   if (!ctx || !img) return;
@@ -2249,6 +2278,7 @@ function _cropDraw() {
   });
 }
 
+// 크롭 사각형을 좌우 반반 기본값으로 초기화
 function _cropReset() {
   const { canvas, rects } = _cropState;
   if (!canvas || !canvas.width) return;
@@ -2258,6 +2288,7 @@ function _cropReset() {
   _cropDraw();
 }
 
+// 크롭 영역을 잘라내어 이전·현재 이미지 패널에 반영
 function _cropApply() {
   const { img, canvas, rects } = _cropState;
   if (!img || !canvas) return;
@@ -2278,6 +2309,7 @@ function _cropApply() {
   });
 }
 
+// 클릭 좌표가 크롭 핸들 모서리에 해당하는지 판별
 function _hitTestCropCorner(r, cx, cy) {
   const HS = 8;
   const corners = [
@@ -2289,9 +2321,11 @@ function _hitTestCropCorner(r, cx, cy) {
   return null;
 }
 
+// 크롭 캔버스에 포인터 이벤트를 등록하여 드래그 조작을 지원
 function _attachCropEvents() {
   const canvas = document.getElementById('crop-canvas');
 
+  // 포인터 이벤트 좌표를 캔버스 내부 픽셀 좌표로 변환
   function _xy(e) {
     const rect = canvas.getBoundingClientRect();
     return [(e.clientX - rect.left) * (canvas.width  / rect.width),
@@ -2351,6 +2385,7 @@ function _attachCropEvents() {
   canvas.addEventListener('pointercancel', () => { _cropState.drag = null; });
 }
 
+// 지정된 이미지를 불러와 크롭 에디터를 초기화
 async function _initCropEditor(srcKey) {
   const container = document.getElementById('crop-canvas-container');
   const loadingEl = document.getElementById('crop-loading');
@@ -2387,6 +2422,7 @@ async function _initCropEditor(srcKey) {
   }
 }
 
+// 이미지 표시 모드를 separate/crop으로 전환
 function _switchImgMode(mode) {
   _imgMode = mode;
   document.getElementById('rpt-sep-panels').style.display  = mode === 'separate' ? 'flex'  : 'none';
@@ -2396,6 +2432,7 @@ function _switchImgMode(mode) {
   if (mode === 'crop') _initCropEditor(document.getElementById('crop-src-sel').value);
 }
 
+// 이미지 정보로 img 요소와 촬영 시간 태그를 생성
 function buildImgEl(info) {
   const wrap = document.createElement('div');
   wrap.style.cssText = 'width:100%;display:contents;';
@@ -2421,6 +2458,7 @@ function buildImgEl(info) {
 }
 
 /* ── 보고서 ID 직접 열기 ── */
+// 보고서 ID로 보고서 모달을 열고 내용을 로드
 async function openReportById(id, fname) {
   const modal    = document.getElementById('report-modal');
   const meta     = document.getElementById('report-meta');
@@ -2509,6 +2547,7 @@ async function openReportById(id, fname) {
     const currImgId  = imgs?.current_image_id || null;
 
     // 탐지 결과가 없더라도 원본 이미지 ID가 있으면 raw 이미지를 표시한다
+    // 원본 이미지를 패널에 비동기로 로드하여 표시
     function _loadRawInto(wrap, imageId, editBtn) {
       wrap.innerHTML = '<span class="rpt-img-loading">이미지 로딩 중...</span>';
       editBtn.style.display = 'inline-block';
@@ -2604,6 +2643,7 @@ document.getElementById('pviz-modal-close').addEventListener('click', () => {
 });
 
 /* 보고서 모달 헤더 버튼 토글 */
+// 페어링 시각화 모달 열기/닫기를 토글
 document.getElementById('pviz-toggle-btn').addEventListener('click', () => {
   if (_pvizOpen) {
     document.getElementById('pviz-modal').classList.remove('open');
@@ -2617,6 +2657,7 @@ document.getElementById('pviz-toggle-btn').addEventListener('click', () => {
 });
 
 /* ── 모달 열기 + 데이터 로드 ── */
+// 페어링 시각화 모달을 열고 페어링 데이터를 로드
 async function _openPvizModal(reportId) {
   const modal   = document.getElementById('pviz-modal');
   const stats   = document.getElementById('pviz-modal-stats');
@@ -2691,6 +2732,7 @@ async function _openPvizModal(reportId) {
 }
 
 /* ── 우측 목록 렌더 + hover 이벤트 ── */
+// 페어링 목록을 렌더링하고 hover 강조 이벤트를 등록
 function _pvizRenderList(listEl, pairs, pastC, currC, pastImgData, currImgData) {
   listEl.innerHTML = '';
   pairs.forEach(p => {
@@ -2752,6 +2794,7 @@ function _pvizRenderList(listEl, pairs, pastC, currC, pastImgData, currImgData) 
 }
 
 /* ── 캔버스 렌더 (이미지 + bbox, hoveredId 기준 강조/dim) ── */
+// 이미지와 페어링 bbox를 캔버스에 그리고 hover 강조를 적용
 function _pvizDrawCanvas(canvas, imgData, pairs, side, hoveredId) {
   return new Promise(resolve => {
     canvas.width  = imgData.width;
@@ -2811,6 +2854,7 @@ function _pvizDrawCanvas(canvas, imgData, pairs, side, hoveredId) {
 }
 
 /* ── SVG 연결선 (matched/moved만, hoveredId 기준 필터) ── */
+// 이전·현재 캔버스 사이에 SVG 페어링 연결선을 그림
 function _pvizDrawLines(pairs, pastC, currC, pastImg, currImg, hoveredId) {
   const svg  = document.getElementById('pviz-svg');
   const area = document.getElementById('pviz-img-area');
@@ -2890,6 +2934,7 @@ document.getElementById('edit-report-btn').addEventListener('click', () => {
   }
 });
 
+// 보고서 텍스트 편집 내용을 서버에 저장
 _editRptSaveBtn.addEventListener('click', async () => {
   if (!_currentReportId) return;
   _editRptSaveBtn.disabled = true;
@@ -2918,6 +2963,7 @@ _editRptSaveBtn.addEventListener('click', async () => {
   }
 });
 
+// 화면 하단에 단기 알림 토스트 메시지를 표시
 function meta_toast(msg) {
   const t = Object.assign(document.createElement('div'), {
     textContent: msg,
@@ -2949,12 +2995,14 @@ let _edImgEl   = new Image();
 const _edCanvas = document.getElementById('det-canvas');
 const _edCtx    = _edCanvas.getContext('2d');
 
+// 캔버스 내부 좌표와 CSS 픽셀 간 스케일 비율을 반환
 function _edScale() {
   // canvas 내부 좌표(=out 이미지 px) → 표시 CSS px
   const r = _edCanvas.getBoundingClientRect();
   return { sx: r.width / _edCanvas.width, sy: r.height / _edCanvas.height };
 }
 
+// 마우스 이벤트 좌표를 zoom/pan 보정한 월드 좌표로 변환
 function _canvasCoords(e) {
   // 1단계: CSS 픽셀 → canvas 내부 픽셀 (CSS 스케일 보정)
   const r = _edCanvas.getBoundingClientRect();
@@ -2968,6 +3016,7 @@ function _canvasCoords(e) {
 }
 
 // CSS픽셀 → raw canvas 픽셀 (pan/zoom 미적용, 팬 드래그용)
+// pan/zoom 미적용으로 raw 캔버스 픽셀 좌표를 반환
 function _rawCanvasCoords(e) {
   const r = _edCanvas.getBoundingClientRect();
   return {
@@ -2977,16 +3026,19 @@ function _rawCanvasCoords(e) {
 }
 
 // DB 원본 좌표 → 캔버스(out이미지) 좌표
+// DB 원본 픽셀 좌표를 캔버스 표시 좌표로 변환
 function _toCanvas(v, axis) {
   return axis === 'x' ? v * (_edCanvas.width  / _edOrig.w)
                       : v * (_edCanvas.height / _edOrig.h);
 }
 // 캔버스 좌표 → DB 원본 좌표
+// 캔버스 표시 좌표를 DB 원본 픽셀 좌표로 역변환
 function _toOrig(v, axis) {
   return axis === 'x' ? v * (_edOrig.w / _edCanvas.width)
                       : v * (_edOrig.h / _edCanvas.height);
 }
 
+// 편집기 캔버스에 이미지와 탐지 바운딩 박스를 재렌더링
 function _edDraw() {
   _edCtx.clearRect(0, 0, _edCanvas.width, _edCanvas.height);
 
@@ -3044,6 +3096,7 @@ function _edDraw() {
 }
 
 /* 선택된 bbox 우상단에 HTML 오버레이 ✕ 버튼 위치 갱신 */
+// 선택된 bbox 위에 삭제 버튼 오버레이 위치를 갱신
 function _edUpdateDelOverlay() {
   const btn = document.getElementById('det-bbox-del-btn');
   if (_edSelIdx < 0 || _edSelIdx >= _edDets.length) {
@@ -3072,6 +3125,7 @@ function _edUpdateDelOverlay() {
   btn.style.display = 'flex';
 }
 
+// 인덱스에 해당하는 탐지 항목을 목록에서 삭제
 function _edDeleteDet(idx) {
   if (idx < 0 || idx >= _edDets.length) return;
   _edDets.splice(idx, 1);
@@ -3080,6 +3134,7 @@ function _edDeleteDet(idx) {
   _edRenderList(); _edDraw();
 }
 
+// 탐지 편집기 사이드바 목록을 갱신하여 렌더링
 function _edRenderList() {
   const list  = document.getElementById('ed-det-list');
   const badge = document.getElementById('det-count-badge');
@@ -3103,6 +3158,7 @@ function _edRenderList() {
   });
 }
 
+// 캔버스 마우스 다운 시 박스 선택 또는 드래그 그리기 시작
 _edCanvas.addEventListener('mousedown', e => {
   // 미들 마우스 또는 Space+좌클릭: 팬(이동) 시작
   if (e.button === 1 || (e.button === 0 && _edSpaceDown)) {
@@ -3136,6 +3192,7 @@ _edCanvas.addEventListener('mousedown', e => {
   _edDraw();
 });
 
+// 캔버스 마우스 이동 시 드래그 박스 및 팬 이동 처리
 _edCanvas.addEventListener('mousemove', e => {
   // 팬 드래그 처리
   if (_edPanDrag) {
@@ -3151,6 +3208,7 @@ _edCanvas.addEventListener('mousemove', e => {
   _edDraw();
 });
 
+// 캔버스 마우스 업 시 새 bbox를 추가하거나 팬을 종료
 _edCanvas.addEventListener('mouseup', e => {
   // 미들 마우스 또는 Space+좌클릭 팬 종료
   if (e.button === 1 || (e.button === 0 && _edPanDrag)) {
@@ -3231,6 +3289,7 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// 탐지 편집기 모달을 열고 이미지와 탐지 데이터를 로드
 async function openDetEditor(imageId, label) {
   _edImgId    = imageId;
   _edDets     = [];
@@ -3339,6 +3398,7 @@ document.getElementById('edit-past-det-btn').addEventListener('click', () => {
   if (_pastImageIds.length > 0) openDetEditor(_pastImageIds[0], '과거 시점');
 });
 
+// 탐지 편집 결과를 서버에 저장하고 이미지를 갱신
 document.getElementById('det-save-btn').addEventListener('click', async () => {
   if (!_edImgId) return;
   const saveBtn = document.getElementById('det-save-btn');
@@ -3411,6 +3471,7 @@ const _PR_BADGE_CLS = {
   past_not_included:'pr-badge-pni', current_not_included:'pr-badge-cni'
 };
 
+// 세션 ID로 페어링 에디터 모달을 열고 데이터를 로드
 async function openPairingEditor(sessionId) {
   const modal   = document.getElementById('pairing-editor-modal');
   const content = document.getElementById('pairing-editor-content');
@@ -3434,6 +3495,7 @@ async function openPairingEditor(sessionId) {
   }
 }
 
+// 페어링 목록을 편집 가능한 테이블로 렌더링
 function _renderPairingTable() {
   const content = document.getElementById('pairing-editor-content');
   if (!_prData.length) {
@@ -3524,6 +3586,7 @@ function _renderPairingTable() {
   });
 }
 
+// 페어링 변경·삭제 내용을 서버에 일괄 저장
 document.getElementById('pairing-save-btn').addEventListener('click', async () => {
   const saveBtn = document.getElementById('pairing-save-btn');
   saveBtn.disabled = true; saveBtn.textContent = '저장 중...';
@@ -3559,6 +3622,7 @@ document.getElementById('pairing-cancel-btn').addEventListener('click', () => {
   document.getElementById('pairing-editor-modal').classList.remove('open');
 });
 
+// 현재 이미지를 기반으로 보고서를 재생성
 document.getElementById('rpt-regen-btn').addEventListener('click', async () => {
   const imageId = _currImageIds[0];
   if (!imageId) { meta_toast('재생성할 현재 이미지 없음'); return; }
@@ -3594,6 +3658,7 @@ document.getElementById('rpt-regen-btn').addEventListener('click', async () => {
    이미지를 조회하면 빈 배열이 반환된다.
    캐시된 _currImageIds / _pastImageIds 로 /api/image/{id}/rendered 를 직접 호출하면
    항상 최신 탐지 결과가 반영된 이미지를 가져올 수 있다. */
+// 탐지 저장 후 보고서 이미지 패널을 직접 갱신
 async function refreshReportImages() {
   const ts      = Date.now();
   const imgRow  = document.getElementById('report-img-row');
@@ -3604,6 +3669,7 @@ async function refreshReportImages() {
 
   imgRow.classList.add('has-images');
 
+  // 렌더링 이미지를 API에서 가져오는 내부 헬퍼
   async function fetchRendered(imageId) {
     const res = await fetch(`${API}/api/image/${encodeURIComponent(imageId)}/rendered?t=${ts}`);
     if (!res.ok) return null;
@@ -3628,6 +3694,7 @@ async function refreshReportImages() {
 }
 
 /* ── 보고서 모달 (위치 기반 더블클릭) ── */
+// 위경도 좌표로 최근 보고서를 조회하여 모달에 표시
 async function openReport(lat, lon) {
   const modal = document.getElementById('report-modal');
   const meta  = document.getElementById('report-meta');
@@ -3680,6 +3747,7 @@ async function openReport(lat, lon) {
 }
 
 /* 모달 닫기 */
+// 보고서 모달을 닫고 편집 상태를 초기화
 function closeReportModal() {
   document.getElementById('report-modal').classList.remove('open');
   document.getElementById('download-btn').style.display = 'none';
@@ -3707,6 +3775,7 @@ let _prevRunCount   = 0;
 let _prevRunning    = false;
 let _autoEnabled    = false;
 
+// 자동 시뮬레이션 상태를 폴링하여 UI에 반영
 async function pollSimStatus() {
   try {
     const res = await fetch(`${API}/api/simulator/status`);
@@ -3811,6 +3880,7 @@ async function pollSimStatus() {
 }
 
 /* 자동 시뮬레이션 토글 버튼 */
+// 자동 시뮬레이션 ON/OFF를 서버에 토글 요청
 document.getElementById('auto-toggle-btn').addEventListener('click', async () => {
   try {
     const res = await fetch(`${API}/api/simulator/auto/toggle`, { method: 'POST' });
@@ -3824,6 +3894,7 @@ document.getElementById('auto-toggle-btn').addEventListener('click', async () =>
 let _sseReconnectTimer = null;
 let _sseInstance       = null;
 
+// SSE 연결 상태에 따라 실시간 지시등 UI를 업데이트
 function _setLiveIndicator(state) {
   // state: 'connecting' | 'on' | 'off'
   const dot   = document.getElementById('live-indicator');
@@ -3850,11 +3921,13 @@ let _dsLoadToken   = 0;      // 비동기 이미지 로드 중복 방지용 토�
 const _sam3Queue = [];
 let _sam3ActiveJob = null;   // 현재 실행 중인 작업 { sessionId, imageId }
 
+// SAM3 큐에 해당 세션의 작업이 있는지 확인
 function _sam3IsJobActive(sessionId) {
   return (_sam3ActiveJob && _sam3ActiveJob.sessionId === sessionId) ||
          _sam3Queue.some(j => j.sessionId === sessionId);
 }
 
+// SAM3 탐지 작업을 큐에 추가하고 순차 실행
 function _sam3Enqueue(sessionId, imageId) {
   _sam3Queue.push({ sessionId, imageId });
   if (!_sam3ActiveJob) _sam3ProcessNext();

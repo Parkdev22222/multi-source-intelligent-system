@@ -102,6 +102,7 @@ class MavenPipeline:
     # Step 1: Ingest + Detect
     # ------------------------------------------------------------------
 
+    # 이미지 탐지 및 센서 DB 저장
     def _detect_and_store(self, metadata_json: str, session_id: str) -> List[str]:
         """
         Load all images from metadata index, run SAM2 detection,
@@ -187,6 +188,7 @@ class MavenPipeline:
     # Step 2: Temporal Pairing
     # ------------------------------------------------------------------
 
+    # 시간적 페어링 수행 및 DB 저장
     def _pair_and_store(
         self,
         metadata_json: str,
@@ -348,6 +350,7 @@ class MavenPipeline:
     # Step 3: Report Generation
     # ------------------------------------------------------------------
 
+    # GraphRAG 컨텍스트 기반 군사 보고서 생성
     def _generate_report(
         self,
         session_id: str,
@@ -396,6 +399,7 @@ class MavenPipeline:
     # Re-run from existing detections (사용자 편집 후 재처리)
     # ------------------------------------------------------------------
 
+    # 수정된 탐지 기반 페어링·보고서 재실행
     def rerun_from_detections(self, image_id: str, target_description: str = "") -> str:
         """
         이미지 1장에 대해 SensorDB에 저장된 탐지 결과(사용자 수정 포함)를 기반으로
@@ -552,6 +556,7 @@ class MavenPipeline:
     # Step-based API (단계별 실행)
     # ------------------------------------------------------------------
 
+    # 이미지 적재만 수행하고 ID 목록 반환
     def ingest_only(self, metadata_json: str, session_id: str) -> List[str]:
         """
         Phase 1: 이미지 적재만 수행 (SAM3 탐지 없음).
@@ -594,6 +599,7 @@ class MavenPipeline:
         _clear_ps()
         return image_ids
 
+    # 단일 이미지에 SAM3 탐지 실행 후 DB 저장
     def detect_sam3_for_image(self, image_id: str) -> List[DetectionRecord]:
         """
         Phase 2a (SAM3 경로): 저장된 이미지 1장에 SAM3 탐지를 실행하고
@@ -674,6 +680,7 @@ class MavenPipeline:
         )
         return orm_detections
 
+    # 탐지 완료 세션의 페어링 및 보고서 생성
     def run_pairing_and_report(
         self,
         session_id: str,
@@ -873,6 +880,7 @@ class MavenPipeline:
     # Public API
     # ------------------------------------------------------------------
 
+    # 전체 파이프라인 엔드투엔드 실행
     def run(
         self,
         metadata_json: str,

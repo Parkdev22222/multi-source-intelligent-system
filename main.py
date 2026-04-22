@@ -26,6 +26,7 @@ from scripts.generate_sample_data import generate_sample_data
 logger = logging.getLogger(__name__)
 
 
+# 명령줄 인수 파싱 및 반환
 def parse_args():
     parser = argparse.ArgumentParser(
         description="MSIS: Multi-Source Intelligent System (Project Maven pipeline)"
@@ -65,6 +66,7 @@ def parse_args():
     return parser.parse_args()
 
 
+# 파이프라인 진입점 실행
 def main():
     args = parse_args()
 

@@ -31,6 +31,7 @@ import pycountry
 import reverse_geocoder as _rg
 
 
+# 위경도로 국가명 반환
 def _get_country_name(lat: float, lon: float) -> Optional[str]:
     """위경도로 국가명(영문) 반환. 좌표 없으면 None."""
     try:
@@ -87,6 +88,7 @@ _MUTE_PATHS = (
 )
 
 class _SilentAccessFilter(logging.Filter):
+    # 폴링 경로 요청 로그를 필터링
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
         return not any(p in msg for p in _MUTE_PATHS)
@@ -116,6 +118,7 @@ _sse_clients: list = []   # 연결된 클라이언트 Queue 목록
 _sse_lock = threading.Lock()
 
 
+# DB 갱신 이벤트를 SSE 클라이언트에 브로드캐스트
 def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float = 0.0,
                        changed: list | None = None):
     """모든 SSE 구독 클라이언트에게 DB 업데이트 이벤트를 브로드캐스트한다.
@@ -145,6 +148,7 @@ def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float 
                 pass
 
 
+# 파이프라인 단계 이벤트를 SSE 전송
 def _notify_pipeline_stage(status: dict):
     """파이프라인 단계 변경 이벤트를 모든 SSE 클라이언트에 브로드캐스트한다."""
     payload = json.dumps({
@@ -169,6 +173,7 @@ def _notify_pipeline_stage(status: dict):
                 pass
 
 
+# 이미지 적재 완료 이벤트 SSE 브로드캐스트
 def _notify_image_ingested(
     session_id: str,
     image_ids: list,
@@ -238,6 +243,7 @@ _campaign: dict = {
 _camp_lock = threading.Lock()
 
 
+# 임무 파일 로드 및 고착 상태 초기화
 def _load_missions_from_file():
     if _MISSIONS_FILE.exists():
         try:
@@ -254,6 +260,7 @@ def _load_missions_from_file():
                 wp["status"] = "failed"
 
 
+# 임무 정보를 JSON 파일로 저장
 def _save_missions_to_file():
     _MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with _mission_lock:
@@ -267,6 +274,7 @@ def _save_missions_to_file():
 _load_missions_from_file()
 
 
+# 위성 임무 파일 로드 및 상태 초기화
 def _load_sat_missions():
     if _SAT_MISSIONS_FILE.exists():
         try:
@@ -281,6 +289,7 @@ def _load_sat_missions():
                 wp["status"] = "failed"
 
 
+# 위성 임무 정보를 JSON 파일로 저장
 def _save_sat_missions():
     _SAT_MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with _sat_lock:
@@ -291,6 +300,7 @@ def _save_sat_missions():
 
 # ── 서버 시작 시 상태 파일 초기화 ─────────────────────────────────────────
 # 이전 실행에서 고착된 pipeline_status / sat_missions 를 항상 깨끗하게 시작한다.
+# 서버 시작 시 상태 파일 초기화
 def _reset_state_files() -> None:
     """pipeline_status.json → idle, sat_missions.json → {} 로 초기화."""
     try:
@@ -346,6 +356,7 @@ POSITION_CHANGE_THRESHOLD_DEG = 0.003   # ~300 m – 이 이상 이동하면 실
 AUTO_SIM_POLL_SEC              = 10      # 위치 체크 간격 (초)
 
 
+# 위성 위치 변경 여부 확인
 def _any_satellite_moved(new_sats: list) -> bool:
     """이전 위치 대비 임계값 이상 이동한 위성이 있으면 True."""
     prev = _auto_state["last_positions"]
@@ -361,6 +372,7 @@ def _any_satellite_moved(new_sats: list) -> bool:
     return False
 
 
+# DB에서 최신 보고서 ID 조회
 def _get_latest_report_id() -> str | None:
     """DB에서 가장 최근 보고서 ID 반환. 조회 실패 시 None."""
     try:
@@ -371,6 +383,7 @@ def _get_latest_report_id() -> str | None:
         return None
 
 
+# 웨이포인트 실행 결과를 상태에 반영
 def _finish_wp(wp: dict, result: dict, before_report_id: str | None = None):
     """웨이포인트 실행 결과 반영 (성공/실패 공통).
 
@@ -397,6 +410,7 @@ def _finish_wp(wp: dict, result: dict, before_report_id: str | None = None):
         wp["error"]  = result.get("stderr_tail", "")[:300]
 
 
+# 자동 시뮬레이션 백그라운드 루프 실행
 def _auto_sim_worker():
     """
     자동 시뮬레이션 백그라운드 스레드.
@@ -671,11 +685,13 @@ def _auto_sim_worker():
 
 _DB_POLL_INTERVAL = 2   # 폴링 간격 (초)
 
+# DB 행 수 폴링 후 변화 시 SSE 알림
 def _db_poll_worker():
     """탐지/이미지 DB 행 수를 주기적으로 확인해 변화 시 SSE 알림."""
     import sqlite3
     from src.config import SENSOR_DB_PATH, REPORTS_DB_PATH
 
+    # DB 테이블별 행 수 조회
     def _row_counts():
         counts = {"images": 0, "detections": 0, "reports": 0}
         for db_path, queries in [
@@ -735,6 +751,7 @@ threading.Thread(target=_auto_sim_worker, daemon=True, name="AutoSimThread").sta
 threading.Thread(target=_db_poll_worker,  daemon=True, name="DBPollThread").start()
 
 
+# 이미지를 PNG base64 문자열로 변환
 def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
     """이미지 파일(TIFF 포함)을 PNG로 변환 후 base64 반환."""
     from PIL import Image, ImageFile
@@ -748,6 +765,7 @@ def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
         return base64.b64encode(buf.getvalue()).decode()
 
 
+# bbox 좌표 공간 크기 계산 반환
 def _det_space(file_w: int, file_h: int,
                det_width: int | None, det_height: int | None) -> tuple[int, int]:
     """bbox 좌표 기준 공간 크기 반환.
@@ -762,6 +780,7 @@ def _det_space(file_w: int, file_h: int,
     return file_w, file_h
 
 
+# 탐지 박스 오버레이 이미지를 base64로 반환
 def _image_with_detections_b64(
     image_path: Path,
     detections: list,
@@ -803,6 +822,7 @@ def _image_with_detections_b64(
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/satellites")
+# 현재 위성 위치 목록 반환
 def api_satellites():
     """위성 모의기에서 계산된 현재 위성 위치 목록을 반환.
 
@@ -840,6 +860,7 @@ def api_satellites():
 
 
 @app.get("/api/simulator/status")
+# 자동 시뮬레이션 상태 조회
 def api_simulator_status():
     """자동 시뮬레이션 현재 상태 조회."""
     mission_info = None
@@ -881,6 +902,7 @@ def api_simulator_status():
 
 
 @app.post("/api/simulator/auto/toggle")
+# 자동 시뮬레이션 ON/OFF 토글
 def api_simulator_auto_toggle():
     """자동 시뮬레이션 ON/OFF 토글."""
     _auto_state["enabled"] = not _auto_state["enabled"]
@@ -889,6 +911,7 @@ def api_simulator_auto_toggle():
 
 
 @app.post("/api/simulator/step")
+# 위성 모의기 1스텝 실행
 def api_simulator_step():
     """
     위성 모의기 1스텝 실행:
@@ -932,6 +955,7 @@ def api_simulator_step():
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/detections")
+# 해당 지역 최신 탐지 결과 반환
 def api_detections(
     lat:    float = Query(..., description="위도"),
     lon:    float = Query(..., description="경도"),
@@ -964,6 +988,7 @@ def api_detections(
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/image/latest")
+# 해당 지역 최신 위성영상 메타데이터 반환
 def api_latest_image(
     lat:    float = Query(...),
     lon:    float = Query(...),
@@ -1008,6 +1033,7 @@ def api_latest_image(
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/images")
+# 전체 위성영상 목록 및 탐지 건수 반환
 def api_all_images(limit: int = Query(default=None)):
     """DB에 저장된 모든 위성영상 메타데이터 + 탐지 건수 목록 (capture_time DESC)."""
     rows = get_all_images_with_count(limit=limit)
@@ -1028,6 +1054,7 @@ def api_all_images(limit: int = Query(default=None)):
 
 
 @app.get("/api/image/{image_id}/thumb")
+# 이미지를 PNG base64 썸네일로 반환
 def api_image_thumb(image_id: str):
     """특정 이미지를 PNG로 변환하여 base64 반환 (TIFF 포함)."""
     record = get_image_record_by_id(image_id)
@@ -1055,6 +1082,7 @@ def api_image_thumb(image_id: str):
 
 
 @app.get("/api/detections/by-image/{image_id}")
+# 특정 이미지의 탐지 결과 전체 반환
 def api_detections_by_image(image_id: str):
     """특정 이미지에 속한 탐지 결과 전체 반환."""
     records = get_detections_by_image(image_id)
@@ -1078,6 +1106,7 @@ def api_detections_by_image(image_id: str):
 
 
 @app.get("/api/images/by-session/{session_id}")
+# 세션 ID로 이미지 목록 조회
 def api_images_by_session(session_id: str):
     """동일 session_id를 가진 이미지 목록 반환 (탐지 에디터 세션 이동용)."""
     records = get_images_by_session(session_id)
@@ -1100,9 +1129,11 @@ def api_images_by_session(session_id: str):
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/pairings/by-session/{session_id}")
+# 세션 페어링 목록 반환
 def api_pairings_by_session(session_id: str):
     """세션의 pairing 목록 반환 (pairing 에디터용)."""
     records = get_pairings_by_session(session_id)
+    # 페어링 레코드를 딕셔너리로 변환
     def _fmt(r):
         return {
             "id":                    r.id,
@@ -1129,6 +1160,7 @@ def api_pairings_by_session(session_id: str):
 
 
 @app.put("/api/pairing/{pairing_id}")
+# 페어링 단건 업데이트
 async def api_update_pairing(pairing_id: str, request: Request):
     """pairing 단건 업데이트 (status / object_class / confidence 변경)."""
     body = await request.json()
@@ -1139,6 +1171,7 @@ async def api_update_pairing(pairing_id: str, request: Request):
 
 
 @app.delete("/api/pairing/{pairing_id}")
+# 페어링 단건 삭제
 def api_delete_pairing(pairing_id: str):
     """pairing 단건 삭제."""
     ok = delete_pairing(pairing_id)
@@ -1152,6 +1185,7 @@ def api_delete_pairing(pairing_id: str):
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/report/latest")
+# 해당 지역 최신 판독 보고서 반환
 def api_latest_report(
     lat:    float = Query(...),
     lon:    float = Query(...),
@@ -1172,6 +1206,7 @@ def api_latest_report(
 
 
 @app.get("/api/report/{report_id}")
+# 보고서 ID로 단건 조회
 def api_report_by_id(report_id: str):
     report = get_report_by_id(report_id)
     if report is None:
@@ -1180,6 +1215,7 @@ def api_report_by_id(report_id: str):
 
 
 @app.get("/api/report/{report_id}/hwp")
+# 보고서를 HWPX 파일로 다운로드
 def api_report_hwp(report_id: str):
     """보고서를 HWPX 파일로 다운로드한다."""
     report = get_report_by_id(report_id)
@@ -1202,6 +1238,7 @@ def api_report_hwp(report_id: str):
 
 
 @app.get("/api/report/{report_id}/images")
+# 보고서 관련 현재·과거 위성사진 반환
 def api_report_images(report_id: str):
     """보고서 생성에 활용된 이전/현재 위성사진 base64 반환.
 
@@ -1275,6 +1312,7 @@ def api_report_images(report_id: str):
         past_image_id = past_capture_time = None
 
     # ── _build_info: image_id → base64(탐지 박스 포함) ───────────────────────
+    # 이미지 정보와 base64를 딕셔너리로 반환
     def _build_info(image_id: str, capture_time_fallback, with_detections: bool = False):
         rec = get_image_record_by_id(image_id)
         if rec is None:
@@ -1323,6 +1361,7 @@ def api_report_images(report_id: str):
 
 
 @app.get("/api/report/{report_id}/pairings")
+# 보고서 세션 페어링 목록 반환
 def api_report_pairings(report_id: str):
     """보고서 세션의 페어링 목록 (bbox·클래스 포함) 반환 – 매칭 도시용.
 
@@ -1432,6 +1471,7 @@ class ReportContentBody(BaseModel):
 
 
 @app.get("/api/image/{image_id}/raw")
+# 원본 이미지 및 출력 크기 반환
 def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
     """원본 이미지(탐지 박스 없음) + 실제 출력 크기 반환."""
     from PIL import Image as PilImage
@@ -1472,6 +1512,7 @@ def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
 
 
 @app.get("/api/image/{image_id}/rendered")
+# 탐지 결과 오버레이 이미지 반환
 def api_image_rendered(image_id: str, t: int = Query(default=0)):
     """현재 DB에 저장된 탐지 결과를 이미지에 그려서 반환 (캐시버스팅용 t 파라미터 지원)."""
     rec = get_image_record_by_id(image_id)
@@ -1495,6 +1536,7 @@ def api_image_rendered(image_id: str, t: int = Query(default=0)):
 
 
 @app.put("/api/image/{image_id}/detections")
+# 이미지 탐지 결과를 수정본으로 교체
 def api_update_detections(image_id: str, body: DetectionsUpdateBody):
     """이미지의 탐지 결과를 사용자 수정본으로 교체."""
     from src.database.models import DetectionRecord as DetRec
@@ -1532,6 +1574,7 @@ class _RegenBody(BaseModel):
 
 
 @app.post("/api/image/{image_id}/regenerate-report")
+# 수정된 탐지 기반 보고서 재생성
 def api_regenerate_report(
     image_id: str,
     background_tasks: BackgroundTasks,
@@ -1580,6 +1623,7 @@ def api_regenerate_report(
 
 
 @app.post("/api/image/{image_id}/detect-sam3")
+# SAM3 탐지 실행 및 결과 DB 저장
 def api_detect_sam3(image_id: str):
     """
     단계별 워크플로우 Phase 2a (SAM3 경로):
@@ -1628,6 +1672,7 @@ class _AnalyzeBody(BaseModel):
 
 
 @app.post("/api/session/{session_id}/analyze")
+# 세션 페어링 및 보고서 생성 실행
 def api_session_analyze(
     session_id: str,
     body: _AnalyzeBody = Body(default=_AnalyzeBody()),
@@ -1702,6 +1747,7 @@ def api_session_analyze(
 
 
 @app.delete("/api/detection/{detection_id}")
+# 탐지 결과 단건 삭제 및 참조 정리
 def api_delete_detection(detection_id: str):
     """탐지 결과 단건 삭제 → SensorDB에서 제거하고 pairing 참조도 정리."""
     det = get_detection_by_id(detection_id)
@@ -1715,6 +1761,7 @@ def api_delete_detection(detection_id: str):
 
 
 @app.patch("/api/report/{report_id}")
+# 보고서 텍스트 수정
 def api_update_report(report_id: str, body: ReportContentBody):
     """보고서 텍스트를 수정한다."""
     ok = update_report_content(report_id, body.report_content)
@@ -1725,6 +1772,7 @@ def api_update_report(report_id: str, body: ReportContentBody):
 
 
 @app.get("/api/reports")
+# 전체 보고서 목록 반환
 def api_all_reports(limit: int = Query(default=None)):
     reports = get_all_reports(limit=limit)
     items = []
@@ -1757,6 +1805,7 @@ def api_all_reports(limit: int = Query(default=None)):
 # GraphRAG 지식 그래프 API
 # ══════════════════════════════════════════════════════════════════════════
 
+# GraphIndexer 싱글톤 인스턴스 반환
 def _get_graph_indexer():
     """Return a module-level singleton GraphIndexer (lazy-init)."""
     from src.graph.graph_indexer import GraphIndexer
@@ -1766,6 +1815,7 @@ def _get_graph_indexer():
 
 
 @app.get("/api/graph/stats")
+# 지식 그래프 통계 반환
 def api_graph_stats():
     """지식 그래프 통계 (엔티티 수, 관계 수, 커뮤니티 수)."""
     try:
@@ -1776,6 +1826,7 @@ def api_graph_stats():
 
 
 @app.get("/api/graph/entities")
+# 해당 지역 그래프 자산 엔티티 목록 반환
 def api_graph_entities(
     lat:    float = Query(..., description="검색 중심 위도"),
     lon:    float = Query(..., description="검색 중심 경도"),
@@ -1819,6 +1870,7 @@ def api_graph_entities(
 
 
 @app.get("/api/graph/communities")
+# 모든 그래프 커뮤니티 요약 반환
 def api_graph_communities():
     """모든 커뮤니티(공출현 군집) 요약 반환."""
     try:
@@ -1840,6 +1892,7 @@ def api_graph_communities():
 
 
 @app.get("/api/graph/local-search")
+# 지역 기반 그래프 로컬 검색 수행
 def api_graph_local_search(
     lat:    float = Query(...),
     lon:    float = Query(...),
@@ -1864,6 +1917,7 @@ def api_graph_local_search(
 
 
 @app.post("/api/graph/reindex")
+# 그래프 커뮤니티 감지 강제 재실행
 def api_graph_reindex():
     """커뮤니티 감지를 강제로 재실행하고 결과 저장."""
     try:
@@ -1878,6 +1932,7 @@ def api_graph_reindex():
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/events")
+# SSE 스트림으로 실시간 이벤트 전송
 async def api_events():
     """
     Server-Sent Events 스트림.
@@ -1888,6 +1943,7 @@ async def api_events():
     with _sse_lock:
         _sse_clients.append(q)
 
+    # SSE 이벤트 비동기 생성기
     async def event_gen():
         try:
             yield "data: {\"type\":\"connected\"}\n\n"
@@ -1940,6 +1996,7 @@ class _MissionIn(BaseModel):
 
 
 @app.post("/api/missions")
+# 웨이포인트 포함 임무 생성
 def api_create_mission(body: _MissionIn):
     """임무 생성 (웨이포인트 목록 포함)."""
     mid = str(_uuid.uuid4())
@@ -1973,6 +2030,7 @@ def api_create_mission(body: _MissionIn):
 
 
 @app.get("/api/missions")
+# 임무 목록 최신 순 반환
 def api_list_missions():
     """임무 목록 반환 (최신 순)."""
     with _mission_lock:
@@ -1982,6 +2040,7 @@ def api_list_missions():
 
 
 @app.get("/api/mission/{mission_id}")
+# 임무 단건 상태 조회
 def api_get_mission(mission_id: str):
     """임무 단건 조회 (상태 폴링용)."""
     with _mission_lock:
@@ -1992,6 +2051,7 @@ def api_get_mission(mission_id: str):
 
 
 @app.post("/api/mission/{mission_id}/execute")
+# 임무를 자동 시뮬레이터에 등록 실행
 def api_execute_mission(mission_id: str):
     """임무를 자동 시뮬레이터에 등록하여 실행. 웨이포인트를 순서대로 처리."""
     global _active_mission_id
