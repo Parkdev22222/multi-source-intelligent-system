@@ -2078,6 +2078,7 @@ def api_execute_mission(mission_id: str):
 
 
 @app.delete("/api/mission/{mission_id}")
+# 임무 삭제
 def api_delete_mission(mission_id: str):
     """임무 삭제."""
     global _active_mission_id
@@ -2107,6 +2108,7 @@ class _SatMissionIn(BaseModel):
 
 
 @app.get("/api/sat-missions")
+# 위성별 임무계획 전체 반환
 def api_get_sat_missions():
     """위성별 임무계획 전체 반환."""
     from src.satellite.simulator import SATELLITES as _SATS
@@ -2125,6 +2127,7 @@ def api_get_sat_missions():
 
 
 @app.put("/api/sat-mission/{sat_id}")
+# 위성에 웨이포인트 목록 할당
 def api_set_sat_mission(sat_id: str, body: _SatMissionIn):
     """위성에 웨이포인트 목록 할당 (기존 임무 덮어쓰기)."""
     from src.satellite.simulator import SATELLITES as _SATS
@@ -2160,6 +2163,7 @@ def api_set_sat_mission(sat_id: str, body: _SatMissionIn):
 
 
 @app.delete("/api/sat-mission/{sat_id}")
+# 위성 임무계획 초기화
 def api_clear_sat_mission(sat_id: str):
     """위성 임무계획 초기화."""
     with _sat_lock:
@@ -2169,6 +2173,7 @@ def api_clear_sat_mission(sat_id: str):
 
 
 @app.post("/api/campaign/start")
+# 모든 위성 임무계획 일괄 캠페인 시작
 def api_campaign_start():
     """모든 위성 임무계획 일괄 실행 시작."""
     from src.satellite.simulator import SATELLITES as _SATS
@@ -2221,6 +2226,7 @@ def api_campaign_start():
 
 
 @app.delete("/api/campaign")
+# 캠페인 취소 및 상태 초기화
 def api_campaign_cancel():
     """캠페인 취소 / 상태 초기화."""
     with _camp_lock:
@@ -2236,6 +2242,7 @@ def api_campaign_cancel():
 
 
 @app.get("/api/campaign/status")
+# 캠페인 실행 상태 조회
 def api_campaign_status():
     """캠페인 실행 상태 조회."""
     with _camp_lock:
@@ -2243,6 +2250,7 @@ def api_campaign_status():
 
 
 @app.get("/api/pipeline/status")
+# 파이프라인 현재 단계 상태 조회
 def api_pipeline_status():
     """현재 파이프라인 단계 상태 조회 (대시보드 초기 로드용)."""
     from src.pipeline_status import read_status as _read_ps
@@ -2250,6 +2258,7 @@ def api_pipeline_status():
 
 
 @app.post("/api/system/reset")
+# 시스템 전체 상태 초기화
 def api_system_reset():
     """
     시스템 전체 초기화:
@@ -2305,6 +2314,7 @@ def api_system_reset():
     return {"ok": True, "message": "시스템이 초기화되었습니다."}
 
 
+# 보고서 레코드를 딕셔너리로 변환
 def _report_dict(r) -> dict:
     return {
         "id":             r.id,

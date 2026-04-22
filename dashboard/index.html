@@ -3933,6 +3933,7 @@ function _sam3Enqueue(sessionId, imageId) {
   if (!_sam3ActiveJob) _sam3ProcessNext();
 }
 
+// SAM3 큐에서 다음 탐지 작업을 꺼내 실행
 async function _sam3ProcessNext() {
   if (_sam3Queue.length === 0) { _sam3ActiveJob = null; return; }
   _sam3ActiveJob = _sam3Queue.shift();
@@ -3979,6 +3980,7 @@ async function _sam3ProcessNext() {
   _sam3ProcessNext();
 }
 
+// 탐지 방식 선택 모달을 열고 초기화
 function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   _dsSessionId    = sessionId;
   _dsImageIds     = imageIds || [];
@@ -4026,6 +4028,7 @@ function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   document.getElementById('detect-step-overlay').classList.add('open');
 }
 
+// 탐지 방식 선택 모달을 닫고 상태를 초기화
 function _dsClose() {
   document.getElementById('detect-step-overlay').classList.remove('open');
   _dsSessionId    = null;
@@ -4033,6 +4036,7 @@ function _dsClose() {
   _dsDetectionDone = false;
 }
 
+// 세션 이미지 네비게이션 버튼을 렌더링
 function _dsRenderImgNav() {
   const nav = document.getElementById('ds-image-nav');
   nav.innerHTML = '';
@@ -4051,6 +4055,7 @@ function _dsRenderImgNav() {
 }
 
 // 탐지 결과가 있으면 bbox 렌더링 이미지, 없으면 원본 이미지를 표시
+// 탐지 여부에 따라 bbox 또는 원본 이미지를 자동 선택하여 로드
 async function _dsLoadImageSmart(imageId) {
   const token = ++_dsLoadToken;
   // 기존 img 태그 모두 즉시(동기) 제거 — 비동기 gap 동안 이전 이미지 잔류 방지
@@ -4075,6 +4080,7 @@ async function _dsLoadImageSmart(imageId) {
   return _dsLoadImage(imageId);
 }
 
+// 원본 썸네일 이미지를 탐지 단계 모달에 표시
 async function _dsLoadImage(imageId) {
   const area    = document.getElementById('ds-image-area');
   const loading = document.getElementById('ds-image-loading');
@@ -4112,6 +4118,7 @@ document.getElementById('ds-sam3-btn').addEventListener('click', () => {
 });
 
 // 탐지 후 bbox 렌더링 이미지 갱신
+// bbox가 그려진 렌더링 이미지를 탐지 단계 모달에 표시
 async function _dsLoadRendered(imageId) {
   const area    = document.getElementById('ds-image-area');
   const loading = document.getElementById('ds-image-loading');
@@ -4150,6 +4157,7 @@ document.getElementById('ds-manual-btn').addEventListener('click', async () => {
 
 let _dsPendingManualImageId = null;
 
+// 탐지 완료 상태를 UI에 반영하고 Step2를 활성화
 function _dsMarkDetectionDone(method, count, classes) {
   _dsDetectionDone = true;
 
@@ -4176,6 +4184,7 @@ function _dsMarkDetectionDone(method, count, classes) {
 }
 
 // Step 2: 분석 시작
+// 탐지 결과를 분석하여 페어링 및 보고서를 생성
 document.getElementById('ds-analyze-btn').addEventListener('click', async () => {
   if (!_dsSessionId) return;
   const analyzeBtn = document.getElementById('ds-analyze-btn');
