@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 _engine = None
 
 
+# 센서 DB 엔진을 반환하고 마이그레이션 수행
 def get_engine():
     global _engine
     if _engine is None:
@@ -45,6 +46,7 @@ def get_engine():
 # Image record CRUD
 # ---------------------------------------------------------------------------
 
+# 이미지 메타데이터를 DB에 삽입하고 레코드 반환
 def insert_image_record(
     capture_time: datetime,
     source_type: str,
@@ -90,6 +92,7 @@ def insert_image_record(
 # Detection record CRUD
 # ---------------------------------------------------------------------------
 
+# 탐지 레코드 한 건을 DB에 삽입
 def insert_detection(detection: DetectionRecord) -> str:
     engine = get_engine()
     with Session(engine) as session:
@@ -103,6 +106,7 @@ def insert_detection(detection: DetectionRecord) -> str:
         return detection.id
 
 
+# 탐지 레코드 목록을 일괄 삽입하고 ID 목록 반환
 def insert_detections_bulk(detections: List[DetectionRecord]) -> List[str]:
     engine = get_engine()
     ids = []
@@ -117,11 +121,13 @@ def insert_detections_bulk(detections: List[DetectionRecord]) -> List[str]:
     return ids
 
 
+# SQLite 비교를 위해 타임존 정보를 제거
 def _naive(dt: datetime) -> datetime:
     """Strip timezone info so SQLite (which stores naive datetimes) comparisons work."""
     return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
 
 
+# 가장 최근 과거 탐지 결과와 캡처 시각을 반환
 def get_most_recent_past_detections(
     lat_center: float,
     lon_center: float,
@@ -154,6 +160,7 @@ def get_most_recent_past_detections(
     from sqlalchemy import func
     from .models import ImageRecord
 
+    # 추가 필터 조건으로 최신 캡처 배치와 레코드 조회
     def _query_latest_and_records(session, extra_filters):
         """Find most-recent capture_time batch matching extra_filters."""
         latest_time_row = (
@@ -220,6 +227,7 @@ def get_most_recent_past_detections(
         return records, ts
 
 
+# detection_id로 탐지 레코드 조회
 def get_detection_by_id(detection_id: str) -> Optional[DetectionRecord]:
     """Return the DetectionRecord for the given id, or None if not found."""
     engine = get_engine()
@@ -230,6 +238,7 @@ def get_detection_by_id(detection_id: str) -> Optional[DetectionRecord]:
         return record
 
 
+# detection_id로 탐지 레코드 삭제
 def delete_detection_by_id(detection_id: str) -> bool:
     """Delete a single DetectionRecord. Returns True if deleted, False if not found."""
     engine = get_engine()
@@ -243,6 +252,7 @@ def delete_detection_by_id(detection_id: str) -> bool:
         return True
 
 
+# 캡처 시각 ±허용범위 내 이미지 레코드 목록 반환
 def get_images_by_capture_time(capture_time: datetime, tolerance_sec: int = 5) -> List[ImageRecord]:
     """capture_time ± tolerance_sec 범위의 ImageRecord 목록 반환."""
     from datetime import timedelta
@@ -261,6 +271,7 @@ def get_images_by_capture_time(capture_time: datetime, tolerance_sec: int = 5) -
         return records
 
 
+# image_id로 이미지 레코드 조회
 def get_image_record_by_id(image_id: str) -> Optional[ImageRecord]:
     """Return the ImageRecord for the given id, or None if not found."""
     engine = get_engine()
@@ -271,6 +282,7 @@ def get_image_record_by_id(image_id: str) -> Optional[ImageRecord]:
         return record
 
 
+# 이미지 ID에 속한 탐지 레코드 전체 반환
 def get_detections_by_image(image_id: str) -> List[DetectionRecord]:
     engine = get_engine()
     with Session(engine) as session:
@@ -284,6 +296,7 @@ def get_detections_by_image(image_id: str) -> List[DetectionRecord]:
         return records
 
 
+# 이미지 탐지 결과를 전부 삭제 후 새 목록으로 교체
 def replace_detections_for_image(image_id: str, new_detections: List[DetectionRecord]) -> int:
     """이미지의 모든 탐지 결과를 삭제하고 새 목록으로 교체. 교체된 건수 반환."""
     engine = get_engine()
@@ -296,6 +309,7 @@ def replace_detections_for_image(image_id: str, new_detections: List[DetectionRe
         return len(new_detections)
 
 
+# 지정 반경 내 가장 최근 촬영 이미지 레코드 반환
 def get_latest_image_near(
     lat: float,
     lon: float,
@@ -319,6 +333,7 @@ def get_latest_image_near(
         return record
 
 
+# 이미지 레코드와 탐지 수를 최신순으로 반환
 def get_all_images_with_count(limit: int = None):
     """Return (ImageRecord, detection_count) tuples ordered by capture_time desc."""
     engine = get_engine()
@@ -340,6 +355,7 @@ def get_all_images_with_count(limit: int = None):
         return result
 
 
+# 세션 ID에 해당하는 이미지 레코드 전체 반환
 def get_images_by_session(session_id: str) -> List[ImageRecord]:
     """Return all ImageRecords tagged with the given pipeline session_id."""
     engine = get_engine()
@@ -355,6 +371,7 @@ def get_images_by_session(session_id: str) -> List[ImageRecord]:
         return records
 
 
+# 지정 반경 내 최신 이미지 배치의 탐지 결과 반환
 def get_latest_detections_near(
     lat: float,
     lon: float,

@@ -193,6 +193,7 @@ class ReportRecord(ReportBase):
 # DB factory helpers
 # ---------------------------------------------------------------------------
 
+# race-condition 없이 테이블을 안전하게 생성
 def _safe_create_all(metadata, engine) -> None:
     """
     create_all() 을 race-condition 에 안전하게 호출한다.
@@ -212,18 +213,21 @@ def _safe_create_all(metadata, engine) -> None:
             raise
 
 
+# 센서 DB용 SQLAlchemy 엔진 생성 및 반환
 def create_sensor_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
     _safe_create_all(Base.metadata, engine)
     return engine
 
 
+# 페어링 DB용 SQLAlchemy 엔진 생성 및 반환
 def create_pairing_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
     _safe_create_all(PairingBase.metadata, engine)
     return engine
 
 
+# 보고서 DB용 SQLAlchemy 엔진 생성 및 반환
 def create_report_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
     _safe_create_all(ReportBase.metadata, engine)

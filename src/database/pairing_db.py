@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 _engine = None
 
 
+# 페어링 DB 엔진을 반환(싱글톤)
 def get_engine():
     global _engine
     if _engine is None:
@@ -23,6 +24,7 @@ def get_engine():
     return _engine
 
 
+# 페어링 레코드 한 건을 DB에 삽입
 def insert_pairing(pairing: PairingRecord) -> str:
     engine = get_engine()
     with Session(engine) as session:
@@ -33,6 +35,7 @@ def insert_pairing(pairing: PairingRecord) -> str:
         return pairing.id
 
 
+# 페어링 레코드 목록을 일괄 삽입하고 ID 목록 반환
 def insert_pairings_bulk(pairings: List[PairingRecord]) -> List[str]:
     engine = get_engine()
     ids = []
@@ -47,6 +50,7 @@ def insert_pairings_bulk(pairings: List[PairingRecord]) -> List[str]:
     return ids
 
 
+# 최신 페어링 레코드 목록을 세션 또는 전체에서 반환
 def get_latest_pairings(session_id: Optional[str] = None, limit: int = 500) -> List[PairingRecord]:
     """
     Return the most recent set of pairing records.
@@ -74,10 +78,12 @@ def get_latest_pairings(session_id: Optional[str] = None, limit: int = 500) -> L
         return records
 
 
+# 세션 ID로 페어링 레코드 목록 반환
 def get_pairings_by_session(session_id: str) -> List[PairingRecord]:
     return get_latest_pairings(session_id=session_id)
 
 
+# 탐지 ID 교체 후 페어링 레코드 참조를 일괄 업데이트
 def update_pairings_detection_refs(old_det_ids: Set[str], new_det_id: Optional[str]) -> int:
     """탐지 결과 교체 후, 구 detection_id를 참조하던 PairingRecord를 새 ID로 업데이트.
 
@@ -106,6 +112,7 @@ def update_pairings_detection_refs(old_det_ids: Set[str], new_det_id: Optional[s
     return updated
 
 
+# 세션의 모든 페어링 레코드 삭제
 def delete_pairings_by_session(session_id: str) -> int:
     """세션의 모든 pairing_records를 삭제한다. 보고서 재생성 전 호출."""
     engine = get_engine()
@@ -120,6 +127,7 @@ def delete_pairings_by_session(session_id: str) -> int:
     return deleted
 
 
+# 단일 페어링 레코드의 지정 필드를 부분 업데이트
 def update_pairing(pairing_id: str, fields: dict) -> bool:
     """단일 PairingRecord를 부분 업데이트한다.
 
@@ -151,6 +159,7 @@ def update_pairing(pairing_id: str, fields: dict) -> bool:
     return True
 
 
+# 단일 페어링 레코드를 DB에서 삭제
 def delete_pairing(pairing_id: str) -> bool:
     """단일 PairingRecord를 삭제한다."""
     engine = get_engine()
@@ -164,6 +173,7 @@ def delete_pairing(pairing_id: str) -> bool:
     return True
 
 
+# 세션의 첫 페어링 위경도 중심 좌표 반환
 def get_session_location(session_id: str):
     """Return (lat_center, lon_center) for the first pairing of a session, or (None, None)."""
     engine = get_engine()
@@ -181,6 +191,7 @@ def get_session_location(session_id: str):
         return None, None
 
 
+# 지정 시각 기준 가장 가까운 페어링 배치 반환
 def get_pairings_near_time(dt: datetime, window_seconds: int = 120) -> List[PairingRecord]:
     """시각 dt 기준으로 가장 가까운 pairing_time 배치를 반환한다.
 
@@ -218,6 +229,7 @@ def get_pairings_near_time(dt: datetime, window_seconds: int = 120) -> List[Pair
         return records
 
 
+# 지정 반경 내 페어링의 고유 세션 ID 목록 반환
 def get_session_ids_near(
     lat: float,
     lon: float,

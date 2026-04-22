@@ -107,6 +107,7 @@ def _size_similarity(a: "DetectionResult", b: "DetectionResult") -> float:
     mask_area_px 가 유효하면 세그멘테이션 면적 사용, 없으면 bbox 면적 사용.
     min/max 비율이므로 크기가 같을수록 1.0, 차이가 클수록 0에 가까워진다.
     """
+    # 탐지 객체의 면적(픽셀)을 반환
     def _area(det: "DetectionResult") -> float:
         if det.mask_area_px and det.mask_area_px > 0:
             return det.mask_area_px
@@ -162,6 +163,7 @@ def _get_image_fov_bounds(image_id: Optional[str]) -> Optional[tuple]:
     return (rec.lat_min, rec.lat_max, rec.lon_min, rec.lon_max)
 
 
+# 탐지 목록에서 이미지 FOV 통합 범위 반환
 def _collect_fov_bounds(detections: list) -> Optional[tuple]:
     """
     Return the union of geographic bounds (lat_min, lat_max, lon_min, lon_max)
@@ -188,6 +190,7 @@ def _collect_fov_bounds(detections: list) -> Optional[tuple]:
     return (lat_min_all, lat_max_all, lon_min_all, lon_max_all) if found else None
 
 
+# 좌표가 FOV 범위 내에 있는지 확인
 def _in_fov(lat: float, lon: float, bounds: Optional[tuple]) -> bool:
     """
     Return True if (lat, lon) lies within the given bounds.
@@ -215,12 +218,14 @@ _STATUS_PRIORITY: dict = {
 }
 
 
+# 중복 페어링 레코드를 우선순위 기준으로 제거
 def _dedup_pairing_records(records: List[PairingRecord]) -> List[PairingRecord]:
     """동일 past_detection_id(또는 current_detection_id)에 대해 페어링 레코드가 중복으로
     생성된 경우 우선순위가 높은(더 정보량이 많은) 레코드 하나만 남긴다.
 
     한 객체에 두 개의 상태가 붙는 버그를 최종 방어선으로 차단한다.
     """
+    # 레코드 상태의 우선순위 값 반환
     def _pri(r: PairingRecord) -> int:
         return _STATUS_PRIORITY.get(r.status, 99)
 
@@ -272,6 +277,7 @@ def _dedup_pairing_records(records: List[PairingRecord]) -> List[PairingRecord]:
 # Static-object cross-image similarity helpers
 # ---------------------------------------------------------------------------
 
+# 지리 bbox를 이미지 픽셀 좌표로 변환
 def _geo_bbox_on_image(
     lat_top: float, lon_left: float, lat_bottom: float, lon_right: float,
     img_w: int, img_h: int,
@@ -309,6 +315,7 @@ def _geo_bbox_on_image(
     return x1, y1, x2, y2
 
 
+# 탐지 결과의 지리 bbox 좌표 반환
 def _det_geo_bbox(det, img_record) -> Optional[tuple]:
     """
     Return the geographic bounding box of a detection as
@@ -338,6 +345,7 @@ def _det_geo_bbox(det, img_record) -> Optional[tuple]:
     return lat_top, lon_left, lat_bottom, lon_right
 
 
+# 이미지 ID로 PIL 이미지를 초해상도 적용 후 로드
 def _load_pil_for_image_id(image_id: str) -> Optional["PILImage"]:
     """Load PIL image (with super-resolution) for a given image_id."""
     from PIL import Image as PILImage
@@ -355,6 +363,7 @@ def _load_pil_for_image_id(image_id: str) -> Optional["PILImage"]:
     return PILImage.fromarray(arr)
 
 
+# 두 이미지 크롭 간 CLIP 코사인 유사도 반환
 def _clip_similarity_crops(crop_a: "PILImage", crop_b: "PILImage") -> float:
     """Return CLIP cosine similarity between two PIL crops. Falls back to 0.0 on error."""
     try:
@@ -365,6 +374,7 @@ def _clip_similarity_crops(crop_a: "PILImage", crop_b: "PILImage") -> float:
         return 0.0
 
 
+# 정적 객체의 교차 이미지 유사도 비교 후 합성 탐지 반환
 def _static_cross_check(
     det,                    # DetectionResult or DetectionRecord – the side WITH a bbox
     img_rec_with: "ImageRecord",
@@ -467,6 +477,7 @@ def _static_cross_check(
 # Main pairing function
 # ---------------------------------------------------------------------------
 
+# SAM3 트래커 결과로 페어링 레코드 목록 생성
 def pair_by_tracking(
     tracked_objects: List[TrackedObject],
     current_detections: List[DetectionResult],
@@ -761,6 +772,7 @@ def pair_by_tracking(
         cur_img_cache: Dict[str, Optional] = {}
         past_img_cache: Dict[str, Optional] = {}
 
+        # 이미지 레코드와 PIL을 캐시에서 조회하거나 로드
         def _get_img_rec_pil(iid: str, cache: dict):
             if iid not in cache:
                 rec = get_image_record_by_id(iid)
@@ -870,6 +882,7 @@ def pair_by_tracking(
         mov_cur_img_cache: Dict[str, Optional] = {}
         mov_past_img_cache: Dict[str, Optional] = {}
 
+        # 현재 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _get_mov_img_rec_pil_cur(iid: str):
             if iid not in mov_cur_img_cache:
                 rec = get_image_record_by_id(iid)
@@ -877,6 +890,7 @@ def pair_by_tracking(
                 mov_cur_img_cache[iid] = (rec, pil)
             return mov_cur_img_cache[iid]
 
+        # 과거 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _get_mov_img_rec_pil_past(iid: str):
             if iid not in mov_past_img_cache:
                 rec = get_image_record_by_id(iid)
@@ -991,6 +1005,7 @@ class _CLIPEmbedder:
         self._model = None
         self._processor = None
 
+    # CLIP 모델과 프로세서를 지연 로드
     def _load(self):
         from transformers import AutoModel, AutoProcessor
         logger.info(f"[CLIPEmbedder] Loading {CLIP_MODEL_NAME} ...")
@@ -999,6 +1014,7 @@ class _CLIPEmbedder:
         self._model.eval()
         logger.info("[CLIPEmbedder] Ready.")
 
+    # PIL 크롭 리스트의 L2 정규화 임베딩 반환
     def embed(self, crops: list) -> np.ndarray:
         """
         Compute L2-normalised image embeddings for a list of PIL crops.
@@ -1034,6 +1050,7 @@ class _CLIPEmbedder:
 _clip_embedder = _CLIPEmbedder()
 
 
+# JSON RLE 문자열을 마스크 배열로 디코드
 def _decode_rle(mask_rle_json: str) -> Optional[np.ndarray]:
     """Decode a JSON RLE string produced by sam2_detector._encode_rle()."""
     try:
@@ -1047,6 +1064,7 @@ def _decode_rle(mask_rle_json: str) -> Optional[np.ndarray]:
         return None
 
 
+# SAM 마스크로 객체 영역만 크롭하여 반환
 def _mask_crop(image: "PILImage", x1: float, y1: float, x2: float, y2: float,
                mask_rle: Optional[str], padding: int = 4) -> Optional["PILImage"]:
     """
@@ -1081,6 +1099,7 @@ def _mask_crop(image: "PILImage", x1: float, y1: float, x2: float, y2: float,
     return image.crop((bx1, by1, bx2, by2))
 
 
+# 센서DB image_id로 디스크에서 PIL 이미지 로드
 def _load_pil_image(image_id: str) -> Optional["PILImage"]:
     """Load a PIL image from disk given a sensor-DB image_id.
 
@@ -1103,6 +1122,7 @@ def _load_pil_image(image_id: str) -> Optional["PILImage"]:
     return PILImage.fromarray(arr)
 
 
+# 탐지 목록에 대한 CLIP 임베딩 배열 생성
 def _compute_embeddings(
     detections: list,
     image: Optional["PILImage"],
@@ -1155,6 +1175,7 @@ def _compute_embeddings(
     return embeds
 
 
+# CLIP 유사도 기반 현재·과거 탐지 페어링 수행
 def pair_by_similarity(
     current_detections: List[DetectionResult],
     past_detections: List[DetectionRecord],
@@ -1486,6 +1507,7 @@ def pair_by_similarity(
         cur_image_ids2  = list({d.detection_id and d.image_id
                                 for d in current_detections if d.image_id})
 
+        # 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _rec_pil(iid, cache):
             if iid not in cache:
                 rec = get_image_record_by_id(iid)
@@ -1594,6 +1616,7 @@ def pair_by_similarity(
         mov_cur_img_cache2: Dict[str, Optional] = {}
         mov_past_img_cache2: Dict[str, Optional] = {}
 
+        # 현재 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _rec_pil_mov_cur(iid: str):
             if iid not in mov_cur_img_cache2:
                 rec = get_image_record_by_id(iid)
@@ -1601,6 +1624,7 @@ def pair_by_similarity(
                 mov_cur_img_cache2[iid] = (rec, pil)
             return mov_cur_img_cache2[iid]
 
+        # 과거 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _rec_pil_mov_past(iid: str):
             if iid not in mov_past_img_cache2:
                 rec = get_image_record_by_id(iid)
