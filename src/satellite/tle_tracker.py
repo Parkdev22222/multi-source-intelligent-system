@@ -42,6 +42,7 @@ CATEGORY_LABELS = {
 # CelesTrak fetch
 # ---------------------------------------------------------------------------
 
+# CelesTrak에서 지정 그룹의 TLE JSON 데이터 가져오기
 def _fetch_tle_json(group: str) -> list:
     """Fetch GP elements from CelesTrak as JSON list."""
     url = f"{CELESTRAK_BASE}?GROUP={group}&FORMAT=json"
@@ -59,6 +60,7 @@ def _fetch_tle_json(group: str) -> list:
 # SGP4 propagation helpers
 # ---------------------------------------------------------------------------
 
+# UTC 날짜를 율리우스 날짜(Julian Date)로 변환
 def _jday(dt: datetime) -> float:
     """Convert UTC datetime to Julian Date."""
     y, m, d = dt.year, dt.month, dt.day
@@ -71,6 +73,7 @@ def _jday(dt: datetime) -> float:
     return int(365.25 * (y + 4716)) + int(30.6001 * (m + 1)) + d + h / 24.0 + B - 1524.5
 
 
+# IAU 1982 기준 그리니치 평균 항성시(GMST) 라디안 계산
 def _gmst_rad(dt: datetime) -> float:
     """Greenwich Mean Sidereal Time in radians (IAU 1982)."""
     J2000 = datetime(2000, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -80,6 +83,7 @@ def _gmst_rad(dt: datetime) -> float:
     return math.radians(gmst_deg % 360.0)
 
 
+# ECI 위치 벡터를 WGS84 지리 좌표로 변환
 def _eci_to_geodetic(r: tuple, dt: datetime):
     """
     Convert ECI position vector r=(x,y,z) km to geodetic (lat_deg, lon_deg, alt_km).
@@ -117,6 +121,7 @@ def _eci_to_geodetic(r: tuple, dt: datetime):
     return math.degrees(lat), math.degrees(lon_rad), alt
 
 
+# SGP4로 TLE를 전파하여 위성 위경도·고도 반환
 def _propagate_tle(tle1: str, tle2: str, dt: datetime) -> Optional[dict]:
     """
     Propagate TLE lines to dt using sgp4. Returns {lat, lon, alt_km} or None.
@@ -148,6 +153,7 @@ def _propagate_tle(tle1: str, tle2: str, dt: datetime) -> Optional[dict]:
 # Public API
 # ---------------------------------------------------------------------------
 
+# CelesTrak TLE로 현재 위성 위치 목록 조회 및 반환
 def get_satellite_positions(categories: List[str] = None) -> List[dict]:
     """
     Fetch TLE data from CelesTrak and propagate to current UTC positions.
@@ -192,6 +198,7 @@ def get_satellite_positions(categories: List[str] = None) -> List[dict]:
     return results
 
 
+# 우주 정보 집계 데이터(발사 현황·군사위성·ISS)를 반환
 def get_space_intelligence() -> dict:
     """
     Returns aggregated space intelligence (Crucix space.mjs briefing equivalent).

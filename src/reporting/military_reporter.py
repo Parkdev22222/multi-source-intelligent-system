@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 # Prompt builder
 # ---------------------------------------------------------------------------
 
+# LLM 시스템 프롬프트 생성 (교리 컨텍스트 포함 가능)
 def _build_system_prompt(doctrine_context: str = "") -> str:
     base = (
         "당신은 군사 IMINT(영상정보) 분석관입니다. "
@@ -89,11 +90,13 @@ _VEHICLE_CLASSES: frozenset = frozenset({
 })
 
 
+# 페어링 레코드가 차량 클래스인지 판별
 def _is_vehicle(p) -> bool:
     cls = (p.current_object_class or p.past_object_class or "").lower()
     return cls in _VEHICLE_CLASSES
 
 
+# 객체 목록의 클래스별 건수를 요약 문자열로 반환
 def _class_counts(objs) -> str:
     """Return 'TANK:3 APC:2 ...' summary string from a list of pairing records."""
     from collections import Counter
@@ -104,6 +107,7 @@ def _class_counts(objs) -> str:
     return "  ".join(f"{cls}:{n}" for cls, n in counts.most_common())
 
 
+# 페어링 레코드를 LLM 사용자 프롬프트 문자열로 직렬화
 def _build_user_prompt(
     pairings: List[PairingRecord],
     historical_context: str = "",
@@ -111,6 +115,7 @@ def _build_user_prompt(
 ) -> str:
     """Serialise pairing records into a compact prompt for the LLM."""
 
+    # datetime을 ISO 8601 문자열로 포맷
     def fmt_dt(dt: Optional[datetime]) -> str:
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else "N/A"
 
@@ -135,6 +140,7 @@ def _build_user_prompt(
     time_past = min(past_times).strftime("%Y-%m-%dT%H:%M:%SZ") if past_times else "UNKNOWN"
     time_current = max(current_times).strftime("%Y-%m-%dT%H:%M:%SZ") if current_times else "UNKNOWN"
 
+    # 섹션 내 객체를 차량/비차량으로 분류하여 출력
     def _append_section(section_objs, conf_key: str):
         """섹션 내 객체를 출력.
         차량류(_VEHICLE_CLASSES): CLASS_SUMMARY 건수만 표시 (개별 항목 생략).
@@ -265,6 +271,7 @@ class _VllmBackend:
     def __init__(self):
         self._llm = None
 
+    # vLLM을 사용해 EXAONE 모델 로드
     def _load(self):
         from vllm import LLM
 
@@ -279,6 +286,7 @@ class _VllmBackend:
         )
         logger.info(f"[Reporter] {LLM_MODEL_NAME} loaded.")
 
+    # vLLM으로 시스템/사용자 프롬프트에 대한 텍스트 생성
     def generate(self, system_prompt: str, user_prompt: str,
                  max_tokens: Optional[int] = None) -> str:
         from vllm import SamplingParams
@@ -304,6 +312,7 @@ class _FallbackBackend:
     Produces a structured summary directly from pairing records.
     """
 
+    # LLM 없이 규칙 기반으로 폴백 보고서 생성
     def generate(self, system_prompt: str, user_prompt: str,
                  max_tokens: Optional[int] = None) -> str:
         # Extract the data section from the user_prompt (everything before 작성 지시)
@@ -345,6 +354,7 @@ class _FallbackBackend:
 class _OllamaBackend:
     """Calls a locally running Ollama server."""
 
+    # Ollama 서버로 요청을 전송하여 텍스트 생성
     def generate(self, system_prompt: str, user_prompt: str,
                  max_tokens: Optional[int] = None) -> str:
         import urllib.request
@@ -375,6 +385,7 @@ class _OllamaBackend:
         return body["message"]["content"]
 
 
+# 설정된 LLM_BACKEND에 맞는 백엔드 인스턴스 반환
 def _get_backend():
     if LLM_BACKEND == "ollama":
         return _OllamaBackend()
@@ -394,6 +405,7 @@ class _SafeBackend:
         self._primary = primary
         self._fallback = _FallbackBackend()
 
+    # 기본 백엔드 호출 실패 시 폴백 백엔드로 텍스트 생성
     def generate(self, system_prompt: str, user_prompt: str,
                  max_tokens: Optional[int] = None) -> str:
         try:
@@ -410,6 +422,7 @@ class _SafeBackend:
 # Korean translation helper
 # ---------------------------------------------------------------------------
 
+# 한국어 번역 전용 시스템 프롬프트 생성
 def _build_translation_system_prompt() -> str:
     return (
         "당신은 군사 정보 문서를 전문으로 하는 한국어 번역가입니다. "
@@ -423,6 +436,7 @@ def _build_translation_system_prompt() -> str:
     )
 
 
+# 기존 백엔드를 재사용하여 보고서를 한국어로 번역
 def _translate_report_to_korean(backend, english_text: str) -> str:
     """
     이미 로드된 EXAONE 백엔드를 재사용해 보고서를 한국어로 번역한다.
@@ -465,6 +479,7 @@ class MilitaryReporter:
             except Exception as exc:
                 logger.warning(f"[Reporter] DoctrineRetriever 로드 실패 ({exc}) — RAG 없이 진행.")
 
+    # 페어링 레코드로 군사 정보 보고서를 생성하고 DB에 저장
     def generate_report(
         self,
         pairings: List[PairingRecord],
