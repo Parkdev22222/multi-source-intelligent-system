@@ -4224,6 +4224,7 @@ document.getElementById('ds-analyze-btn').addEventListener('click', async () => 
 
 // 탐지 편집기 저장 완료 후 단계 모달 상태 업데이트
 // (기존 det-save-btn handler 뒤에 훅)
+// 탐지 편집기 닫힘을 감지하여 Step2 활성화를 처리
 (function() {
   const origSaveListener = document.getElementById('det-save-btn');
   const _origSave = origSaveListener.onclick;
@@ -4257,6 +4258,7 @@ document.getElementById('detect-step-overlay').addEventListener('click', e => {
 });
 
 
+// SSE 연결을 설정하고 DB 갱신 이벤트를 처리
 function setupSSE() {
   if (typeof EventSource === 'undefined') return;  // 미지원 환경
   if (_sseInstance) { _sseInstance.close(); _sseInstance = null; }
@@ -4338,6 +4340,7 @@ setInterval(async () => {
    로컬 leaflet.min.js 가 동기 로드되면 즉시 실행.
    404 후 CDN 비동기 폴백 중이면 최대 5초(50 × 100 ms) 폴링 후 실행.
    5초 내에도 로드 실패하면 지도 영역에 오류 메시지 표시.              */
+// Leaflet 로드를 기다렸다가 전체 대시보드를 초기화
 (function boot(retry) {
   if (typeof L !== 'undefined') {
     initMap();
@@ -4403,6 +4406,7 @@ let _lastCampaignStatus = 'idle'; // 마지막으로 수신한 캠페인 상태 
 /* ═══ WP 마커 관리 ═══════════════════════════════════════════════════ */
 const _wpMarkers = [];   // [{item:DOM, marker:L.marker|null}]
 
+// WP 순번을 표시하는 임무 마커 아이콘을 생성
 function _missionMarkerIcon(seq) {
   const el = document.createElement('div');
   el.style.cssText =

@@ -2334,6 +2334,7 @@ def _report_dict(r) -> dict:
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/dashboard", response_class=HTMLResponse)
+# 대시보드 HTML 반환
 def dashboard():
     if not _dashboard_path.exists():
         raise HTTPException(status_code=404, detail="dashboard/index.html 없음.")
@@ -2341,5 +2342,6 @@ def dashboard():
 
 
 @app.get("/")
+# API 루트 상태 메시지 반환
 def root():
     return {"message": "MSIS API 실행 중. /dashboard 에서 지도 UI 확인."}
