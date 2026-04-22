@@ -86,6 +86,7 @@ _STATIC_SIM_THRESHOLD: float = 0.5   # CLIP cosine similarity threshold
 # Helpers
 # ---------------------------------------------------------------------------
 
+# 타임존 정보를 제거해 naive datetime으로 변환
 def _naive(dt: Optional[datetime]) -> Optional[datetime]:
     """Strip timezone info so naive/aware datetimes can be compared safely."""
     if dt is None:
@@ -93,11 +94,13 @@ def _naive(dt: Optional[datetime]) -> Optional[datetime]:
     return dt.replace(tzinfo=None)
 
 
+# 두 위경도 좌표 간 유클리드 거리 계산
 def _geo_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Simple Euclidean distance in degrees between two lat/lon points."""
     return ((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) ** 0.5
 
 
+# 두 탐지 객체의 bbox 크기 유사도 반환
 def _size_similarity(a: "DetectionResult", b: "DetectionResult") -> float:
     """두 탐지 객체의 크기 유사도 (0~1).
 
@@ -114,6 +117,7 @@ def _size_similarity(a: "DetectionResult", b: "DetectionResult") -> float:
     return min(area_a, area_b) / max(area_a, area_b)
 
 
+# 두 bbox의 IoU(교집합/합집합 비율) 계산
 def _bbox_iou(
     ax1: float, ay1: float, ax2: float, ay2: float,
     bx1: float, by1: float, bx2: float, by2: float,
@@ -142,6 +146,7 @@ def _bbox_iou(
 #                            (current imagery does not cover this area; cannot determine if gone)
 # ---------------------------------------------------------------------------
 
+# 이미지 ID로 FOV 위경도 범위 조회
 def _get_image_fov_bounds(image_id: Optional[str]) -> Optional[tuple]:
     """
     Return (lat_min, lat_max, lon_min, lon_max) for a single ImageRecord.
