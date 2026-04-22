@@ -362,11 +362,25 @@
     #pairing-save-btn:hover { background:#00ee77; }
     #pairing-cancel-btn { background:transparent; border-color:var(--dim); color:var(--dim); }
     #pairing-cancel-btn:hover { border-color:var(--red); color:var(--red); }
-    #pairing-editor-body { flex:1; overflow-y:auto; padding:12px 16px; }
+    #pairing-editor-body { flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+    /* 이미지 패널 (상단) */
+    #pe-img-panel { flex:0 0 42%; display:flex; flex-direction:column; min-height:0; background:#030810; border-bottom:1px solid var(--border); }
+    #pe-img-area  { flex:1; position:relative; display:flex; align-items:stretch; padding:10px 12px; gap:0; overflow:hidden; min-height:0; }
+    #pe-svg { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; overflow:visible; }
+    .pe-side { flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .pe-side-lbl { font-size:11px; letter-spacing:1px; text-transform:uppercase; text-align:center; padding:3px 0; flex-shrink:0; font-weight:500; }
+    .pe-side-lbl.past-lbl { color:#5599ff; }
+    .pe-side-lbl.curr-lbl { color:var(--green); }
+    .pe-canvas-wrap { flex:1; display:flex; align-items:center; justify-content:center; min-height:0; overflow:hidden; }
+    #pe-past-canvas, #pe-curr-canvas { display:block; max-width:100%; max-height:100%; border:1px solid var(--border); }
+    #pe-img-gap { width:32px; flex-shrink:0; }
+    /* 편집 테이블 패널 (하단) */
+    #pairing-editor-table { flex:1; overflow-y:auto; padding:10px 14px; min-height:0; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
     .pr-table { width:100%; border-collapse:collapse; font-size:11px; }
     .pr-table th { background:#0a1220; color:var(--dim); font-weight:600; padding:6px 8px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; font-size:10px; letter-spacing:.4px; }
     .pr-table td { padding:5px 6px; border-bottom:1px solid #0d1a2a; vertical-align:middle; }
     .pr-table tr:hover td { background:#081220; }
+    .pr-table tr.pe-row-hov td { background:#0a1a28 !important; outline:1px solid #00d4ff33; }
     .pr-row-del   { color:#888; cursor:pointer; padding:2px 6px; border-radius:2px; border:1px solid transparent; font-size:13px; }
     .pr-row-del:hover { color:#fff; background:var(--red); border-color:var(--red); }
     .pr-status-sel { background:#080d18; border:1px solid var(--border); color:var(--text); font-family:var(--font); font-size:10px; padding:2px 5px; border-radius:2px; }
@@ -1233,7 +1247,25 @@
     <button id="pairing-cancel-btn">닫기</button>
   </div>
   <div id="pairing-editor-body">
-    <div id="pairing-editor-content"></div>
+    <!-- 위성 이미지 패널 -->
+    <div id="pe-img-panel">
+      <div id="pe-img-area">
+        <div class="pe-side">
+          <div class="pe-side-lbl past-lbl">이전 위성사진</div>
+          <div class="pe-canvas-wrap"><canvas id="pe-past-canvas"></canvas></div>
+        </div>
+        <div id="pe-img-gap"></div>
+        <div class="pe-side">
+          <div class="pe-side-lbl curr-lbl">현재 위성사진</div>
+          <div class="pe-canvas-wrap"><canvas id="pe-curr-canvas"></canvas></div>
+        </div>
+        <svg id="pe-svg"></svg>
+      </div>
+    </div>
+    <!-- 편집 테이블 패널 -->
+    <div id="pairing-editor-table">
+      <div id="pairing-editor-content"></div>
+    </div>
   </div>
 </div>
 
@@ -2854,10 +2886,10 @@ function _pvizDrawCanvas(canvas, imgData, pairs, side, hoveredId) {
 }
 
 /* ── SVG 연결선 (matched/moved만, hoveredId 기준 필터) ── */
-// 이전·현재 캔버스 사이에 SVG 페어링 연결선을 그림
-function _pvizDrawLines(pairs, pastC, currC, pastImg, currImg, hoveredId) {
-  const svg  = document.getElementById('pviz-svg');
-  const area = document.getElementById('pviz-img-area');
+// 이전·현재 캔버스 사이에 SVG 페어링 연결선을 그림 (svgEl/areaEl 생략 시 pviz-modal 기본값 사용)
+function _pvizDrawLines(pairs, pastC, currC, pastImg, currImg, hoveredId, svgEl, areaEl) {
+  const svg  = svgEl  || document.getElementById('pviz-svg');
+  const area = areaEl || document.getElementById('pviz-img-area');
   svg.innerHTML = '';
   if (!pastImg || !currImg) return;
 
@@ -2923,6 +2955,7 @@ function _pvizDrawLines(pairs, pastC, currC, pastImg, currImg, hoveredId) {
    보고서 텍스트 수정
    ══════════════════════════════════════════════════ */
 const _editRptSaveBtn = document.getElementById('rpt-edit-save');
+// 보고서 본문을 편집 가능 상태로 전환
 document.getElementById('edit-report-btn').addEventListener('click', () => {
   const content = document.getElementById('report-content');
   const isEditing = content.isContentEditable;
@@ -3242,6 +3275,7 @@ _edCanvas.addEventListener('mouseleave', () => {
 });
 
 // 스크롤 줌 — 마우스 위치 중심으로 확대/축소
+// 마우스 휠로 캔버스를 줌 인/아웃하고 pan을 보정
 _edCanvas.addEventListener('wheel', e => {
   e.preventDefault();
   const raw     = _rawCanvasCoords(e);
@@ -3460,6 +3494,41 @@ document.getElementById('det-pairing-btn').addEventListener('click', () => {
 let _prData    = [];   // 현재 로드된 pairing 목록
 let _prChanged = {};   // { pairing_id: {field: value, ...} } 변경 추적
 let _prDeleted = new Set(); // 삭제 예정 pairing id 집합
+let _peImgData = { curr: null, past: null }; // 이미지 캔버스용 raw 이미지 데이터
+let _pePairs   = [];   // pviz 포맷으로 변환된 pairs (캔버스 렌더링용)
+
+// _prData 항목을 _pvizDrawCanvas/_pvizDrawLines 이 요구하는 포맷으로 변환
+function _prToPvizFormat(pairings) {
+  return pairings.map((p, i) => {
+    const ch = _prChanged[p.id] || {};
+    return {
+      id:            p.id,
+      status:        ch.status ?? p.status,
+      label:         String(i + 1).padStart(2, '0'),
+      current_class: ch.current_object_class ?? p.current_object_class ?? '',
+      current_conf:  ch.current_confidence   ?? p.current_confidence,
+      current_bbox:  p.current_bbox,
+      past_class:    ch.past_object_class ?? p.past_object_class ?? '',
+      past_conf:     ch.past_confidence   ?? p.past_confidence,
+      past_bbox:     p.past_bbox,
+    };
+  });
+}
+
+// _pePairs 를 현재 변경사항 반영해 재구성하고 두 캔버스를 다시 그림
+function _peRefreshCanvases(hoveredId) {
+  _pePairs = _prToPvizFormat(_prData);
+  const pastC = document.getElementById('pe-past-canvas');
+  const currC = document.getElementById('pe-curr-canvas');
+  const hid   = hoveredId ?? null;
+  Promise.all([
+    _peImgData.past ? _pvizDrawCanvas(pastC, _peImgData.past, _pePairs, 'past',    hid) : null,
+    _peImgData.curr ? _pvizDrawCanvas(currC, _peImgData.curr, _pePairs, 'current', hid) : null,
+  ]).then(() => requestAnimationFrame(() =>
+    _pvizDrawLines(_pePairs, pastC, currC, _peImgData.past, _peImgData.curr, hid,
+      document.getElementById('pe-svg'), document.getElementById('pe-img-area'))
+  ));
+}
 
 const _PAIRING_STATUSES = ['new','matched','disappeared','past_not_included','current_not_included'];
 const _PR_STATUS_LABEL  = {
@@ -3471,7 +3540,7 @@ const _PR_BADGE_CLS = {
   past_not_included:'pr-badge-pni', current_not_included:'pr-badge-cni'
 };
 
-// 세션 ID로 페어링 에디터 모달을 열고 데이터를 로드
+// 세션 ID로 페어링 에디터 모달을 열고 데이터 및 위성 이미지를 로드
 async function openPairingEditor(sessionId) {
   const modal   = document.getElementById('pairing-editor-modal');
   const content = document.getElementById('pairing-editor-content');
@@ -3481,15 +3550,50 @@ async function openPairingEditor(sessionId) {
   info.textContent = '로딩 중...';
   content.innerHTML = '';
   _prData = []; _prChanged = {}; _prDeleted.clear();
+  _peImgData = { curr: null, past: null };
+  // 캔버스 초기화
+  const pastC = document.getElementById('pe-past-canvas');
+  const currC = document.getElementById('pe-curr-canvas');
+  pastC.width = pastC.height = 1;
+  currC.width = currC.height = 1;
+  document.getElementById('pe-svg').innerHTML = '';
   modal.classList.add('open');
 
   try {
-    const res = await fetch(`${API}/api/pairings/by-session/${encodeURIComponent(sessionId)}`);
-    if (!res.ok) throw new Error('pairing 조회 실패');
-    const data = await res.json();
+    // pairing 목록과 세션 이미지 목록을 병렬 로드
+    const [prRes, imgRes] = await Promise.all([
+      fetch(`${API}/api/pairings/by-session/${encodeURIComponent(sessionId)}`),
+      fetch(`${API}/api/images/by-session/${encodeURIComponent(sessionId)}`),
+    ]);
+    if (!prRes.ok) throw new Error('pairing 조회 실패');
+    const data    = await prRes.json();
+    const imgData = imgRes.ok ? await imgRes.json() : { images: [] };
+
     _prData = data.pairings || [];
     info.textContent = `총 ${_prData.length}건`;
     _renderPairingTable();
+
+    // capture_time 오름차순 정렬 → 마지막 = 현재, 직전 = 과거
+    const imgs = (imgData.images || []).sort((a, b) =>
+      (a.capture_time || '') > (b.capture_time || '') ? 1 : -1
+    );
+    const currImgId = imgs.length > 0 ? imgs[imgs.length - 1].id : null;
+    const pastImgId = imgs.length > 1 ? imgs[imgs.length - 2].id : null;
+
+    // 두 이미지를 병렬 로드 (max_size 420으로 축소)
+    const MAX = 420;
+    const [currRaw, pastRaw] = await Promise.all([
+      currImgId
+        ? fetch(`${API}/api/image/${encodeURIComponent(currImgId)}/raw?max_size=${MAX}`)
+            .then(r => r.ok ? r.json() : null).catch(() => null)
+        : Promise.resolve(null),
+      pastImgId
+        ? fetch(`${API}/api/image/${encodeURIComponent(pastImgId)}/raw?max_size=${MAX}`)
+            .then(r => r.ok ? r.json() : null).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    _peImgData = { curr: currRaw, past: pastRaw };
+    _peRefreshCanvases(null);
   } catch(e) {
     info.textContent = `오류: ${e.message}`;
   }
@@ -3567,7 +3671,7 @@ function _renderPairingTable() {
       <tbody>${rows}</tbody>
     </table>`;
 
-  // 이벤트 바인딩
+  // 필드 변경 이벤트
   content.querySelectorAll('.pr-status-sel, .pr-class-inp, .pr-conf-inp').forEach(el => {
     el.addEventListener('change', () => {
       const id    = el.dataset.id;
@@ -3576,12 +3680,29 @@ function _renderPairingTable() {
       if (!_prChanged[id]) _prChanged[id] = {};
       _prChanged[id][field] = val;
       _renderPairingTable();
+      _peRefreshCanvases(null); // status 변경 시 캔버스 색상도 즉시 갱신
     });
   });
+  // 행 삭제
   content.querySelectorAll('.pr-row-del').forEach(btn => {
     btn.addEventListener('click', () => {
       _prDeleted.add(btn.dataset.id);
       _renderPairingTable();
+      _peRefreshCanvases(null);
+    });
+  });
+  // 행 hover → 해당 탐지 결과를 양쪽 캔버스에서 강조
+  content.querySelectorAll('tr[data-idx]').forEach(row => {
+    const p = _prData[parseInt(row.dataset.idx)];
+    if (!p || _prDeleted.has(p.id)) return;
+    row.addEventListener('mouseenter', () => {
+      content.querySelectorAll('tr[data-idx]').forEach(r => r.classList.remove('pe-row-hov'));
+      row.classList.add('pe-row-hov');
+      _peRefreshCanvases(p.id);
+    });
+    row.addEventListener('mouseleave', () => {
+      row.classList.remove('pe-row-hov');
+      _peRefreshCanvases(null);
     });
   });
 }
@@ -4417,6 +4538,7 @@ function _missionMarkerIcon(seq) {
   return L.divIcon({ html: el, className: '', iconSize: [26, 26], iconAnchor: [13, 13] });
 }
 
+// WP 편집 행에 해당하는 지도 마커를 추가하거나 이동
 function _addMarkerForItem(item, lat, lon) {
   if (typeof map === 'undefined' || !map || isNaN(lat) || isNaN(lon)) return;
   const entry = _wpMarkers.find(e => e.item === item);
@@ -4439,6 +4561,7 @@ function _addMarkerForItem(item, lat, lon) {
   map.panTo([lat, lon], { animate: true, duration: 0.4 });
 }
 
+// WP 마커 툴팁을 이름·좌표 정보로 갱신
 function _refreshWpTooltip(marker, item) {
   const name = item.querySelector('.mission-wp-name-input').value.trim() || 'WP';
   const lat  = parseFloat(item.querySelector('.wp-lat').value);
@@ -4448,6 +4571,7 @@ function _refreshWpTooltip(marker, item) {
       { direction: 'top', offset: [0, -16], opacity: 0.92 });
 }
 
+// WP 편집 행에 연결된 지도 마커를 제거
 function _removeMarkerForItem(item) {
   const idx = _wpMarkers.findIndex(e => e.item === item);
   if (idx < 0) return;
@@ -4456,6 +4580,7 @@ function _removeMarkerForItem(item) {
   _wpMarkers.splice(idx, 1);
 }
 
+// 모든 WP 지도 마커를 제거하고 배열을 비움
 function _clearAllWpMarkers() {
   _wpMarkers.forEach(({ marker }) => {
     if (marker && typeof map !== 'undefined' && map) map.removeLayer(marker);
@@ -4463,6 +4588,7 @@ function _clearAllWpMarkers() {
   _wpMarkers.length = 0;
 }
 
+// WP 행 순번과 마커 번호를 현재 순서에 맞게 갱신
 function _refreshWpSeq() {
   const items = document.querySelectorAll('#wp-edit-list .mission-wp-item');
   items.forEach((item, i) => {
@@ -4473,6 +4599,7 @@ function _refreshWpSeq() {
 }
 
 /* ═══ WP 편집 행 생성 ════════════════════════════════════════════════ */
+// 웨이포인트 편집 행을 목록에 추가하고 지도 마커를 생성
 function _addWpRow(lat, lon, name, desc, wpData) {
   // wpData: 서버에서 받은 WP 데이터 (status, report_id 등). 없으면 신규 입력
   const list   = document.getElementById('wp-edit-list');
@@ -4578,11 +4705,13 @@ function _addWpRow(lat, lon, name, desc, wpData) {
 }
 
 /* ═══ 모달 열기/닫기 ════════════════════════════════════════════════ */
+// 임무계획 모달을 열고 위성 및 캠페인 정보를 로드
 function _openMissionModal() {
   document.getElementById('mission-modal-overlay').classList.add('open');
   loadSatMissions();
   loadCampaignStatus();
 }
+// 임무계획 모달을 닫고 폴링 타이머를 정리
 function _closeMissionModal() {
   _exitPickMode();
   document.getElementById('mission-modal-overlay').classList.remove('open');
@@ -4596,6 +4725,7 @@ document.getElementById('mission-modal-overlay').addEventListener('click', e => 
 });
 
 /* ═══ 지도 선택 모드 ════════════════════════════════════════════════ */
+// 지도 WP 위치 선택 모드를 활성화
 function _enterPickMode() {
   _pickMode = true;
   document.getElementById('mission-modal-overlay').classList.add('pick-mode');
@@ -4603,6 +4733,7 @@ function _enterPickMode() {
   document.getElementById('mission-pick-map-btn').classList.add('active');
   document.body.classList.add('mission-pick-cursor');
 }
+// 지도 WP 위치 선택 모드를 비활성화
 function _exitPickMode() {
   _pickMode = false;
   document.getElementById('mission-modal-overlay').classList.remove('pick-mode');
@@ -4618,6 +4749,7 @@ document.getElementById('mission-pick-map-btn').addEventListener('click', () => 
 document.getElementById('mission-pick-cancel').addEventListener('click', _exitPickMode);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && _pickMode) _exitPickMode(); });
 
+// 지도가 준비될 때까지 기다린 후 WP 선택 클릭 이벤트를 등록
 (function waitMapForMission(n) {
   if (typeof map !== 'undefined' && map) {
     map.on('click', function(e) {
@@ -4635,6 +4767,7 @@ document.getElementById('mission-add-wp-btn').addEventListener('click', () => {
 });
 
 /* ═══ WP 저장 ════════════════════════════════════════════════════════ */
+// 현재 위성의 WP 목록을 서버에 저장
 document.getElementById('wp-save-btn').addEventListener('click', async () => {
   if (!_selectedSatId) return;
   const btn = document.getElementById('wp-save-btn');
@@ -4650,6 +4783,7 @@ document.getElementById('wp-save-btn').addEventListener('click', async () => {
   }
 });
 
+// 위성 ID의 WP 목록을 수집하여 서버에 PUT 요청으로 저장
 async function _saveSatWPs(satId) {
   const items = document.querySelectorAll('#wp-edit-list .mission-wp-item');
   const waypoints = [];
@@ -4674,6 +4808,7 @@ async function _saveSatWPs(satId) {
 }
 
 /* ═══ 초기화 버튼 ════════════════════════════════════════════════════ */
+// 선택된 위성의 임무계획 WP를 전체 삭제
 document.getElementById('wp-clear-sat-btn').addEventListener('click', async () => {
   if (!_selectedSatId) return;
   const sm = _satMissionsCache[_selectedSatId];
@@ -4691,6 +4826,7 @@ document.getElementById('wp-clear-sat-btn').addEventListener('click', async () =
 });
 
 /* ═══ 위성 목록 로드 & 렌더링 ════════════════════════════════════════ */
+// 위성별 임무계획을 서버에서 불러와 목록과 캠페인 바를 갱신
 async function loadSatMissions(resetSelection = true) {
   try {
     const res  = await fetch(`${API}/api/sat-missions`);
@@ -4706,6 +4842,7 @@ async function loadSatMissions(resetSelection = true) {
   }
 }
 
+// 위성 임무 목록을 사이드바에 렌더링
 function _renderSatList(data) {
   const container = document.getElementById('sat-mission-items');
   container.innerHTML = '';
@@ -4728,6 +4865,7 @@ function _renderSatList(data) {
   });
 }
 
+// 캠페인 상태 표시줄의 WP 수 및 시작 버튼 상태를 갱신
 function _updateCampaignBar(data) {
   // 캠페인이 실행 중이면 _applyCampaignStatus 가 텍스트를 관리하므로 덮어쓰지 않음
   if (_lastCampaignStatus === 'running') return;
@@ -4748,6 +4886,7 @@ function _updateCampaignBar(data) {
 }
 
 /* ═══ 위성 선택 ══════════════════════════════════════════════════════ */
+// 위성 ID를 선택하고 WP 편집 패널을 갱신
 function _selectSat(satId) {
   _selectedSatId = satId;
   // 위성 목록 active 상태 갱신
@@ -4758,6 +4897,7 @@ function _selectSat(satId) {
   _renderWpEditor(sm);
 }
 
+// 선택된 위성의 WP 편집 패널을 초기화하여 렌더링
 function _renderWpEditor(sm) {
   if (!sm) return;
   // 헤더 갱신
@@ -4788,6 +4928,7 @@ function _renderWpEditor(sm) {
 }
 
 /* ═══ 캠페인 상태 로드 & 폴링 ════════════════════════════════════════ */
+// 캠페인 상태를 서버에서 불러와 UI에 적용하고 폴링 시작
 async function loadCampaignStatus() {
   try {
     const res  = await fetch(`${API}/api/campaign/status`);
@@ -4802,6 +4943,7 @@ async function loadCampaignStatus() {
   } catch(e) { console.warn('[Campaign] 상태 로드 실패', e); }
 }
 
+// 캠페인 상태를 주기적으로 폴링하여 완료 시 목록을 갱신
 async function _pollCampaign() {
   try {
     const res  = await fetch(`${API}/api/campaign/status`);
@@ -4819,6 +4961,7 @@ async function _pollCampaign() {
   } catch(e) { console.warn('[Campaign] 폴링 오류', e); }
 }
 
+// 캠페인 상태 데이터를 UI(진행바·텍스트·버튼)에 반영
 function _applyCampaignStatus(c) {
   _lastCampaignStatus = c.status || 'idle';
   const txt       = document.getElementById('campaign-status-txt');
@@ -4856,6 +4999,7 @@ function _applyCampaignStatus(c) {
 }
 
 /* ═══ 캠페인 실행 버튼 ════════════════════════════════════════════════ */
+// 임무계획 캠페인을 서버에서 시작
 document.getElementById('campaign-start-btn').addEventListener('click', async () => {
   const configured = Object.values(_satMissionsCache).filter(sm => sm.waypoints.length > 0);
   if (configured.length === 0) { alert('설정된 임무가 없습니다.'); return; }
@@ -4871,6 +5015,7 @@ document.getElementById('campaign-start-btn').addEventListener('click', async ()
   }
 });
 
+// 실행 중인 캠페인을 서버에서 취소
 document.getElementById('campaign-cancel-btn').addEventListener('click', async () => {
   if (!confirm('캠페인을 취소하시겠습니까?')) return;
   await fetch(`${API}/api/campaign`, { method: 'DELETE' });
