@@ -392,6 +392,7 @@
     .pr-badge { display:inline-block; font-size:9px; padding:2px 6px; border-radius:2px; font-weight:600; letter-spacing:.3px; }
     .pr-badge-new         { background:#003a00; color:#00ff88; border:1px solid #00ff8855; }
     .pr-badge-matched     { background:#001a30; color:#4fc3f7; border:1px solid #4fc3f755; }
+    .pr-badge-changed     { background:#2a1400; color:#ff9500; border:1px solid #ff950055; }
     .pr-badge-disappeared { background:#2a0800; color:#ff8844; border:1px solid #ff884455; }
     .pr-badge-pni         { background:#1a1200; color:#f59e0b; border:1px solid #f59e0b55; }
     .pr-badge-cni         { background:#1a0020; color:#cc88ff; border:1px solid #cc88ff55; }
@@ -2646,6 +2647,7 @@ const PVIZ_COLORS = {
   matched:              '#00ff88',
   moved:                '#ffb300',
   new:                  '#40aaff',
+  changed:              '#ff9500',   // 주황 — 같은 위치 고정 시설, CLIP 유사도 < 임계값
   disappeared:          '#ff4040',
   past_not_included:    '#c084fc',   // 보라 — 현재 탐지, 과거 촬영 범위 밖
   current_not_included: '#fb923c',   // 주황 — 과거 탐지, 현재 촬영 범위 밖
@@ -2654,6 +2656,7 @@ const PVIZ_STATUS_LBL = {
   matched:              '동일·정지',
   moved:                '동일·이동',
   new:                  '신규 출현',
+  changed:              '시설변화',
   disappeared:          '소실',
   past_not_included:    '과거 미포함',
   current_not_included: '현재 미포함',
@@ -2662,6 +2665,7 @@ const PVIZ_STATUS_ICO = {
   matched:              '●',
   moved:                '▶',
   new:                  '★',
+  changed:              '⚠',
   disappeared:          '✕',
   past_not_included:    '◈',
   current_not_included: '◇',
@@ -3530,13 +3534,14 @@ function _peRefreshCanvases(hoveredId) {
   ));
 }
 
-const _PAIRING_STATUSES = ['new','matched','disappeared','past_not_included','current_not_included'];
+const _PAIRING_STATUSES = ['new','matched','changed','disappeared','past_not_included','current_not_included'];
 const _PR_STATUS_LABEL  = {
-  new:'신규', matched:'정지', disappeared:'소실',
+  new:'신규', matched:'정지', changed:'시설변화', disappeared:'소실',
   past_not_included:'과거미포함', current_not_included:'현재미포함'
 };
 const _PR_BADGE_CLS = {
-  new:'pr-badge-new', matched:'pr-badge-matched', disappeared:'pr-badge-disappeared',
+  new:'pr-badge-new', matched:'pr-badge-matched', changed:'pr-badge-changed',
+  disappeared:'pr-badge-disappeared',
   past_not_included:'pr-badge-pni', current_not_included:'pr-badge-cni'
 };
 

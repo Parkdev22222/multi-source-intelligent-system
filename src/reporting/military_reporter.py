@@ -57,6 +57,9 @@ def _build_system_prompt(doctrine_context: str = "") -> str:
         "정지·이동 객체의 종류(CLASS_SUMMARY)는 해당 지역 전력 구성 파악 및 위협 평가에 활용하세요. "
         "각 객체 클래스(TANK, APC, HELICOPTER, artillery, civilian building 등)의 군사적 의미를 반영하세요. "
         "정지 또는 위치 이동 객체를 변화 분석에서 개별 나열하지는 마세요. "
+        "중요: 'CHANGED(시설변화)'는 같은 위경도에 있는 고정 시설물(건물·레이더 등)이 "
+        "두 촬영 시점 간에 CLIP 영상 유사도 기준으로 구조적 변화가 감지된 객체를 의미합니다. "
+        "시설 신축·증축·철거·피해 등 물리적 변화 가능성을 분석에 반영하세요. "
         "중요: 'DISAPPEARED(소실)'은 과거 영상에서 탐지되었으나 현재(최신) 영상에서 탐지되지 않은 객체를 의미합니다. "
         "객체가 완전히 소멸되거나 파괴되었음을 의미하지 않습니다. "
         "센서 시야 밖으로 이동했거나, 은폐되거나, 위치를 옮겼을 수 있습니다. "
@@ -124,10 +127,11 @@ def _build_user_prompt(
     past_not_inc      = [p for p in pairings if p.status == "past_not_included"]
     cur_not_inc       = [p for p in pairings if p.status == "current_not_included"]
     matched_objs      = [p for p in pairings if p.status == "matched"]
+    changed_objs      = [p for p in pairings if p.status == "changed"]
 
-    n_matched = len(matched_objs)
+    n_matched = len(matched_objs) + len(changed_objs)
 
-    # 현재 프레임 탐지 건수 = new + matched + past_not_included
+    # 현재 프레임 탐지 건수 = new + matched + changed + past_not_included
     n_current_detections = len(new_objs) + n_matched + len(past_not_inc)
 
     lats = [p.lat_center for p in pairings]
@@ -191,18 +195,21 @@ def _build_user_prompt(
     lines += [
         f"PAST_OBS: {time_past}  CURRENT_OBS: {time_current}  ROI: {lat_c:.3f},{lon_c:.3f}",
         f"CURRENT_FRAME_DETECTIONS: {n_current_detections}"
-        f"  (NEW:{len(new_objs)}  STATIONARY:{n_matched}"
+        f"  (NEW:{len(new_objs)}  STATIONARY:{len(matched_objs)}"
+        f"  CHANGED:{len(changed_objs)}"
         f"  PAST_NOT_INCLUDED:{len(past_not_inc)})",
         f"PAST_ONLY: disappeared={len(disappeared_objs)}"
         f"  current_not_included={len(cur_not_inc)}",
         "NOTE: NEW = in overlap zone of both images, detected CURRENT but absent PAST.",
+        "NOTE: CHANGED = fixed facility (building/radar) at same location; CLIP similarity below threshold"
+        " — structural change detected between frames.",
         "NOTE: DISAPPEARED = in overlap zone of both images, detected PAST but absent CURRENT.",
         "NOTE: PAST_NOT_INCLUDED = current detection outside past image FOV"
         " — cannot confirm if new.",
         "NOTE: CURRENT_NOT_INCLUDED = past detection outside current image FOV"
         " — cannot confirm if gone.",
         "NOTE: Vehicle classes (tank/APC/truck/jeep/vehicle) are reported as counts only.",
-        "NOTE: Report covers NEW, DISAPPEARED, PAST_NOT_INCLUDED, CURRENT_NOT_INCLUDED objects.",
+        "NOTE: Report covers NEW, CHANGED, DISAPPEARED, PAST_NOT_INCLUDED, CURRENT_NOT_INCLUDED objects.",
     ]
 
     # --- STATIONARY objects (class breakdown only – for threat context) ---
@@ -211,6 +218,14 @@ def _build_user_prompt(
             f"\n=== STATIONARY OBJECTS (overlap zone, present in BOTH frames — class breakdown for context) ==="
         )
         lines.append(f"  CLASS_SUMMARY: {_class_counts(matched_objs)}")
+
+    # --- CHANGED objects (fixed facilities with structural change) ---
+    if changed_objs:
+        lines.append(
+            f"\n=== CHANGED OBJECTS"
+            f" (고정 시설물, 같은 위치·CLIP 유사도 임계값 미만 → 구조 변화 감지) ==="
+        )
+        _append_section(changed_objs, "current_confidence")
 
     # --- NEW objects ---
     lines.append(f"\n=== NEW OBJECTS (overlap zone, first observed at CURRENT_OBS: {time_current}) ===")
@@ -245,14 +260,16 @@ def _build_user_prompt(
         "\n=== 작성 지시 ===",
         "위 데이터를 바탕으로 군사 정보 보고서를 한국어로 작성하세요.",
         "  1) NEW(신규) 및 DISAPPEARED(소실) 객체: 두 영상의 공통 촬영 구역에서 확인된 변화.",
-        "  2) PAST_NOT_INCLUDED(과거 미포함) 객체: '현재 영상에서 탐지되었으나 과거 촬영 범위 밖에 위치"
+        "  2) CHANGED(시설변화) 객체: 같은 위경도에서 탐지된 고정 시설물(건물·레이더 등)이 두 촬영 시점 간"
+        " 구조적 변화가 감지된 경우. 시설 신축·증축·철거·피해 가능성을 변화 분석에 포함하세요.",
+        "  3) PAST_NOT_INCLUDED(과거 미포함) 객체: '현재 영상에서 탐지되었으나 과거 촬영 범위 밖에 위치"
         " — 신규 활동 여부 미확인'으로 표기.",
-        "  3) CURRENT_NOT_INCLUDED(현재 미포함) 객체: '과거 영상에서 탐지되었으나 현재 촬영 범위 밖에 위치"
+        "  4) CURRENT_NOT_INCLUDED(현재 미포함) 객체: '과거 영상에서 탐지되었으나 현재 촬영 범위 밖에 위치"
         " — 현재 상태 불명, 추가 수집 필요'로 표기.",
-        "  4) STATIONARY(정지) 객체: 변화 분석 섹션에서 직접 나열하지 말고,"
+        "  5) STATIONARY(정지) 객체: 변화 분석 섹션에서 직접 나열하지 말고,"
         " 탐지된 객체 종류(CLASS_SUMMARY)를 바탕으로 해당 지역의 전력 구성 및 위협 수준 평가에 활용하세요.",
-        "  5) 차량류(VEHICLE_COUNT): tank·APC·truck·jeep·vehicle은 개별 위치 없이 총 댓수와 종류만 보고서에 기재하세요.",
-        "  6) GRAPHRAG 과거 컨텍스트가 제공된 경우, 위협 평가(6절) 및 정보공백(7절) 분석에 과거 패턴을 반영하세요.",
+        "  6) 차량류(VEHICLE_COUNT): tank·APC·truck·jeep·vehicle은 개별 위치 없이 총 댓수와 종류만 보고서에 기재하세요.",
+        "  7) GRAPHRAG 과거 컨텍스트가 제공된 경우, 위협 평가(6절) 및 정보공백(7절) 분석에 과거 패턴을 반영하세요.",
         "각 객체 종류(TANK, APC, HELICOPTER, civilian building 등)의 군사적 의미를 분석에 반영하세요.",
         "관측 시각은 오늘 날짜가 아닌 PAST_OBS 및 CURRENT_OBS 타임스탬프를 사용하세요.",
         "DISAPPEARED 객체는 '현재 영상에서 더 이상 관측되지 않음'으로 표현하세요.",

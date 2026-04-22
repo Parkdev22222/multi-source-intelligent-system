@@ -213,14 +213,15 @@ def _in_fov(lat: float, lon: float, bounds: Optional[tuple]) -> bool:
 # Duplicate-pairing guard
 # ---------------------------------------------------------------------------
 
-# Status priority: matched (양쪽 프레임 모두 확인) > disappeared (현재 FOV 내 소실)
-# > current_not_included / past_not_included (FOV 밖) > new (단독 출현)
+# Status priority: matched (양쪽 프레임 모두 확인) > changed (같은 위치, 구조 변화)
+# > disappeared (현재 FOV 내 소실) > current_not_included / past_not_included (FOV 밖) > new (단독 출현)
 _STATUS_PRIORITY: dict = {
     "matched":              0,
-    "disappeared":          1,
-    "past_not_included":    2,
-    "current_not_included": 3,
-    "new":                  4,
+    "changed":              1,   # 고정 시설물 같은 위치, CLIP 유사도 < 임계값 → 구조 변화
+    "disappeared":          2,
+    "past_not_included":    3,
+    "current_not_included": 4,
+    "new":                  5,
 }
 
 
@@ -583,6 +584,8 @@ def pair_by_tracking(
         geo_candidates.sort()          # 가장 가까운 쌍부터
         geo_matched_ci: set = set()
         geo_matched_pi: set = set()
+        _s0t_cur_pil = None                          # 현재 프레임 PIL (1회 로드)
+        _s0t_past_pil_cache: Dict[str, Optional] = {}  # image_id → PIL
         for dist, ci, pi in geo_candidates:
             if ci in geo_matched_ci or pi in geo_matched_pi:
                 continue
@@ -592,6 +595,16 @@ def pair_by_tracking(
             geo_matched_pi.add(pi)
             matched_current_ids.add(cur.detection_id)
             matched_past_ids.add(past.id)
+            # 현재·과거 크롭 PIL 로드 (캐시 활용)
+            if _s0t_cur_pil is None:
+                _ciid = getattr(cur, "image_id", None) or current_image_id or ""
+                _s0t_cur_pil = _load_pil_image(_ciid) if _ciid else None
+            _piid = getattr(past, "image_id", None) or ""
+            if _piid not in _s0t_past_pil_cache:
+                _s0t_past_pil_cache[_piid] = _load_pil_image(_piid) if _piid else None
+            _s0t_past_pil = _s0t_past_pil_cache.get(_piid)
+            # CLIP 유사도로 변화 여부 판단: "matched" (변화 없음) or "changed" (구조 변화)
+            _st = _static_pair_status(cur, past, cur_pil=_s0t_cur_pil, past_pil=_s0t_past_pil)
             pairing_records.append(PairingRecord(
                 pairing_time=now,
                 lat_center=region_lat, lon_center=region_lon,
@@ -609,7 +622,7 @@ def pair_by_tracking(
                 past_capture_time=past_capture_time,
                 past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
                            "x2": past.bbox_x2, "y2": past.bbox_y2},
-                status="matched",
+                status=_st,
                 source_type=source_type,
                 session_id=session_id,
             ))
@@ -1128,6 +1141,51 @@ def _load_pil_image(image_id: str) -> Optional["PILImage"]:
     return PILImage.fromarray(arr)
 
 
+# 같은 위치 고정 시설물 쌍의 CLIP 유사도로 변화 여부를 "matched"/"changed"로 판단
+def _static_pair_status(
+    cur,                                           # DetectionResult – 현재 프레임
+    past,                                          # DetectionRecord  – 과거 프레임
+    cur_pil: Optional["PILImage"] = None,
+    past_pil: Optional["PILImage"] = None,
+) -> str:
+    """
+    Compute CLIP cosine similarity between same-location static facility crops.
+    Returns "matched" (no structural change) when sim >= _STATIC_SIM_THRESHOLD,
+    "changed" (structural alteration detected) when sim < threshold.
+    Falls back conservatively to "matched" when images cannot be loaded.
+    """
+    try:
+        if cur_pil is None:
+            _cur_iid = getattr(cur, "image_id", None) or ""
+            cur_pil = _load_pil_image(_cur_iid) if _cur_iid else None
+        if past_pil is None:
+            _past_iid = getattr(past, "image_id", None) or ""
+            past_pil = _load_pil_image(_past_iid) if _past_iid else None
+        if cur_pil is None or past_pil is None:
+            logger.warning("[StaticPairStatus] PIL 이미지 로드 실패 → 'matched' 기본값 사용")
+            return "matched"
+        crop_cur = _mask_crop(
+            cur_pil, cur.bbox_x1, cur.bbox_y1, cur.bbox_x2, cur.bbox_y2,
+            getattr(cur, "mask_rle", None),
+        )
+        crop_past = _mask_crop(
+            past_pil, past.bbox_x1, past.bbox_y1, past.bbox_x2, past.bbox_y2,
+            getattr(past, "mask_rle", None),
+        )
+        if crop_cur is None or crop_past is None:
+            return "matched"
+        sim = _clip_similarity_crops(crop_cur, crop_past)
+        status = "matched" if sim >= _STATIC_SIM_THRESHOLD else "changed"
+        logger.info(
+            f"[StaticPair] {cur.object_class}  sim={sim:.3f}  "
+            f"threshold={_STATIC_SIM_THRESHOLD}  → {status}"
+        )
+        return status
+    except Exception as exc:
+        logger.warning(f"[StaticPairStatus] 유사도 계산 오류: {exc} → 'matched' 기본값 사용")
+        return "matched"
+
+
 # 탐지 목록에 대한 CLIP 임베딩 배열 생성
 def _compute_embeddings(
     detections: list,
@@ -1278,6 +1336,7 @@ def pair_by_similarity(
         )
         _gc_seen: set = set()
         _gp_seen: set = set()
+        _s0s_past_pil_cache: Dict[str, Optional] = {}  # image_id → PIL
         for _dist, _ci, _pi in _gcands:
             if _ci in _gc_seen or _pi in _gp_seen:
                 continue
@@ -1287,6 +1346,13 @@ def pair_by_similarity(
             _gp_seen.add(_pi)
             _geo_pre_cur_ids.add(_c.detection_id)
             _geo_pre_past_ids.add(_p.id)
+            # 과거 프레임 PIL 로드 (캐시 활용); 현재 PIL은 함수 인자로 제공됨
+            _piid = getattr(_p, "image_id", None) or ""
+            if _piid not in _s0s_past_pil_cache:
+                _s0s_past_pil_cache[_piid] = _load_pil_image(_piid) if _piid else None
+            _s0s_past_pil = _s0s_past_pil_cache.get(_piid)
+            # CLIP 유사도로 변화 여부 판단: "matched" (변화 없음) or "changed" (구조 변화)
+            _st = _static_pair_status(_c, _p, cur_pil=current_image, past_pil=_s0s_past_pil)
             pairing_records.append(PairingRecord(
                 pairing_time=now, lat_center=region_lat, lon_center=region_lon,
                 current_detection_id=_c.detection_id,
@@ -1303,7 +1369,7 @@ def pair_by_similarity(
                 past_capture_time=past_capture_time,
                 past_bbox={"x1": _p.bbox_x1, "y1": _p.bbox_y1,
                            "x2": _p.bbox_x2, "y2": _p.bbox_y2},
-                status="matched", source_type=source_type, session_id=session_id,
+                status=_st, source_type=source_type, session_id=session_id,
             ))
     # 이미 geo-matched된 탐지는 CLIP 처리에서 제외
     current_detections = [d for d in current_detections if d.detection_id not in _geo_pre_cur_ids]
