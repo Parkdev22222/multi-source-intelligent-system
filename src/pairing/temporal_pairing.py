@@ -811,12 +811,11 @@ def pair_by_tracking(
     #    from both images.  If similarity ≥ threshold → synthetic detection
     #    inserted and pair recorded as "matched".
     # ------------------------------------------------------------------
-    static_new        = [p for p in pairing_records
-                         if p.status == "new"
-                         and (p.current_object_class or "").lower() in _STATIC_CLASSES]
-    static_disappeared = [p for p in pairing_records
-                          if p.status == "disappeared"
-                          and (p.past_object_class or "").lower() in _STATIC_CLASSES]
+    # Static buildings that have no geo-match must stay "new"/"disappeared".
+    # Cross-checking via CLIP alone (threshold 0.5) causes false positives because
+    # satellite building imagery consistently scores ≥ 0.5 across unrelated buildings.
+    static_new        = []
+    static_disappeared = []
 
     if static_new or static_disappeared:
         # Collect distinct image_ids from current detections to load PILs
@@ -1618,12 +1617,11 @@ def pair_by_similarity(
     # ------------------------------------------------------------------
     # 4. Static-class cross-image check for unmatched "new" / "disappeared"
     # ------------------------------------------------------------------
-    static_new_sim = [p for p in pairing_records
-                      if p.status == "new"
-                      and (p.current_object_class or "").lower() in _STATIC_CLASSES]
-    static_dis_sim = [p for p in pairing_records
-                      if p.status == "disappeared"
-                      and (p.past_object_class or "").lower() in _STATIC_CLASSES]
+    # Static buildings that have no geo-match must stay "new"/"disappeared".
+    # Cross-checking via CLIP alone (threshold 0.5) causes false positives because
+    # satellite building imagery consistently scores ≥ 0.5 across unrelated buildings.
+    static_new_sim = []
+    static_dis_sim = []
 
     if static_new_sim or static_dis_sim:
         cur_img_cache2: Dict[str, Optional] = {}
