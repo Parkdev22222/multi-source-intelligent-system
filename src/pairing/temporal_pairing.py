@@ -811,11 +811,16 @@ def pair_by_tracking(
     #    from both images.  If similarity ≥ threshold → synthetic detection
     #    inserted and pair recorded as "matched".
     # ------------------------------------------------------------------
-    # Static buildings that have no geo-match must stay "new"/"disappeared".
-    # Cross-checking via CLIP alone (threshold 0.5) causes false positives because
-    # satellite building imagery consistently scores ≥ 0.5 across unrelated buildings.
-    static_new        = []
-    static_disappeared = []
+    # Static-class objects that are "new" (within past FOV, no geo-match) or
+    # "disappeared" (within current FOV, no geo-match): attempt cross-image
+    # similarity check.  A synthetic DetectionRecord is inserted for the
+    # missing frame only when CLIP cosine similarity ≥ _STATIC_SIM_THRESHOLD.
+    static_new = [p for p in pairing_records
+                  if p.status == "new"
+                  and (p.current_object_class or "").lower() in _STATIC_CLASSES]
+    static_disappeared = [p for p in pairing_records
+                          if p.status == "disappeared"
+                          and (p.past_object_class or "").lower() in _STATIC_CLASSES]
 
     if static_new or static_disappeared:
         # Collect distinct image_ids from current detections to load PILs
@@ -846,10 +851,12 @@ def pair_by_tracking(
             cur_rec, cur_pil = _get_img_rec_pil(cur_det.image_id, cur_img_cache)
             if cur_rec is None or cur_pil is None:
                 continue
-            # Pick the past image that covers the same region
-            if not past_image_ids:
+            # Pick the past image that covers the same region.
+            # Fall back to the function-level past_image_id parameter when the
+            # area has no past detections at all (that is why the object is "new").
+            past_iid = past_image_ids[0] if past_image_ids else past_image_id
+            if not past_iid:
                 continue
-            past_iid = past_image_ids[0]
             past_rec, past_pil = _get_img_rec_pil(past_iid, past_img_cache)
             if past_rec is None or past_pil is None:
                 continue
@@ -889,9 +896,11 @@ def pair_by_tracking(
             past_rec, past_pil = _get_img_rec_pil(past_det.image_id, past_img_cache)
             if past_rec is None or past_pil is None:
                 continue
-            if not cur_image_ids:
+            # Fall back to the function-level current_image_id parameter when the
+            # area has no current detections at all (that is why the object is "disappeared").
+            cur_iid = cur_image_ids[0] if cur_image_ids else current_image_id
+            if not cur_iid:
                 continue
-            cur_iid = cur_image_ids[0]
             cur_rec, cur_pil = _get_img_rec_pil(cur_iid, cur_img_cache)
             if cur_rec is None or cur_pil is None:
                 continue
@@ -1617,18 +1626,22 @@ def pair_by_similarity(
     # ------------------------------------------------------------------
     # 4. Static-class cross-image check for unmatched "new" / "disappeared"
     # ------------------------------------------------------------------
-    # Static buildings that have no geo-match must stay "new"/"disappeared".
-    # Cross-checking via CLIP alone (threshold 0.5) causes false positives because
-    # satellite building imagery consistently scores ≥ 0.5 across unrelated buildings.
-    static_new_sim = []
-    static_dis_sim = []
+    # Static-class objects that are "new" (within past FOV, no geo-match) or
+    # "disappeared" (within current FOV, no geo-match): attempt cross-image
+    # similarity check.  A synthetic DetectionRecord is inserted for the
+    # missing frame only when CLIP cosine similarity ≥ _STATIC_SIM_THRESHOLD.
+    static_new_sim = [p for p in pairing_records
+                      if p.status == "new"
+                      and (p.current_object_class or "").lower() in _STATIC_CLASSES]
+    static_dis_sim = [p for p in pairing_records
+                      if p.status == "disappeared"
+                      and (p.past_object_class or "").lower() in _STATIC_CLASSES]
 
     if static_new_sim or static_dis_sim:
         cur_img_cache2: Dict[str, Optional] = {}
         past_img_cache2: Dict[str, Optional] = {}
         past_image_ids2 = list({d.image_id for d in past_detections if d.image_id})
-        cur_image_ids2  = list({d.detection_id and d.image_id
-                                for d in current_detections if d.image_id})
+        cur_image_ids2  = list({d.image_id for d in current_detections if d.image_id})
 
         # 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _rec_pil(iid, cache):
@@ -1649,9 +1662,12 @@ def pair_by_similarity(
             if cur_det is None or not cur_det.image_id:
                 continue
             cur_rec, cur_pil = _rec_pil(cur_det.image_id, cur_img_cache2)
-            if cur_rec is None or cur_pil is None or not past_image_ids2:
+            if cur_rec is None or cur_pil is None:
                 continue
-            past_iid = past_image_ids2[0]
+            # Fall back to function-level past_image_id when area has no past detections.
+            past_iid = past_image_ids2[0] if past_image_ids2 else past_image_id
+            if not past_iid:
+                continue
             past_rec, past_pil = _rec_pil(past_iid, past_img_cache2)
             if past_rec is None or past_pil is None:
                 continue
@@ -1691,10 +1707,12 @@ def pair_by_similarity(
             past_rec, past_pil = _rec_pil(past_det.image_id, past_img_cache2)
             if past_rec is None or past_pil is None:
                 continue
-            # current image: get image_id from any current detection
+            # current image: get image_id from any current detection or function parameter.
+            # current_detections may be empty when all current static detections were
+            # geo-matched in Step 0, so fall back to current_image_id parameter.
             cur_iid2 = next(
                 (d.image_id for d in current_detections if d.image_id), None
-            )
+            ) or current_image_id
             if cur_iid2 is None:
                 continue
             cur_rec, cur_pil = _rec_pil(cur_iid2, cur_img_cache2)
