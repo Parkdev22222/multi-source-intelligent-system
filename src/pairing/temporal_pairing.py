@@ -210,6 +210,24 @@ def _in_fov(lat: float, lon: float, bounds: Optional[tuple]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Geo-bounds validity guard
+# ---------------------------------------------------------------------------
+
+# 이미지의 geo bounds가 있어야 lat/lon이 신뢰 가능 (없으면 모두 lat_center 폴백)
+def _image_has_geo_bounds(image_id: Optional[str]) -> bool:
+    """이미지 레코드에 lat_min/lat_max/lon_min/lon_max 가 모두 있으면 True.
+    없으면 pixel_to_geo 가 lat_center/lon_center 를 반환하므로 Step 0 geo-match 불가.
+    """
+    if not image_id:
+        return False
+    rec = get_image_record_by_id(image_id)
+    return (
+        rec is not None
+        and None not in (rec.lat_min, rec.lat_max, rec.lon_min, rec.lon_max)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Duplicate-pairing guard
 # ---------------------------------------------------------------------------
 
@@ -568,11 +586,27 @@ def pair_by_tracking(
     #    SAM3 tracker(픽셀 IoU)보다 먼저 위경도 근접도 기준으로 매칭한다.
     #    같은 클래스이고 geo 거리 ≤ STATIC_EXACT_MATCH_DEG(≈11m) 인 쌍 중 가장
     #    가까운 쌍부터 greedy 할당. 임계값 초과 쌍은 절대 매칭하지 않는다.
+    #
+    #    ※ 이미지에 lat_min/lat_max/lon_min/lon_max 가 없으면 pixel_to_geo 가
+    #      lat_center/lon_center 를 반환 → 모든 탐지 객체가 동일 좌표로 보여
+    #      무관한 건물들까지 오매칭된다. bounds 확인 후 신뢰할 수 없으면 건너뜀.
     # ------------------------------------------------------------------
     static_cur_list  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
     static_past_list = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
 
-    if static_cur_list and static_past_list:
+    # 과거 이미지 ID: past_image_id 파라미터 우선, 없으면 첫 번째 past 탐지에서 취득
+    _past_iid_t = past_image_id or next(
+        (getattr(d, "image_id", None) for d in past_detections if getattr(d, "image_id", None)),
+        None,
+    )
+    _step0_t_geo_ok = _image_has_geo_bounds(current_image_id) and _image_has_geo_bounds(_past_iid_t)
+    if not _step0_t_geo_ok:
+        logger.debug(
+            "[Pairing/tracker] Step 0 건너뜀: 이미지 geo bounds 없음 "
+            "(cur=%s, past=%s)", current_image_id, _past_iid_t
+        )
+
+    if static_cur_list and static_past_list and _step0_t_geo_ok:
         geo_candidates = []
         for ci, cur in enumerate(static_cur_list):
             for pi, past in enumerate(static_past_list):
@@ -1321,12 +1355,29 @@ def pair_by_similarity(
     # CLIP 점수와 무관하게, 같은 클래스 고정 시설물이 STATIC_EXACT_MATCH_DEG(≈11m) 이내이면
     # 가장 가까운 쌍부터 greedy로 matched 페어링 생성.
     # 임계값 초과 쌍은 절대 매칭하지 않는다 (다른 위치의 건물을 동일 건물로 식별하지 않음).
+    #
+    # ※ 이미지에 lat_min/lat_max/lon_min/lon_max 가 없으면 pixel_to_geo 가
+    #   lat_center/lon_center 를 반환 → 모든 탐지 객체가 동일 좌표로 보여
+    #   무관한 건물들까지 오매칭된다. bounds 확인 후 신뢰할 수 없으면 건너뜀.
     # ------------------------------------------------------------------
     _s_cur  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
     _s_past = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
     _geo_pre_cur_ids:  set = set()
     _geo_pre_past_ids: set = set()
-    if _s_cur and _s_past:
+
+    # 과거 이미지 ID: past_image_id 파라미터 우선, 없으면 첫 번째 past 탐지에서 취득
+    _past_iid_s = past_image_id or next(
+        (getattr(d, "image_id", None) for d in past_detections if getattr(d, "image_id", None)),
+        None,
+    )
+    _step0_s_geo_ok = _image_has_geo_bounds(current_image_id) and _image_has_geo_bounds(_past_iid_s)
+    if not _step0_s_geo_ok:
+        logger.debug(
+            "[Pairing/similarity] Step 0 건너뜀: 이미지 geo bounds 없음 "
+            "(cur=%s, past=%s)", current_image_id, _past_iid_s
+        )
+
+    if _s_cur and _s_past and _step0_s_geo_ok:
         _gcands = sorted(
             (_geo_distance(c.lat, c.lon, p.lat, p.lon), ci, pi)
             for ci, c in enumerate(_s_cur)

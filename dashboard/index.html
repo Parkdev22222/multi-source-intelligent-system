@@ -4208,6 +4208,7 @@ async function _dsLoadImageSmart(imageId) {
 
 // 원본 썸네일 이미지를 탐지 단계 모달에 표시
 async function _dsLoadImage(imageId) {
+  const token  = _dsLoadToken;   // fetch 완료 시점에 프레임 전환 여부 확인용
   const area    = document.getElementById('ds-image-area');
   const loading = document.getElementById('ds-image-loading');
   loading.style.display = 'block';
@@ -4220,12 +4221,14 @@ async function _dsLoadImage(imageId) {
     const res = await fetch(`${API}/api/image/${encodeURIComponent(imageId)}/thumb`);
     if (!res.ok) throw new Error('이미지 로드 실패');
     const data = await res.json();
+    if (token !== _dsLoadToken) return;  // 다른 프레임으로 전환됨 → 덮어쓰기 방지
     loading.style.display = 'none';
     const img = document.createElement('img');
     img.src = `data:image/png;base64,${data.image_b64}`;
     img.alt = '위성 영상';
     area.appendChild(img);
   } catch (e) {
+    if (token !== _dsLoadToken) return;
     loading.textContent = `이미지 로드 실패: ${e.message}`;
   }
 }
