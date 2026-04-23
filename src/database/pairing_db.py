@@ -4,7 +4,7 @@ Pairing DB operations – insert and query temporal object pairs.
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from sqlalchemy.orm import Session
 
@@ -78,6 +78,92 @@ def get_pairings_by_session(session_id: str) -> List[PairingRecord]:
     return get_latest_pairings(session_id=session_id)
 
 
+def update_pairings_detection_refs(old_det_ids: Set[str], new_det_id: Optional[str]) -> int:
+    """탐지 결과 교체 후, 구 detection_id를 참조하던 PairingRecord를 새 ID로 업데이트.
+
+    replace_detections_for_image() 호출 시 기존 DetectionRecord가 삭제되면
+    PairingRecord의 current/past_detection_id가 stale해져 api_report_images의
+    capture_time 폴백이 발동되고 다른 보고서 이미지가 노출되는 버그를 방지한다.
+    """
+    if not old_det_ids:
+        return 0
+    engine = get_engine()
+    updated = 0
+    with Session(engine) as session:
+        pairings = session.query(PairingRecord).filter(
+            (PairingRecord.current_detection_id.in_(old_det_ids)) |
+            (PairingRecord.past_detection_id.in_(old_det_ids))
+        ).all()
+        for p in pairings:
+            if p.current_detection_id in old_det_ids:
+                p.current_detection_id = new_det_id
+                updated += 1
+            if p.past_detection_id in old_det_ids:
+                p.past_detection_id = new_det_id
+                updated += 1
+        session.commit()
+    logger.info(f"[PairingDB] Updated {updated} pairing detection refs after image edit")
+    return updated
+
+
+def delete_pairings_by_session(session_id: str) -> int:
+    """세션의 모든 pairing_records를 삭제한다. 보고서 재생성 전 호출."""
+    engine = get_engine()
+    with Session(engine) as session:
+        deleted = (
+            session.query(PairingRecord)
+            .filter(PairingRecord.session_id == session_id)
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+    logger.info(f"[PairingDB] Deleted {deleted} pairings for session {session_id}")
+    return deleted
+
+
+def update_pairing(pairing_id: str, fields: dict) -> bool:
+    """단일 PairingRecord를 부분 업데이트한다.
+
+    Args:
+        pairing_id: 업데이트할 pairing의 UUID
+        fields: 업데이트할 필드 딕셔너리.
+                허용 키: status, current_object_class, current_confidence,
+                         past_object_class, past_confidence
+
+    Returns:
+        True if record found and updated, False if not found.
+    """
+    _ALLOWED = {
+        "status", "current_object_class", "current_confidence",
+        "past_object_class", "past_confidence",
+    }
+    safe = {k: v for k, v in fields.items() if k in _ALLOWED}
+    if not safe:
+        return False
+    engine = get_engine()
+    with Session(engine) as session:
+        rec = session.get(PairingRecord, pairing_id)
+        if rec is None:
+            return False
+        for k, v in safe.items():
+            setattr(rec, k, v)
+        session.commit()
+    logger.info(f"[PairingDB] Updated pairing {pairing_id[:8]}: {safe}")
+    return True
+
+
+def delete_pairing(pairing_id: str) -> bool:
+    """단일 PairingRecord를 삭제한다."""
+    engine = get_engine()
+    with Session(engine) as session:
+        rec = session.get(PairingRecord, pairing_id)
+        if rec is None:
+            return False
+        session.delete(rec)
+        session.commit()
+    logger.info(f"[PairingDB] Deleted pairing {pairing_id[:8]}")
+    return True
+
+
 def get_session_location(session_id: str):
     """Return (lat_center, lon_center) for the first pairing of a session, or (None, None)."""
     engine = get_engine()
@@ -93,6 +179,43 @@ def get_session_location(session_id: str):
         if row:
             return row[0], row[1]
         return None, None
+
+
+def get_pairings_near_time(dt: datetime, window_seconds: int = 120) -> List[PairingRecord]:
+    """시각 dt 기준으로 가장 가까운 pairing_time 배치를 반환한다.
+
+    session_id가 없거나 session 기반 조회가 실패할 때의 폴백으로 사용.
+    dt 이전 window_seconds 이내의 배치 중 가장 최신 pairing_time을 찾아 해당 배치 전체를 반환.
+    """
+    from datetime import timedelta
+    engine = get_engine()
+    from sqlalchemy import func
+    with Session(engine) as session:
+        lower = dt - timedelta(seconds=window_seconds)
+        latest_pt = (
+            session.query(func.max(PairingRecord.pairing_time))
+            .filter(PairingRecord.pairing_time <= dt,
+                    PairingRecord.pairing_time >= lower)
+            .scalar()
+        )
+        if latest_pt is None:
+            # 범위 내 없으면 dt 이전의 가장 최근 배치
+            latest_pt = (
+                session.query(func.max(PairingRecord.pairing_time))
+                .filter(PairingRecord.pairing_time <= dt)
+                .scalar()
+            )
+        if latest_pt is None:
+            return []
+        records = (
+            session.query(PairingRecord)
+            .filter(PairingRecord.pairing_time == latest_pt)
+            .limit(500)
+            .all()
+        )
+        for r in records:
+            session.expunge(r)
+        return records
 
 
 def get_session_ids_near(
