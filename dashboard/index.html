@@ -4157,9 +4157,9 @@ function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   // 이미지 네비게이션 버튼 (가장 최신 = 현재 프레임 / 나머지 = 과거 프레임)
   _dsRenderImgNav();
 
-  // 과거 프레임(인덱스 0) 이미지를 참조용으로 표시; 선택 인덱스(현재 프레임)는 그대로 유지
+  // 현재 프레임 이미지 표시 (선택 인덱스와 동일)
   if (_dsImageIds.length > 0) {
-    _dsLoadImageSmart(_dsImageIds[0]);
+    _dsLoadImageSmart(_dsImageIds[_dsCurrentImgIdx]);
   }
 
   document.getElementById('detect-step-overlay').classList.add('open');
