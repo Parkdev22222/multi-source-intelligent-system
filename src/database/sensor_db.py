@@ -27,6 +27,10 @@ def get_engine():
             ("image_records",     "det_height INTEGER"),
             ("image_records",     "session_id VARCHAR(36)"),
             ("detection_records", "session_id VARCHAR(36)"),
+            ("image_records",     "lat_min FLOAT"),
+            ("image_records",     "lat_max FLOAT"),
+            ("image_records",     "lon_min FLOAT"),
+            ("image_records",     "lon_max FLOAT"),
         ]
         with _engine.connect() as conn:
             for table, col_def in _migrations:

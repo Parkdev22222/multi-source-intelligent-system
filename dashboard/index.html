@@ -4156,9 +4156,9 @@ function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   // 이미지 네비게이션 버튼 (가장 최신 = 현재 프레임 / 나머지 = 과거 프레임)
   _dsRenderImgNav();
 
-  // 이미지 로드 (가장 최신 프레임 우선 표시, 탐지 결과 있으면 bbox 이미지 사용)
+  // 이미지 로드 (가장 오래된 프레임(과거) 우선 표시, 탐지 결과 있으면 bbox 이미지 사용)
   if (_dsImageIds.length > 0) {
-    const showIdx = Math.max(0, _dsImageIds.length - 1);
+    const showIdx = 0;
     _dsLoadImageSmart(_dsImageIds[showIdx]);
     _dsCurrentImgIdx = showIdx;
   }
