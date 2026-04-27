@@ -1493,14 +1493,13 @@ def pair_by_similarity(
             # 동일 클래스인 경우만 같은 객체 후보로 허용
             if cur.object_class.lower() != past.object_class.lower():
                 continue
-            # 고정 시설물: 신뢰할 수 있는 geo 좌표가 있을 때만, 같은 위치
-            # (≤ STATIC_EXACT_MATCH_DEG) 쌍에 한해 CLIP 점수 계산을 허용한다.
-            # geo bounds가 없으면 pixel_to_geo 가 lat_center/lon_center 로 폴백하여
-            # 모든 쌍의 거리가 0 이 되므로(centroid-collapse) 반드시 건너뛴다.
+            # 고정 시설물 geo 가드:
+            # geo bounds 신뢰 가능 → 다른 위치 건물 CLIP 매칭 차단 (거리 초과 쌍 제외)
+            # geo bounds 없음    → 좌표가 모두 lat_center로 수렴하므로 geo 가드 불가;
+            #                       CLIP 유사도만으로 매칭 (Gale-Shapley가 최선 쌍 선택)
             if cur.object_class.lower() in _STATIC_CLASSES:
-                if not _step0_s_geo_ok:
-                    continue  # 좌표 신뢰 불가 → centroid-collapse 오매칭 방지
-                if _geo_distance(cur.lat, cur.lon, past.lat, past.lon) > STATIC_EXACT_MATCH_DEG:
+                if _step0_s_geo_ok and \
+                        _geo_distance(cur.lat, cur.lon, past.lat, past.lon) > STATIC_EXACT_MATCH_DEG:
                     continue
             if clip_sim_matrix is not None:
                 base_score = float(clip_sim_matrix[ci, pi])
@@ -1564,10 +1563,22 @@ def pair_by_similarity(
         pairs.append((cur, past))
 
     # ------------------------------------------------------------------
-    # 1. "matched"
+    # 1. "matched" / "changed"
+    #    CLIP 후보 루프로 매칭된 static 쌍도 _static_pair_status() 로 변화 판정.
     # ------------------------------------------------------------------
+    _s1_past_pil_cache: Dict[str, Optional] = {}
     for cur, past in pairs:
-        status = "matched"
+        if cur.object_class.lower() in _STATIC_CLASSES:
+            _piid = getattr(past, "image_id", None) or ""
+            if _piid not in _s1_past_pil_cache:
+                _s1_past_pil_cache[_piid] = _load_pil_image(_piid) if _piid else None
+            status = _static_pair_status(
+                cur, past,
+                cur_pil=current_image,
+                past_pil=_s1_past_pil_cache.get(_piid),
+            )
+        else:
+            status = "matched"
         pairing_records.append(PairingRecord(
             pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             current_detection_id=cur.detection_id,
