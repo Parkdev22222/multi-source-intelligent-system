@@ -584,7 +584,7 @@ def pair_by_tracking(
     # 0. Static class geo-based pre-matching
     #    고정 시설물(건물·레이더 등)은 물리적으로 이동 불가.
     #    SAM3 tracker(픽셀 IoU)보다 먼저 위경도 근접도 기준으로 매칭한다.
-    #    같은 클래스이고 geo 거리 ≤ STATIC_EXACT_MATCH_DEG(≈11m) 인 쌍 중 가장
+    #    같은 클래스이고 geo 거리 ≤ STATIC_EXACT_MATCH_DEG(≈111m) 인 쌍 중 가장
     #    가까운 쌍부터 greedy 할당. 임계값 초과 쌍은 절대 매칭하지 않는다.
     #
     #    ※ 이미지에 lat_min/lat_max/lon_min/lon_max 가 없으면 pixel_to_geo 가
@@ -1360,7 +1360,7 @@ def pair_by_similarity(
 
     # ------------------------------------------------------------------
     # Step 0. Static class geo-based pre-matching
-    # CLIP 점수와 무관하게, 같은 클래스 고정 시설물이 STATIC_EXACT_MATCH_DEG(≈11m) 이내이면
+    # CLIP 점수와 무관하게, 같은 클래스 고정 시설물이 STATIC_EXACT_MATCH_DEG(≈111m) 이내이면
     # 가장 가까운 쌍부터 greedy로 matched 페어링 생성.
     # 임계값 초과 쌍은 절대 매칭하지 않는다 (다른 위치의 건물을 동일 건물로 식별하지 않음).
     #
@@ -1493,9 +1493,13 @@ def pair_by_similarity(
             # 동일 클래스인 경우만 같은 객체 후보로 허용
             if cur.object_class.lower() != past.object_class.lower():
                 continue
-            # 고정 시설물: STATIC_EXACT_MATCH_DEG(≈11m) 이내에 있는 쌍만 허용
-            # → 다른 위치의 건물·레이더를 CLIP 유사도로 잘못 매칭하는 것을 방지
+            # 고정 시설물: 신뢰할 수 있는 geo 좌표가 있을 때만, 같은 위치
+            # (≤ STATIC_EXACT_MATCH_DEG) 쌍에 한해 CLIP 점수 계산을 허용한다.
+            # geo bounds가 없으면 pixel_to_geo 가 lat_center/lon_center 로 폴백하여
+            # 모든 쌍의 거리가 0 이 되므로(centroid-collapse) 반드시 건너뛴다.
             if cur.object_class.lower() in _STATIC_CLASSES:
+                if not _step0_s_geo_ok:
+                    continue  # 좌표 신뢰 불가 → centroid-collapse 오매칭 방지
                 if _geo_distance(cur.lat, cur.lon, past.lat, past.lon) > STATIC_EXACT_MATCH_DEG:
                     continue
             if clip_sim_matrix is not None:

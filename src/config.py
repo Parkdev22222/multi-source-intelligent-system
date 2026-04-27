@@ -152,12 +152,14 @@ COORDINATE_MATCH_RADIUS_DEG = float(os.getenv("COORD_MATCH_RADIUS", "0.01"))
 # 0.001 deg ≈ 111 m at equator – used as geo proximity threshold for static classes.
 MOVE_DISTANCE_THRESHOLD_DEG = float(os.getenv("MOVE_DISTANCE_THRESHOLD", "0.001"))
 
-# Exact same-location threshold for physically fixed facilities (buildings, radar, etc.).
-# 0.0001 deg ≈ 11 m – two detections of the same fixed object from different frames
-# may differ by up to ~11 m due to satellite-image projection errors.
-# Fixed-class objects are matched ONLY when their geo distance ≤ this value;
-# any pair beyond this threshold is treated as two distinct objects (new / disappeared).
-STATIC_EXACT_MATCH_DEG = float(os.getenv("STATIC_EXACT_MATCH", "0.0001"))
+# Same-location threshold for physically fixed facilities (buildings, radar, etc.).
+# Two detections of the same fixed object from different satellite frames
+# can differ by 10-100 m due to image geo-registration errors and detection
+# centroid variability (especially at 5-30 m/px resolution).
+# Greedy nearest-first assignment in Step 0 prevents mismatching adjacent buildings
+# even with a generous threshold.
+# Default 0.001 deg ≈ 111 m (overridable via STATIC_EXACT_MATCH env var).
+STATIC_EXACT_MATCH_DEG = float(os.getenv("STATIC_EXACT_MATCH", "0.001"))
 
 # --- LLM (EXAONE-3.5-7.8B-Instruct-AWQ via vLLM) ---
 LLM_MODEL_NAME = os.getenv(
