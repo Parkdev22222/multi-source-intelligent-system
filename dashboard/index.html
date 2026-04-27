@@ -4042,6 +4042,9 @@ let _dsImageIds    = [];     // 세션 이미지 ID 목록
 let _dsCurrentImgIdx = 0;   // 현재 표시 중인 이미지 인덱스 (현재 프레임 기준)
 let _dsDetectionDone = false;
 let _dsLoadToken   = 0;      // 비동기 이미지 로드 중복 방지용 토큰
+// 분석이 완료된 세션 ID 집합 — 재진입 시 또는 늦게 완료된 SAM3 잡이
+// _dsMarkDetectionDone 을 재호출해도 버튼이 다시 활성화되지 않도록 막는다.
+const _dsAnalyzedSessions = new Set();
 
 // SAM3 순차 실행 큐
 const _sam3Queue = [];
@@ -4140,6 +4143,14 @@ function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   document.getElementById('ds-step2-badge').className   = 'ds-step-badge';
   document.getElementById('ds-analyze-btn').disabled    = true;
   document.getElementById('ds-status-msg').textContent  = '';
+
+  // 이미 분석이 완료된 세션으로 재진입 시 완료 상태 복원
+  if (_dsAnalyzedSessions.has(sessionId)) {
+    document.getElementById('ds-analyze-btn').textContent = '✓ 보고서 생성 완료';
+    document.getElementById('ds-step2-badge').textContent = '분석 완료';
+    document.getElementById('ds-step2-badge').className   = 'ds-step2-badge done';
+    document.getElementById('ds-status-msg').textContent  = '보고서가 이미 생성되었습니다.';
+  }
 
   // 이미지 네비게이션 버튼 (가장 최신 = 현재 프레임 / 나머지 = 과거 프레임)
   _dsRenderImgNav();
@@ -4304,8 +4315,16 @@ function _dsMarkDetectionDone(method, count, classes) {
 
   document.getElementById('ds-step2-badge').textContent = '준비됨';
   document.getElementById('ds-step2-badge').className   = 'ds-step2-badge done';
-  document.getElementById('ds-analyze-btn').disabled    = false;
-  document.getElementById('ds-status-msg').textContent  = '탐지 결과를 확인하고 분석을 시작하세요.';
+  // 이미 분석이 완료된 세션이면 버튼을 다시 활성화하지 않는다.
+  // (늦게 완료된 SAM3 잡이나 재진입 시 재호출돼도 덮어쓰기 방지)
+  if (!_dsAnalyzedSessions.has(_dsSessionId)) {
+    document.getElementById('ds-analyze-btn').disabled   = false;
+    document.getElementById('ds-status-msg').textContent = '탐지 결과를 확인하고 분석을 시작하세요.';
+  } else {
+    document.getElementById('ds-analyze-btn').textContent = '✓ 보고서 생성 완료';
+    document.getElementById('ds-step2-badge').textContent = '분석 완료';
+    document.getElementById('ds-status-msg').textContent  = '보고서가 이미 생성되었습니다.';
+  }
 
   document.getElementById('ds-sam3-btn').textContent  = '⊕ SAM3 기반 판독';
   document.getElementById('ds-sam3-btn').disabled     = false;
@@ -4334,6 +4353,7 @@ document.getElementById('ds-analyze-btn').addEventListener('click', async () => 
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '분석 실패');
     const data = await res.json();
     document.getElementById('ds-status-msg').textContent = '보고서 생성 완료!';
+    _dsAnalyzedSessions.add(_dsSessionId); // 이 세션은 분석 완료 → 이후 SAM3 잡이 완료돼도 버튼 재활성화 금지
     _dsClose();
     if (data.report_id) {
       meta_toast(`판독 보고서 생성 완료 – ID: ${data.report_id.slice(0, 8)}`);
