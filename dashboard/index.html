@@ -4114,7 +4114,8 @@ async function _sam3ProcessNext() {
 function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   _dsSessionId    = sessionId;
   _dsImageIds     = imageIds || [];
-  _dsCurrentImgIdx = 0;
+  // 선택 인덱스는 현재 프레임(마지막)으로 초기화 → "현재 프레임" 버튼이 노란색 활성화
+  _dsCurrentImgIdx = Math.max(0, _dsImageIds.length - 1);
   _dsDetectionDone = false;
 
   // 모달 타이틀: WP 번호·이름으로 어느 WP 설정인지 명시
@@ -4156,11 +4157,9 @@ function _dsOpen(sessionId, imageIds, lat, lon, targetDesc, wpName, wpSeq) {
   // 이미지 네비게이션 버튼 (가장 최신 = 현재 프레임 / 나머지 = 과거 프레임)
   _dsRenderImgNav();
 
-  // 이미지 로드 (가장 오래된 프레임(과거) 우선 표시, 탐지 결과 있으면 bbox 이미지 사용)
+  // 과거 프레임(인덱스 0) 이미지를 참조용으로 표시; 선택 인덱스(현재 프레임)는 그대로 유지
   if (_dsImageIds.length > 0) {
-    const showIdx = 0;
-    _dsLoadImageSmart(_dsImageIds[showIdx]);
-    _dsCurrentImgIdx = showIdx;
+    _dsLoadImageSmart(_dsImageIds[0]);
   }
 
   document.getElementById('detect-step-overlay').classList.add('open');
