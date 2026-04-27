@@ -1493,14 +1493,10 @@ def pair_by_similarity(
             # 동일 클래스인 경우만 같은 객체 후보로 허용
             if cur.object_class.lower() != past.object_class.lower():
                 continue
-            # 고정 시설물 geo 가드:
-            # geo bounds 신뢰 가능 → 다른 위치 건물 CLIP 매칭 차단 (거리 초과 쌍 제외)
-            # geo bounds 없음    → 좌표가 모두 lat_center로 수렴하므로 geo 가드 불가;
-            #                       CLIP 유사도만으로 매칭 (Gale-Shapley가 최선 쌍 선택)
-            if cur.object_class.lower() in _STATIC_CLASSES:
-                if _step0_s_geo_ok and \
-                        _geo_distance(cur.lat, cur.lon, past.lat, past.lon) > STATIC_EXACT_MATCH_DEG:
-                    continue
+            # 고정 시설물은 Step 0 에서 정확 위치 쌍을 처리하고 리스트에서 제거한다.
+            # candidate loop 에 남은 static 객체는 Step 0 임계값 초과(≈111m+) 또는
+            # 형상 변화로 centroid 가 크게 이동한 경우이므로, geo 가드 없이 CLIP 으로만
+            # 최선 쌍을 선택한다. Gale-Shapley 가 유사도 최고 쌍부터 greedy 할당한다.
             if clip_sim_matrix is not None:
                 base_score = float(clip_sim_matrix[ci, pi])
             else:
