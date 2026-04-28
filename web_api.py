@@ -1529,7 +1529,7 @@ def api_image_rendered(image_id: str, t: int = Query(default=0)):
         raise HTTPException(status_code=404, detail="이미지 파일 없음")
     dets = get_detections_by_image(image_id)
     b64 = _image_with_detections_b64(
-        img_path, dets, max_size=480,
+        img_path, dets, max_size=600,
         det_width=rec.det_width, det_height=rec.det_height,
     )
     return {
