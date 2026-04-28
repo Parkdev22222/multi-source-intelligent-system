@@ -4095,6 +4095,10 @@ async function _sam3ProcessNext() {
         _dsLoadRendered(imageId);
       }
       _dsMarkDetectionDone('SAM3', totalDets, detClasses);
+      // 탐지 완료된 프레임 ≠ 현재 표시 중인 프레임 → 현재 프레임 카운트·이미지 재조회
+      if (_dsImageIds[_dsCurrentImgIdx] !== imageId) {
+        _dsLoadImageSmart(_dsImageIds[_dsCurrentImgIdx]);
+      }
     }
   } catch (e) {
     if (_dsSessionId === sessionId) {
@@ -4271,6 +4275,7 @@ document.getElementById('ds-sam3-btn').addEventListener('click', () => {
 // 탐지 후 bbox 렌더링 이미지 갱신
 // bbox가 그려진 렌더링 이미지를 탐지 단계 모달에 표시
 async function _dsLoadRendered(imageId) {
+  const token   = _dsLoadToken;   // 호출 시점 토큰 캡처 — 프레임 전환 감지용
   const area    = document.getElementById('ds-image-area');
   const loading = document.getElementById('ds-image-loading');
   loading.style.display = 'block';
@@ -4280,14 +4285,17 @@ async function _dsLoadRendered(imageId) {
     const res = await fetch(
       `${API}/api/image/${encodeURIComponent(imageId)}/rendered?t=${Date.now()}`
     );
+    if (_dsLoadToken !== token) return;  // 프레임 전환됨 → 덮어쓰기 방지
     if (!res.ok) throw new Error();
     const data = await res.json();
+    if (_dsLoadToken !== token) return;  // 프레임 전환됨 → 덮어쓰기 방지
     loading.style.display = 'none';
     const img = document.createElement('img');
     img.src = `data:image/png;base64,${data.image_b64}`;
     img.alt = '탐지 결과';
     area.appendChild(img);
   } catch {
+    if (_dsLoadToken !== token) return;  // 프레임 전환됨 → 오류 처리도 건너뜀
     loading.style.display = 'none';
     _dsLoadImage(imageId);
   }
