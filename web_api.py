@@ -1411,7 +1411,7 @@ def api_report_pairings(report_id: str):
 
     # ── 페어링 목록 구성 ─────────────────────────────────────────────────────
     counters: dict[str, int] = {
-        "matched": 0, "new": 0, "disappeared": 0,
+        "matched": 0, "changed": 0, "moved": 0, "new": 0, "disappeared": 0,
         "past_not_included": 0, "current_not_included": 0,
     }
     pairs = []
@@ -1421,6 +1421,10 @@ def api_report_pairings(report_id: str):
         cnt = counters[st]
         if st == "matched":
             label = str(cnt)
+        elif st == "changed":
+            label = f"C{cnt}"
+        elif st == "moved":
+            label = f"M{cnt}"
         elif st == "new":
             label = f"N{cnt}"
         elif st == "disappeared":
@@ -1430,7 +1434,7 @@ def api_report_pairings(report_id: str):
         elif st == "current_not_included":
             label = f"CI{cnt}"
         else:
-            label = f"D{cnt}"
+            label = f"?{cnt}"
 
         pairs.append({
             "id":            p.id,
