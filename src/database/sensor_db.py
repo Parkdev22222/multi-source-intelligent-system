@@ -309,6 +309,9 @@ def replace_detections_for_image(image_id: str, new_detections: List[DetectionRe
         for d in new_detections:
             session.add(d)
         session.commit()
+        for d in new_detections:
+            session.refresh(d)
+            session.expunge(d)
         logger.info(f"[SensorDB] replace_detections image_id={image_id} count={len(new_detections)}")
         return len(new_detections)
 
