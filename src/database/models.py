@@ -1,8 +1,9 @@
 """
-SQLAlchemy ORM models for Sensor Detections DB and Object Pairings DB.
+SQLAlchemy ORM models for Sensor Detections DB, Object Pairings DB, and Reports DB.
 
-Sensor DB: stores every detected object from current-time satellite/drone imagery.
+Sensor DB:  stores every detected object from current-time satellite/drone imagery.
 Pairing DB: stores temporal pairs (current detection ↔ past detection at same coordinates).
+Reports DB: stores every generated military intelligence report with saved time and file path.
 """
 
 import uuid
@@ -23,6 +24,7 @@ from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 PairingBase = declarative_base()
+ReportBase = declarative_base()
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +51,15 @@ class ImageRecord(Base):
     resolution_m = Column(Float, nullable=True)        # GSD in metres/pixel
     sensor_platform = Column(String(64), nullable=True)  # e.g. "WorldView-3", "MQ-9"
 
+    # Dimensions of the image array actually used during detection (after SR preprocessing).
+    # bbox coordinates in DetectionRecord are in this pixel space.
+    det_width  = Column(Integer, nullable=True)
+    det_height = Column(Integer, nullable=True)
+
+    # Pipeline session that produced the detections on this image.
+    # Links image records back to the report generation session.
+    session_id = Column(String(36), nullable=True)
+
     detections = relationship("DetectionRecord", back_populates="image", cascade="all, delete-orphan")
 
 
@@ -62,7 +73,7 @@ class DetectionRecord(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     image_id = Column(String(36), ForeignKey("image_records.id"), nullable=False)
-    detection_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    detection_time = Column(DateTime, nullable=False)  # must be set to ImageRecord.capture_time
 
     # Object classification
     object_class = Column(String(128), nullable=False)   # e.g. "military tank"
@@ -87,6 +98,9 @@ class DetectionRecord(Base):
     source_type = Column(String(32), nullable=True)  # "satellite" | "drone"
     extra = Column(JSON, nullable=True)
 
+    # Pipeline session that generated this detection (same as parent ImageRecord.session_id)
+    session_id = Column(String(36), nullable=True)
+
     image = relationship("ImageRecord", back_populates="detections")
 
 
@@ -101,7 +115,7 @@ class PairingRecord(PairingBase):
 
     Status values:
         "new"        – object appears for the first time (no past match)
-        "matched"    – object present in both current and past frame
+        "matched"    – object present in both frames
         "disappeared"– object was in the past frame but absent in current
     """
 
@@ -140,16 +154,81 @@ class PairingRecord(PairingBase):
 
 
 # ---------------------------------------------------------------------------
+# Reports DB Model
+# ---------------------------------------------------------------------------
+
+class ReportRecord(ReportBase):
+    """
+    A single generated military intelligence report.
+
+    Saved to the Reports DB every time MilitaryReporter.generate_report() is called.
+    """
+
+    __tablename__ = "report_records"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # When this row was inserted into the DB
+    saved_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Timestamp embedded in the report header (moment of LLM generation)
+    report_time = Column(DateTime, nullable=False)
+
+    # Pipeline session that produced this report
+    session_id = Column(String(36), nullable=True)
+
+    # Which LLM and backend were used
+    llm_model = Column(String(128), nullable=False)
+    llm_backend = Column(String(32), nullable=False)   # "huggingface" | "ollama"
+
+    # How many pairing records were analysed
+    pairing_count = Column(Integer, nullable=False, default=0)
+
+    # Path to the .txt file on disk (None if --report-output was not specified)
+    file_path = Column(Text, nullable=True)
+
+    # Full report text content
+    report_content = Column(Text, nullable=False)
+
+
+# ---------------------------------------------------------------------------
 # DB factory helpers
 # ---------------------------------------------------------------------------
 
+# race-condition 없이 테이블을 안전하게 생성
+def _safe_create_all(metadata, engine) -> None:
+    """
+    create_all() 을 race-condition 에 안전하게 호출한다.
+
+    두 프로세스(web_api + main.py 서브프로세스)가 동시에 빈 DB를 초기화할 때
+    두 번째 프로세스가 'table X already exists' OperationalError를 일으키는
+    SQLite race condition을 조용히 무시한다.
+    테이블이 이미 존재하면 정상 상태이므로 계속 진행해도 안전하다.
+    """
+    from sqlalchemy.exc import OperationalError
+    try:
+        metadata.create_all(engine)
+    except OperationalError as exc:
+        if "already exists" in str(exc).lower():
+            pass  # 다른 프로세스가 먼저 생성 완료 — 정상
+        else:
+            raise
+
+
+# 센서 DB용 SQLAlchemy 엔진 생성 및 반환
 def create_sensor_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
-    Base.metadata.create_all(engine)
+    _safe_create_all(Base.metadata, engine)
     return engine
 
 
+# 페어링 DB용 SQLAlchemy 엔진 생성 및 반환
 def create_pairing_engine(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
-    PairingBase.metadata.create_all(engine)
+    _safe_create_all(PairingBase.metadata, engine)
+    return engine
+
+
+# 보고서 DB용 SQLAlchemy 엔진 생성 및 반환
+def create_report_engine(db_path: str):
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+    _safe_create_all(ReportBase.metadata, engine)
     return engine

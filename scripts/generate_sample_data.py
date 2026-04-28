@@ -15,6 +15,7 @@ Image content is synthetic:
 import json
 import logging
 import random
+import struct
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -168,6 +169,83 @@ def generate_sample_data(metadata_output: str = str(METADATA_PATH)) -> None:
     print(f"Sample data generated: {len(metadata_entries)} images in {SAMPLE_IMAGES_DIR}")
 
 
+def generate_tiff_samples() -> None:
+    """
+    GeoTIFF 형식의 샘플 위성 영상을 생성하고 data/images/sample/ 에 저장.
+
+    각 파일에 아래 TIFF 태그를 내장:
+      - Tag 306  (DateTime)        : "YYYY:MM:DD HH:MM:SS"  (TIFF 표준 촬영 시각)
+      - Tag 270  (ImageDescription): 센서 플랫폼 이름
+      - Tag 42112(GDAL_METADATA)   : XML – ACQUISITION_DATETIME (ISO 8601),
+                                     SENSOR_PLATFORM, SOURCE_TYPE
+
+    simulator_runner.py 가 이 태그에서 capture_time 을 자동으로 읽어
+    metadata.json 에 기록한다.
+    """
+    SAMPLE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from PIL import Image as PILImage
+    except ImportError:
+        logger.error("Pillow not installed. Run: pip install Pillow")
+        return
+
+    now       = datetime.now(tz=timezone.utc).replace(microsecond=0)
+    past_time = now - timedelta(hours=6)
+
+    sub_regions = [
+        {"name": "alpha", "lat": REGION_LAT_CENTER + 0.01, "lon": REGION_LON_CENTER - 0.01, "half": 0.01},
+        {"name": "bravo", "lat": REGION_LAT_CENTER - 0.01, "lon": REGION_LON_CENTER + 0.01, "half": 0.01},
+    ]
+
+    for region in sub_regions:
+        name = region["name"]
+        for time_label, capture_time, seed_base, platform, src_type in [
+            ("past",    past_time, 100, "WorldView-3",  "satellite"),
+            ("current", now,       200, "한국군위성-1", "satellite"),
+        ]:
+            # 이미지 생성
+            bg        = _noisy_background(IMG_HEIGHT, IMG_WIDTH, seed=seed_base)
+            n_objects = random.randint(4, 8)
+            objects   = _random_objects(n_objects, seed=seed_base + 1)
+            img_array = _place_objects(bg, objects)
+
+            ts_str   = capture_time.strftime("%Y%m%dT%H%M%S")
+            filename = f"{name}_{time_label}_{ts_str}.tiff"
+            out_path = SAMPLE_IMAGES_DIR / filename
+
+            # TIFF 태그 준비
+            dt_tag   = capture_time.strftime("%Y:%m:%d %H:%M:%S")   # Tag 306 형식
+            gdal_xml = (
+                "<GDALMetadata>"
+                f'<Item name="ACQUISITION_DATETIME">{capture_time.isoformat()}</Item>'
+                f'<Item name="SENSOR_PLATFORM">{platform}</Item>'
+                f'<Item name="SOURCE_TYPE">{src_type}</Item>'
+                f'<Item name="REGION_NAME">{name}</Item>'
+                "</GDALMetadata>"
+            )
+
+            tiff_tags = {
+                270:   f"MSIS Sample | {platform} | {name} | {capture_time.isoformat()}",
+                306:   dt_tag,    # DateTime (촬영 시각)
+                42112: gdal_xml,  # GDAL_METADATA
+            }
+
+            pil_img = PILImage.fromarray(img_array.astype(np.uint8), "RGB")
+            pil_img.save(str(out_path), format="TIFF", tiffinfo=tiff_tags)
+
+            logger.info(
+                f"[SampleGen] TIFF saved: {out_path.name}  "
+                f"objects={n_objects}  capture_time={dt_tag}"
+            )
+
+    print(f"TIFF 샘플 생성 완료: {SAMPLE_IMAGES_DIR}")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    generate_sample_data()
+    import sys
+    if "--tiff" in sys.argv:
+        generate_tiff_samples()
+    else:
+        generate_sample_data()
