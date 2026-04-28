@@ -4211,16 +4211,16 @@ async function _dsLoadImageSmart(imageId) {
       const dets  = data.detections || [];
       const count = data.count ?? dets.length;
       // 현재 프레임의 탐지 건수로 표시 갱신
+      const classes = {};
+      dets.forEach(d => { classes[d.object_class] = (classes[d.object_class] || 0) + 1; });
+      document.getElementById('ds-detect-result').style.display = 'block';
+      document.getElementById('ds-detect-count').textContent = `탐지된 객체: ${count}건`;
+      document.getElementById('ds-detect-list').innerHTML =
+        count > 0
+          ? Object.entries(classes).map(([cls, n]) => `<span>${cls}: ${n}건</span>`).join(' &nbsp;·&nbsp; ')
+          : '탐지 결과 없음';
       if (count > 0) {
-        const classes = {};
-        dets.forEach(d => { classes[d.object_class] = (classes[d.object_class] || 0) + 1; });
-        document.getElementById('ds-detect-result').style.display = 'block';
-        document.getElementById('ds-detect-count').textContent = `탐지된 객체: ${count}건`;
-        document.getElementById('ds-detect-list').innerHTML =
-          Object.entries(classes).map(([cls, n]) => `<span>${cls}: ${n}건</span>`).join(' &nbsp;·&nbsp; ') || '탐지 결과 없음';
         return _dsLoadRendered(imageId);
-      } else {
-        document.getElementById('ds-detect-result').style.display = 'none';
       }
     }
   } catch (_) { /* 실패 시 원본으로 폴백 */ }
