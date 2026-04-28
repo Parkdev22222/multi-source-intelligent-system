@@ -275,6 +275,21 @@ def get_images_by_capture_time(capture_time: datetime, tolerance_sec: int = 5) -
         return records
 
 
+# image_path로 이미지 레코드 조회 (중복 삽입 방지용)
+def get_image_record_by_path(image_path: str) -> Optional[ImageRecord]:
+    """Return the ImageRecord for the given image_path, or None if not found."""
+    engine = get_engine()
+    with Session(engine) as session:
+        record = (
+            session.query(ImageRecord)
+            .filter(ImageRecord.image_path == image_path)
+            .first()
+        )
+        if record is not None:
+            session.expunge(record)
+        return record
+
+
 # image_id로 이미지 레코드 조회
 def get_image_record_by_id(image_id: str) -> Optional[ImageRecord]:
     """Return the ImageRecord for the given id, or None if not found."""

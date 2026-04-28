@@ -56,6 +56,7 @@ from src.database.sensor_db import (
     insert_image_record,
     insert_detections_bulk,
     replace_detections_for_image,
+    get_image_record_by_path,
 )
 from src.database.pairing_db import (
     insert_pairings_bulk,
@@ -124,25 +125,32 @@ class MavenPipeline:
                 _detection_stage_set = True
             meta = loaded.meta
 
-            # Insert image record into Sensor DB
-            # det_width/det_height: bbox 좌표 기준 공간 (SR 적용 후 실제 배열 크기)
+            # 동일 image_path 레코드가 이미 있으면 재사용 — 파이프라인 재실행 시 중복 방지
             det_h, det_w = loaded.array.shape[:2]
-            img_record = insert_image_record(
-                capture_time=meta.capture_time,
-                source_type=meta.source_type,
-                image_path=meta.image_path,
-                lat_center=meta.lat_center,
-                lon_center=meta.lon_center,
-                lat_min=meta.lat_min,
-                lat_max=meta.lat_max,
-                lon_min=meta.lon_min,
-                lon_max=meta.lon_max,
-                resolution_m=meta.resolution_m,
-                sensor_platform=meta.sensor_platform,
-                det_width=det_w,
-                det_height=det_h,
-                session_id=session_id,
-            )
+            existing_record = get_image_record_by_path(meta.image_path)
+            if existing_record is not None:
+                img_record = existing_record
+                logger.info(
+                    f"  [reuse] ImageRecord already exists for {meta.image_path[:40]}… "
+                    f"id={img_record.id[:8]}"
+                )
+            else:
+                img_record = insert_image_record(
+                    capture_time=meta.capture_time,
+                    source_type=meta.source_type,
+                    image_path=meta.image_path,
+                    lat_center=meta.lat_center,
+                    lon_center=meta.lon_center,
+                    lat_min=meta.lat_min,
+                    lat_max=meta.lat_max,
+                    lon_min=meta.lon_min,
+                    lon_max=meta.lon_max,
+                    resolution_m=meta.resolution_m,
+                    sensor_platform=meta.sensor_platform,
+                    det_width=det_w,
+                    det_height=det_h,
+                    session_id=session_id,
+                )
             image_id = img_record.id
             image_ids.append(image_id)
 
@@ -176,8 +184,11 @@ class MavenPipeline:
                 for det in det_results
             ]
 
-            # Bulk insert to Sensor DB
-            insert_detections_bulk(orm_detections)
+            # 기존 레코드이면 교체, 신규이면 bulk insert
+            if existing_record is not None:
+                replace_detections_for_image(image_id, orm_detections)
+            else:
+                insert_detections_bulk(orm_detections)
             logger.info(
                 f"  [{img_record.id[:8]}] Stored {len(orm_detections)} detections "
                 f"for image at ({meta.lat_center:.4f}, {meta.lon_center:.4f})"
