@@ -55,6 +55,7 @@ from src.database.models import DetectionRecord
 from src.database.sensor_db import (
     insert_image_record,
     insert_detections_bulk,
+    replace_detections_for_image,
 )
 from src.database.pairing_db import (
     insert_pairings_bulk,
@@ -674,7 +675,7 @@ class MavenPipeline:
             )
             for det in det_results
         ]
-        insert_detections_bulk(orm_detections)
+        replace_detections_for_image(image_id, orm_detections)
         logger.info(
             "[Detect/SAM3] %d건 저장 완료 (image=%s)", len(orm_detections), image_id[:8]
         )
