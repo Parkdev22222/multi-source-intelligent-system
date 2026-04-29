@@ -43,7 +43,7 @@ def _get_country_name(lat: float, lon: float) -> Optional[str]:
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -146,6 +146,91 @@ def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float 
                 _sse_clients.remove(q)
             except ValueError:
                 pass
+
+
+# 임의 SSE 페이로드를 모든 클라이언트에 브로드캐스트
+def _broadcast_sse(payload: str):
+    with _sse_lock:
+        dead = []
+        for q in list(_sse_clients):
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            try:
+                _sse_clients.remove(q)
+            except ValueError:
+                pass
+
+
+# 세션 ID → 분석 작업 상태 ("processing" | "done" | "error:<msg>")
+_analyze_jobs: dict[str, str] = {}
+_analyze_jobs_lock = threading.Lock()
+
+
+# 분석을 백그라운드 스레드로 실행하고 완료 시 SSE로 알림
+def _run_analyze_background(session_id: str, target_description: str):
+    try:
+        from pipeline import MavenPipeline
+        pipeline = MavenPipeline()
+        pipeline.run_pairing_and_report(
+            session_id, target_description=target_description
+        )
+    except Exception as exc:
+        logger.error("[API] background analyze error: %s", exc, exc_info=True)
+        with _analyze_jobs_lock:
+            _analyze_jobs[session_id] = f"error:{exc}"
+        _broadcast_sse(json.dumps({
+            "type":       "analyze_error",
+            "session_id": session_id,
+            "message":    str(exc),
+        }))
+        return
+
+    # WP 완료 처리
+    after_rpt_id = _get_latest_report_id()
+    with _swp_lock:
+        wp_info = _session_wp_map.pop(session_id, None)
+
+    if wp_info:
+        if len(wp_info) == 2:
+            sat_id, wp_id = wp_info
+            with _sat_lock:
+                sm = _sat_missions.get(sat_id, {})
+                wp = next((w for w in sm.get("waypoints", []) if w["id"] == wp_id), None)
+                if wp:
+                    wp["status"] = "complete"
+                    if after_rpt_id:
+                        wp["report_id"] = after_rpt_id
+            _save_sat_missions()
+        else:
+            _, wp_id, mission_id = wp_info
+            mission = _missions.get(mission_id)
+            if mission:
+                wp = next((w for w in mission["waypoints"] if w["id"] == wp_id), None)
+                if wp:
+                    wp["status"] = "complete"
+                    if after_rpt_id:
+                        wp["report_id"] = after_rpt_id
+                non_done = [
+                    w for w in mission["waypoints"]
+                    if w["status"] not in ("complete", "ingested", "failed")
+                ]
+                if not non_done:
+                    mission["status"]      = "complete"
+                    mission["finished_at"] = datetime.utcnow().isoformat()
+            _save_missions_to_file()
+
+    with _analyze_jobs_lock:
+        _analyze_jobs[session_id] = f"done:{after_rpt_id or ''}"
+
+    _notify_db_updated(changed=["reports", "detections"])
+    _broadcast_sse(json.dumps({
+        "type":       "analyze_complete",
+        "session_id": session_id,
+        "report_id":  after_rpt_id,
+    }))
 
 
 # 파이프라인 단계 이벤트를 SSE 전송
@@ -1676,7 +1761,7 @@ class _AnalyzeBody(BaseModel):
 
 
 @app.post("/api/session/{session_id}/analyze")
-# 세션 페어링 및 보고서 생성 실행
+# 세션 페어링 및 보고서 생성 — 즉시 202 반환 후 백그라운드 실행
 def api_session_analyze(
     session_id: str,
     body: _AnalyzeBody = Body(default=_AnalyzeBody()),
@@ -1684,70 +1769,25 @@ def api_session_analyze(
     """
     단계별 워크플로우 Phase 2b:
     탐지 결과(SAM3 또는 수동)가 저장된 세션에 대해
-    Temporal Pairing → Graph RAG 인덱싱 → 판독 보고서 생성을 실행한다.
-    완료 시 관련 WP를 'complete'로 갱신한다.
+    Temporal Pairing → Graph RAG 인덱싱 → 판독 보고서 생성을 백그라운드에서 실행한다.
+    즉시 202 를 반환하고, 완료/오류 시 SSE 이벤트(analyze_complete/analyze_error)로 알린다.
     """
-    try:
-        from pipeline import MavenPipeline
-        pipeline = MavenPipeline()
-        report_text = pipeline.run_pairing_and_report(
-            session_id, target_description=body.target_description
-        )
-    except Exception as exc:
-        logger.error("[API] session analyze error: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+    with _analyze_jobs_lock:
+        if _analyze_jobs.get(session_id) == "processing":
+            raise HTTPException(status_code=409, detail="분석이 이미 진행 중입니다.")
+        _analyze_jobs[session_id] = "processing"
 
-    # 관련 WP 완료 처리
-    with _swp_lock:
-        wp_info = _session_wp_map.pop(session_id, None)
+    t = threading.Thread(
+        target=_run_analyze_background,
+        args=(session_id, body.target_description),
+        daemon=True,
+    )
+    t.start()
 
-    after_rpt_id = _get_latest_report_id()
-
-    if wp_info:
-        if len(wp_info) == 2:
-            # 캠페인 모드: (sat_id, wp_id)
-            sat_id, wp_id = wp_info
-            with _sat_lock:
-                sm = _sat_missions.get(sat_id, {})
-                wp = next((w for w in sm.get("waypoints", []) if w["id"] == wp_id), None)
-                if wp:
-                    wp["status"] = "complete"
-                    if after_rpt_id:
-                        wp["report_id"] = after_rpt_id
-            _save_sat_missions()
-        else:
-            # 임무 모드: ("__mission__", wp_id, mission_id)
-            _, wp_id, mission_id = wp_info
-            mission = _missions.get(mission_id)
-            if mission:
-                wp = next((w for w in mission["waypoints"] if w["id"] == wp_id), None)
-                if wp:
-                    wp["status"] = "complete"
-                    if after_rpt_id:
-                        wp["report_id"] = after_rpt_id
-                # 모든 WP가 complete/ingested/failed 이면 미션 완료
-                non_done = [
-                    w for w in mission["waypoints"]
-                    if w["status"] not in ("complete", "ingested", "failed")
-                ]
-                if not non_done:
-                    mission["status"]      = "complete"
-                    mission["finished_at"] = datetime.utcnow().isoformat()
-            _save_missions_to_file()
-
-    # 보고서 레코드 조회
-    from src.database.reports_db import get_reports_by_session
-    reports = get_reports_by_session(session_id)
-    new_report = reports[0] if reports else None
-
-    _notify_db_updated(changed=["reports", "detections"])
-
-    return {
-        "success":        True,
-        "session_id":     session_id,
-        "report_id":      new_report.id if new_report else None,
-        "report_content": report_text,
-    }
+    return JSONResponse(
+        status_code=202,
+        content={"status": "processing", "session_id": session_id},
+    )
 
 
 @app.delete("/api/detection/{detection_id}")

@@ -4357,7 +4357,8 @@ document.getElementById('ds-analyze-btn').addEventListener('click', async () => 
   const analyzeBtn = document.getElementById('ds-analyze-btn');
   analyzeBtn.disabled  = true;
   analyzeBtn.textContent = '분석 중...';
-  document.getElementById('ds-status-msg').textContent = '페어링 및 Graph RAG 처리 중...';
+  document.getElementById('ds-status-msg').textContent =
+    '페어링 및 보고서 생성 중... (완료 시 자동으로 알립니다)';
 
   const targetDesc = document.getElementById('ds-target-desc').value.trim();
   try {
@@ -4370,18 +4371,7 @@ document.getElementById('ds-analyze-btn').addEventListener('click', async () => 
       }
     );
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '분석 실패');
-    const data = await res.json();
-    document.getElementById('ds-status-msg').textContent = '보고서 생성 완료!';
-    _dsAnalyzedSessions.add(_dsSessionId); // 이 세션은 분석 완료 → 이후 SAM3 잡이 완료돼도 버튼 재활성화 금지
-    _dsClose();
-    if (data.report_id) {
-      meta_toast(`판독 보고서 생성 완료 – ID: ${data.report_id.slice(0, 8)}`);
-      await openReportById(data.report_id);
-    } else {
-      meta_toast('보고서 생성 완료');
-    }
-    await loadAllReports();
-    await loadAllDetections();
+    // 202 Accepted — 백그라운드에서 실행 중. SSE analyze_complete 이벤트로 완료 통보 받음.
   } catch (e) {
     document.getElementById('ds-status-msg').textContent = `오류: ${e.message}`;
     analyzeBtn.disabled   = false;
@@ -4475,6 +4465,32 @@ function setupSSE() {
           msg.wp_seq   || 0,
         );
         await pollSimStatus();
+      }
+      } else if (msg.type === 'analyze_complete') {
+        // 백그라운드 분석 완료 — 모달이 해당 세션 중이면 결과 반영
+        if (msg.session_id === _dsSessionId) {
+          document.getElementById('ds-status-msg').textContent = '보고서 생성 완료!';
+          _dsAnalyzedSessions.add(_dsSessionId);
+          _dsClose();
+          if (msg.report_id) {
+            meta_toast(`판독 보고서 생성 완료 – ID: ${msg.report_id.slice(0, 8)}`);
+            await openReportById(msg.report_id);
+          } else {
+            meta_toast('보고서 생성 완료');
+          }
+          await loadAllReports();
+          await loadAllDetections();
+        }
+      } else if (msg.type === 'analyze_error') {
+        if (msg.session_id === _dsSessionId) {
+          const analyzeBtn = document.getElementById('ds-analyze-btn');
+          document.getElementById('ds-status-msg').textContent = `오류: ${msg.message}`;
+          if (analyzeBtn) {
+            analyzeBtn.disabled    = false;
+            analyzeBtn.textContent = '▶ 분석 시작 → 보고서 생성';
+          }
+          meta_toast(`분석 오류: ${msg.message}`);
+        }
       }
     } catch(err) { console.warn('[SSE msg]', err); }
   };
