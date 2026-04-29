@@ -484,6 +484,9 @@
     .rpt-act-btn.pviz { border-color:#8040cc; color:#a868ff; }
     .rpt-act-btn.pviz:hover { background:#8040cc22; border-color:#a060dd; }
     .rpt-act-btn.pviz.active { background:#8040cc2a; border-color:#c090ff; color:#d0b0ff; }
+    .rpt-act-btn.change-detect { border-color:#ff4040; color:#ff6060; }
+    .rpt-act-btn.change-detect:hover { background:#ff404022; border-color:#ff6060; }
+    .rpt-act-btn.change-detect.active { background:#ff40402a; border-color:#ff8080; color:#ffaaaa; }
 
     /* ══════════════════════════════════════════════════
        모바일 반응형 (≤ 768px)
@@ -1118,6 +1121,7 @@
         <button class="rpt-act-btn curr" id="edit-curr-det-btn" style="display:none" title="현재 시점 객체탐지 수정">◉ 현재 탐지 수정</button>
         <button class="rpt-act-btn past" id="edit-past-det-btn" style="display:none" title="과거 시점 객체탐지 수정">◎ 과거 탐지 수정</button>
         <button class="rpt-act-btn pviz" id="pviz-toggle-btn" style="display:none" title="이전↔현재 객체 매칭 관계 도시">◈ 매칭 도시</button>
+        <button class="rpt-act-btn change-detect" id="change-detect-btn" style="display:none" title="소실·신규·시설변화 객체만 도시">⚡ 변화 탐지</button>
         <button class="rpt-act-btn dl" id="download-btn" style="display:none">⬇ 다운로드</button>
         <span id="report-hdr-close">✕</span>
       </div>
@@ -2516,8 +2520,10 @@ async function openReportById(id, fname) {
   document.getElementById('rpt-target-desc-row').style.display = 'none';
   editRpt.style.display = editCurr.style.display = editPast.style.display = 'none';
   document.getElementById('pviz-toggle-btn').style.display = 'none';
+  document.getElementById('change-detect-btn').style.display = 'none';
   document.getElementById('pviz-modal').classList.remove('open');
   document.getElementById('pviz-toggle-btn').classList.remove('active');
+  document.getElementById('change-detect-btn').classList.remove('active');
   _pvizOpen = false;
   imgRow.classList.remove('has-images');
   pastWrap.innerHTML = '<span class="rpt-img-loading">로딩 중...</span>';
@@ -2628,9 +2634,10 @@ async function openReportById(id, fname) {
         pastWrap.innerHTML = '<span class="rpt-img-loading">이전 사진 없음</span>';
       }
 
-      // 매칭 도시 버튼 – 이전·현재 이미지가 모두 있을 때 활성화
+      // 매칭 도시 / 변화 탐지 버튼 – 이전·현재 이미지가 모두 있을 때 활성화
       if ((hasPast || pastImgId) && (hasCurr || currImgId)) {
         document.getElementById('pviz-toggle-btn').style.display = 'inline-block';
+        document.getElementById('change-detect-btn').style.display = 'inline-block';
       }
     } else {
       imgRow.classList.remove('has-images');
@@ -2675,32 +2682,62 @@ const PVIZ_STATUS_ICO = {
 document.getElementById('pviz-modal-close').addEventListener('click', () => {
   document.getElementById('pviz-modal').classList.remove('open');
   document.getElementById('pviz-toggle-btn').classList.remove('active');
+  document.getElementById('change-detect-btn').classList.remove('active');
   _pvizOpen = false;
 });
 
 /* 보고서 모달 헤더 버튼 토글 */
-// 페어링 시각화 모달 열기/닫기를 토글
+// 매칭 도시 버튼 – 전체 페어링 표시
 document.getElementById('pviz-toggle-btn').addEventListener('click', () => {
-  if (_pvizOpen) {
+  const wasActive = document.getElementById('pviz-toggle-btn').classList.contains('active');
+  // 항상 두 버튼 상태 초기화
+  document.getElementById('pviz-toggle-btn').classList.remove('active');
+  document.getElementById('change-detect-btn').classList.remove('active');
+  if (wasActive) {
     document.getElementById('pviz-modal').classList.remove('open');
-    document.getElementById('pviz-toggle-btn').classList.remove('active');
     _pvizOpen = false;
   } else {
     _pvizOpen = true;
     document.getElementById('pviz-toggle-btn').classList.add('active');
-    _openPvizModal(_currentReportId);
+    _openPvizModal(_currentReportId, null);
+  }
+});
+
+// 변화 탐지 버튼 – 소실·신규·시설변화만 표시
+document.getElementById('change-detect-btn').addEventListener('click', () => {
+  const wasActive = document.getElementById('change-detect-btn').classList.contains('active');
+  // 항상 두 버튼 상태 초기화
+  document.getElementById('pviz-toggle-btn').classList.remove('active');
+  document.getElementById('change-detect-btn').classList.remove('active');
+  if (wasActive) {
+    document.getElementById('pviz-modal').classList.remove('open');
+    _pvizOpen = false;
+  } else {
+    _pvizOpen = true;
+    document.getElementById('change-detect-btn').classList.add('active');
+    _openPvizModal(_currentReportId, ['new', 'disappeared', 'changed']);
   }
 });
 
 /* ── 모달 열기 + 데이터 로드 ── */
 // 페어링 시각화 모달을 열고 페어링 데이터를 로드
-async function _openPvizModal(reportId) {
-  const modal   = document.getElementById('pviz-modal');
-  const stats   = document.getElementById('pviz-modal-stats');
-  const listEl  = document.getElementById('pviz-list-body');
-  const pastC   = document.getElementById('pviz-past-canvas');
-  const currC   = document.getElementById('pviz-curr-canvas');
-  const svg     = document.getElementById('pviz-svg');
+// statusFilter: null = 전체, 배열 = 해당 status만 표시 (예: ['new','disappeared','changed'])
+async function _openPvizModal(reportId, statusFilter) {
+  const modal      = document.getElementById('pviz-modal');
+  const stats      = document.getElementById('pviz-modal-stats');
+  const titleEl    = document.getElementById('pviz-modal-title');
+  const listEl     = document.getElementById('pviz-list-body');
+  const pastC      = document.getElementById('pviz-past-canvas');
+  const currC      = document.getElementById('pviz-curr-canvas');
+  const svg        = document.getElementById('pviz-svg');
+
+  if (statusFilter && statusFilter.length) {
+    titleEl.textContent = '⚡ 변화 탐지 — 소실 · 신규 · 시설변화';
+    titleEl.style.color = '#ff8080';
+  } else {
+    titleEl.textContent = '◈ 객체 매칭 도시';
+    titleEl.style.color = '';
+  }
 
   modal.classList.add('open');
   stats.textContent  = '데이터 로딩 중...';
@@ -2715,7 +2752,11 @@ async function _openPvizModal(reportId) {
     if (!pRes.ok) { stats.textContent = '데이터 없음'; return; }
     const pData = await pRes.json();
 
-    const pairs = pData.pairs || [];
+    const allPairs = pData.pairs || [];
+    // statusFilter 적용: 지정된 status만 표시
+    const pairs = (statusFilter && statusFilter.length)
+      ? allPairs.filter(p => statusFilter.includes(p.status))
+      : allPairs;
 
     // 페어링 API 가 image_id 를 못 찾은 경우 보고서 모달에서 캐시해 둔 ID 로 보완
     const currRawId = pData.current_image_id || _currImageIds[0] || null;
