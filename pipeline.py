@@ -57,6 +57,7 @@ from src.database.sensor_db import (
     insert_detections_bulk,
     replace_detections_for_image,
     get_image_record_by_path,
+    delete_synthetic_detections_by_session,
 )
 from src.database.pairing_db import (
     insert_pairings_bulk,
@@ -512,7 +513,9 @@ class MavenPipeline:
             )
             past_image_id_rerun = _past_img2.id if _past_img2 else None
 
-        # ── 5. 기존 pairing 삭제 ─────────────────────────────────────────────
+        # ── 5. 기존 pairing 및 합성 탐지 삭제 ──────────────────────────────────
+        # 합성 탐지(source_type='synthetic')를 먼저 삭제해야 재페어링 시 중복 누적 방지
+        delete_synthetic_detections_by_session(session_id)
         delete_pairings_by_session(session_id)
 
         # ── 6. Temporal Pairing ──────────────────────────────────────────────

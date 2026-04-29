@@ -485,7 +485,7 @@ def _static_cross_check(
         lon=lon_c,
         mask_rle=None,
         mask_area_px=None,
-        source_type=source_type,
+        source_type="synthetic",   # 재페어링 시 식별·삭제 가능하도록 고정 마커
         session_id=session_id,
     )
     ids = insert_detections_bulk([synthetic])

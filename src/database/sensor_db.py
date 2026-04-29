@@ -242,6 +242,24 @@ def get_detection_by_id(detection_id: str) -> Optional[DetectionRecord]:
         return record
 
 
+# 세션의 합성 탐지 레코드 전체 삭제 (재페어링 전 호출)
+def delete_synthetic_detections_by_session(session_id: str) -> int:
+    """Delete all synthetic DetectionRecords (source_type='synthetic') for the session."""
+    engine = get_engine()
+    with Session(engine) as session:
+        deleted = (
+            session.query(DetectionRecord)
+            .filter(
+                DetectionRecord.session_id == session_id,
+                DetectionRecord.source_type == "synthetic",
+            )
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+    logger.info(f"[SensorDB] Deleted {deleted} synthetic detections for session {session_id}")
+    return deleted
+
+
 # detection_id로 탐지 레코드 삭제
 def delete_detection_by_id(detection_id: str) -> bool:
     """Delete a single DetectionRecord. Returns True if deleted, False if not found."""
