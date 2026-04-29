@@ -1082,10 +1082,10 @@ def api_image_thumb(image_id: str):
 
 
 @app.get("/api/detections/by-image/{image_id}")
-# 특정 이미지의 탐지 결과 전체 반환
+# 특정 이미지의 탐지 결과 전체 반환 (합성 탐지 제외)
 def api_detections_by_image(image_id: str):
-    """특정 이미지에 속한 탐지 결과 전체 반환."""
-    records = get_detections_by_image(image_id)
+    """특정 이미지에 속한 탐지 결과 전체 반환 (source_type='synthetic' 제외)."""
+    records = [r for r in get_detections_by_image(image_id) if r.source_type != "synthetic"]
     return {
         "detections": [
             {
@@ -1527,7 +1527,7 @@ def api_image_rendered(image_id: str, t: int = Query(default=0)):
         img_path = _images_dir / rec.image_path
     if not img_path.exists():
         raise HTTPException(status_code=404, detail="이미지 파일 없음")
-    dets = get_detections_by_image(image_id)
+    dets = [d for d in get_detections_by_image(image_id) if d.source_type != "synthetic"]
     b64 = _image_with_detections_b64(
         img_path, dets, max_size=600,
         det_width=rec.det_width, det_height=rec.det_height,

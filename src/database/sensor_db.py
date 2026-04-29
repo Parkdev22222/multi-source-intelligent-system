@@ -381,7 +381,11 @@ def get_all_images_with_count(limit: int = None):
     with Session(engine) as session:
         q = (
             session.query(ImageRecord, func.count(DetectionRecord.id).label("det_count"))
-            .outerjoin(DetectionRecord, DetectionRecord.image_id == ImageRecord.id)
+            .outerjoin(
+                DetectionRecord,
+                (DetectionRecord.image_id == ImageRecord.id)
+                & (DetectionRecord.source_type != "synthetic"),
+            )
             .group_by(ImageRecord.id)
             .order_by(ImageRecord.capture_time.desc())
         )
