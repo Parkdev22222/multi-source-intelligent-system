@@ -53,7 +53,7 @@ from src.database.sensor_db import (
     get_most_recent_past_detections,
     insert_detections_bulk,
 )
-from src.detection.sam2_detector import DetectionResult, TrackedObject
+from src.detection.sam3_detector import DetectionResult, TrackedObject
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
