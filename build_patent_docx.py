@@ -193,102 +193,115 @@ def build():
 
     add_h2(doc, "(4) 종래 기술")
 
-    add_h3(doc, "Microsoft Research, GraphRAG (2024)")
+    add_h3(doc, "Palantir AIP (Artificial Intelligence Platform), 2023")
     add_para(
         doc,
-        "본 발명과 가장 유사한 단일 종래 기술은 Microsoft Research가 2024년 4월 24일 공개한 "
-        "GraphRAG 시스템이다. 해당 기술은 다음 문헌 및 공개 구현에 의해 명확히 기록되어 있어 "
-        "특허 심사 단계에서 인용 가능한 공지기술에 해당한다.",
+        "본 발명과 가장 유사한 단일 종래 기술은 Palantir Technologies가 2023년 4월 공개·시연한 "
+        "AIP(Artificial Intelligence Platform) 시스템이다. AIP는 대규모 언어 모델(LLM)을 도구 사용 "
+        "기반 에이전트로 활용하여 군사·정보 분야의 정형 데이터로부터 인텔리전스 보고서·의사결정 "
+        "보조 출력을 자동 생성하는 상용 플랫폼으로, 본 발명이 속하는 \"LLM 에이전트 기반 판독보고서 "
+        "자동 생성\" 카테고리에서 가장 직접적으로 공개·시연된 선행 시스템에 해당한다.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 1] Darren Edge, Ha Trinh, Newman Cheng, Joshua Bradley, Alex Chao, "
-        "Apurva Mody, Steven Truitt, Jonathan Larson, \"From Local to Global: A Graph RAG "
-        "Approach to Query-Focused Summarization\", arXiv:2404.16130, Microsoft Research, "
-        "2024.04.24.",
+        "[비특허문헌 1] Palantir Technologies, \"Introducing AIP — Palantir Artificial "
+        "Intelligence Platform\", Official product announcement & demonstration video "
+        "(YouTube), 2023.04.25.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 2] Microsoft, \"GraphRAG: Unlocking LLM discovery on narrative private "
-        "data\", Microsoft Research Blog, 2024.02.13.",
+        "[비특허문헌 2] Palantir Technologies, \"Palantir AIP | Defense and Military\", "
+        "Official product documentation page, palantir.com/platforms/aip.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 3] Microsoft, GraphRAG 공식 오픈소스 구현 — "
-        "https://github.com/microsoft/graphrag (Apache-2.0 License, 2024 공개).",
+        "[비특허문헌 3] Palantir Technologies, AIP defense use-case demo "
+        "(\"Responding to Adversary Movement\" 시나리오) — 위성·정찰 정보를 LLM 에이전트가 "
+        "분석해 지휘관에게 보고하는 공개 시연 영상, 2023.",
+    )
+    add_para(
+        doc,
+        "(특허 출원 시 변리사가 Palantir 및 관련 특허 패밀리 US 출원번호를 KIPRIS·USPTO에서 "
+        "검증·보완 권장.)",
     )
 
-    add_para(doc, "Microsoft GraphRAG의 핵심 구성은 다음과 같다.")
+    add_para(doc, "Palantir AIP의 핵심 구성은 다음과 같이 공개되어 있다.")
     add_bullet(
         doc,
-        "(가) 입력 문서 코퍼스(자연어 텍스트)를 청크 단위로 분할한 후, 대규모 언어 모델(LLM)을 "
-        "이용해 각 청크에서 엔티티(entity)와 관계(relation)를 추출하여 지식 그래프를 구축한다.",
+        "(가) 위성·정찰·센서로부터 수집된 다중 소스 정형 데이터(객체 위치·시각·식별 정보 등)를 "
+        "Foundry Ontology에 등록하여 통합 데이터 레이어를 구성한다.",
     )
     add_bullet(
         doc,
-        "(나) 구축된 지식 그래프에 대해 Leiden 등의 그래프 군집 알고리즘을 적용해 계층적 커뮤니티를 "
-        "탐지하고, 각 커뮤니티의 요약문을 LLM이 자연어로 생성하여 보고서 형태로 저장한다.",
+        "(나) LLM(GPT-4 등)을 에이전트로 활용하여 자연어 지시(예: \"적 부대의 이동을 분석하고 "
+        "대응 방안을 제시하라\")를 받아 도구 사용(tool-use)을 통해 데이터 조회·분석·시뮬레이션을 "
+        "수행하고 그 결과를 자연어 보고서로 출력한다.",
     )
     add_bullet(
         doc,
-        "(다) 사용자 질의에 대해 (i) 노드 이웃 단위로 검색하는 Local Search 모드와 "
-        "(ii) 커뮤니티 요약을 검색하는 Global Search 모드의 두 가지 검색을 제공한다.",
+        "(다) 출력 보고서는 분석관·지휘관 친화 형식(요약·권고사항 포함)을 따르며, 사용자가 "
+        "추가 질의를 통해 보고서를 정제(refine)할 수 있는 대화형 에이전트 워크플로우를 제공한다.",
     )
     add_bullet(
         doc,
-        "(라) 검색 결과를 LLM 프롬프트에 컨텍스트로 주입하여 질의응답 또는 요약을 생성한다.",
+        "(라) 보안·감사(audit) 목적으로 에이전트의 모든 데이터 접근 및 도구 호출 이력을 로깅한다.",
     )
 
     add_h2(doc, "(5) 종래 기술의 문제점 / 한계")
     add_para(
         doc,
-        "Microsoft GraphRAG는 자연어 문서 코퍼스에 대한 일반 목적의 질의응답·요약 시스템으로 "
-        "설계되어, 본 발명의 적용 도메인인 군사 위성·드론 영상 인텔리전스 보고서 자동 생성에 그대로 "
-        "적용할 경우 아래와 같은 본질적 한계를 갖는다.",
+        "Palantir AIP는 LLM 에이전트를 활용한 인텔리전스 보고서 자동 생성 분야의 가장 직접적인 "
+        "선행 시스템이나, 본 발명과 비교할 때 아래와 같은 본질적 한계를 갖는다.",
     )
     problems = [
-        ("입력 도메인 불일치 — 자연어 vs 정형 영상 탐지 튜플",
-         "Microsoft GraphRAG는 입력을 '자연어 텍스트 청크'로 전제한다. 그러나 본 발명의 입력은 영상 "
-         "객체 탐지·페어링 결과인 정형 튜플(class, lat, lon, status, confidence, time)이다. "
-         "이를 GraphRAG에 적용하려면 (i) 정형 튜플을 자연어로 풀어서 → (ii) 청크화 → (iii) 임베딩 → "
-         "(iv) LLM 엔티티 추출의 4단계 우회를 거쳐야 하며 그 과정에서 정확한 수치(좌표·신뢰도)가 "
-         "토큰화 손실을 입는다."),
-        ("LLM 의존 비결정적 엔티티 추출",
-         "Microsoft GraphRAG는 그래프 노드·엣지 추출을 LLM 호출로 수행한다. 동일 입력에 대해 매번 "
-         "다른 엔티티가 추출될 수 있어 군사 시스템에 요구되는 결정론·재현성·감사가능성을 만족하지 "
-         "못한다. 또한 노드 수가 증가할수록 LLM 호출 비용이 선형으로 증가한다."),
-        ("시계열 누적 메커니즘 부재",
-         "Microsoft GraphRAG는 정적 코퍼스에 대한 단일 인덱싱을 전제로 한다. 동일 자산이 다른 "
-         "시점에 동일 지역에서 반복 관측될 때 이를 동일 엔티티로 누적 카운팅하는 결정론적 키 "
-         "메커니즘이 정의되어 있지 않다. 결과적으로 '이 지역에서 N번째 반복 출현' 같은 시계열 패턴이 "
-         "보고서에 반영되지 못한다."),
-        ("GPS 노이즈 흡수 메커니즘 부재",
+        ("시계열 누적 메모리 부재 — 매 질의가 독립적",
+         "Palantir AIP의 에이전트는 매 질의 시점의 데이터 스냅샷을 LLM에 제공한다. "
+         "동일 지역에서 동일 자산이 다수 세션에 걸쳐 반복 관측될 때 이를 누적 통계로 압축하여 "
+         "LLM에게 제시하는 결정론적 메모리 구조가 부재하다. 결과적으로 \"이 지역 10일간 5회째 반복 "
+         "배치, 직전 3회 모두 소실 후 재출현\" 같은 시계열 패턴을 LLM이 인식하지 못한다."),
+        ("자산 간 결합 패턴 자동 발견 부재",
+         "Palantir AIP는 LLM 에이전트가 사용자 질의에 응답해 데이터를 *조회*하는 구조이며, "
+         "관측 데이터 자체에서 자산 클래스 간 공출현 패턴(예: 기갑+포병 복합체, C2 인프라)을 "
+         "그래프 알고리즘으로 자동 군집화·발견하는 구성이 없다. doctrine 패턴 식별을 사용자 질의 "
+         "기술 수준에 의존하게 된다."),
+        ("도메인 안전성 제약 부재 — 'DISAPPEARED' 의미 가드레일",
+         "Palantir AIP는 일반 목적의 LLM 에이전트로, 군사 영상 인텔리전스 도메인 특유의 의미론적 "
+         "제약(예: 영상 미관측의 'DISAPPEARED'를 'destroyed'로 표현해서는 안 됨)을 시스템 프롬프트에 "
+         "강제 주입하는 구성이 정의되어 있지 않다. 일반 LLM이 미관측 객체를 확정 파괴로 보고할 위험이 "
+         "남아 군사적 오판을 유발할 수 있다."),
+        ("변화 객체 한정 전달 메커니즘 부재",
+         "Palantir AIP는 사용자 질의 범위에 해당하는 데이터를 LLM 에이전트가 자유롭게 조회·전달한다. "
+         "영상 변화 분석에 필수적인 \"신규 출현(new)·소실(disappeared) 객체만 추출, 정지(matched)·이동"
+         "(moved) 제외\"의 도메인 특화 사전 필터링 단계가 정의되어 있지 않아 LLM이 활동 지표와 "
+         "비활동 지표를 구분하지 못하거나 토큰을 낭비할 수 있다."),
+        ("표준 IMINT 8개 섹션 강제 부재",
+         "Palantir AIP의 산출 보고서는 사용자 질의에 따라 형식이 유동적이다. "
+         "CLASSIFICATION / EXECUTIVE SUMMARY / SITUATION / CHANGE ANALYSIS / THREAT ASSESSMENT / "
+         "INTELLIGENCE GAPS / RECOMMENDED ACTIONS / APPENDIX의 8개 표준 IMINT 섹션을 LLM "
+         "프롬프트 차원에서 강제하는 구성이 정의되어 있지 않아, 분석관 표준 양식 준수를 보장하지 "
+         "못한다."),
+        ("GPS 노이즈 흡수 — 동일 자산 통합 메커니즘 부재",
          "동일 객체의 두 관측이 GPS 측정 오차로 미세하게 다른 좌표(예: 37.5765 ↔ 37.5766)일 때 "
-         "Microsoft GraphRAG는 두 좌표를 서로 다른 엔티티로 임베딩한다. 이를 동일 자산으로 통합하기 "
-         "위한 격자 양자화(quantization) 단계가 부재하다."),
-        ("도메인 안전성 제약 부재",
-         "Microsoft GraphRAG는 일반 목적 프롬프트를 사용하므로 군사 도메인의 의미론적 가드레일 "
-         "(예: 'DISAPPEARED'를 'destroyed'로 오해석하면 안 됨)을 시스템 프롬프트에 강제하는 구성이 "
-         "없다. 일반 LLM이 '미관측'을 '확정 파괴'로 표현하여 군사적 오판을 유발할 수 있다."),
-        ("변화 객체 한정 메커니즘 부재",
-         "Microsoft GraphRAG는 검색된 모든 컨텍스트를 LLM에 전달한다. 군사 변화 분석에 필요한 "
-         "신규 출현(new)·소실(disappeared) 객체만을 추출해 토큰을 절약하는 도메인 특화 필터링 "
-         "구성이 없다."),
-        ("정형 IMINT 보고서 형식 강제 부재",
-         "Microsoft GraphRAG는 일반 요약문을 산출한다. CLASSIFICATION/EXECUTIVE SUMMARY/SITUATION/"
-         "CHANGE ANALYSIS/THREAT ASSESSMENT/INTELLIGENCE GAPS/RECOMMENDED ACTIONS/APPENDIX의 "
-         "표준 IMINT 8개 섹션을 강제하여 분석관 친화 산출물을 보장하는 구성이 없다."),
+         "이를 동일 자산 인스턴스로 통합하기 위한 격자 양자화(예: 0.01° = 약 1km)를 키 생성 단계에 "
+         "강제하는 구성이 정의되어 있지 않다. 따라서 누적 통계가 동일 객체의 미세 좌표 변동에 의해 "
+         "분산될 수 있다."),
+        ("Ontology 의존성 vs 결정론적 자동 인덱싱",
+         "Palantir AIP는 Foundry Ontology를 사전에 설계·관리해야 하며, 새로운 자산 유형이 등장할 때 "
+         "Ontology 변경이 요구된다. 본 발명은 (객체 클래스 × 위치) 고유 쌍을 결정론적 키 생성 규칙만으로 "
+         "자동 노드화하므로 사전 Ontology 정의가 불필요하고 신규 클래스 확장이 자동이다."),
     ]
-    add_table(doc, ["#", "Microsoft GraphRAG의 한계", "본 발명 적용 시 문제점"],
+    add_table(doc, ["#", "Palantir AIP의 한계", "본 발명 적용 시 문제점"],
               [[str(i + 1), t, d] for i, (t, d) in enumerate(problems)],
               widths=[0.8, 4.5, 10.7])
 
     add_para(
         doc,
-        "따라서 Microsoft GraphRAG는 본 발명의 직접적 종래 기술이나, 군사 영상 인텔리전스 도메인에서 "
-        "요구되는 (i) 정형 튜플 직접 인덱싱, (ii) 결정론적 LLM-free 엔티티 추출, (iii) 시계열 누적 "
-        "카운터, (iv) 격자 양자화, (v) 도메인 의미론 제약, (vi) 변화 객체 한정 전달, (vii) 표준 "
-        "IMINT 형식 강제의 7가지 차별 구성을 모두 결여하고 있으므로 본 발명의 진보성이 인정된다.",
+        "따라서 Palantir AIP는 본 발명과 동일한 \"LLM 에이전트 기반 인텔리전스 보고서 자동 생성\" "
+        "카테고리의 가장 직접적 종래 기술이나, 군사 영상 시계열 인텔리전스 도메인에서 요구되는 "
+        "(i) 결정론적 시계열 그래프 누적 메모리, (ii) Louvain 기반 자산 공출현 패턴 자동 발견, "
+        "(iii) 'DISAPPEARED ≠ destroyed' 의미 가드레일, (iv) new/disappeared 변화 객체 한정 전달, "
+        "(v) IMINT 표준 8섹션 강제, (vi) 격자 양자화 기반 동일 자산 통합, (vii) Ontology 비의존 "
+        "자동 인덱싱의 7가지 차별 구성을 모두 결여하므로 본 발명의 진보성이 인정된다.",
         bold=False,
     )
 
