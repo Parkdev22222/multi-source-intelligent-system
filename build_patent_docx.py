@@ -192,67 +192,105 @@ def build():
         add_bullet(doc, s)
 
     add_h2(doc, "(4) 종래 기술")
+
+    add_h3(doc, "Microsoft Research, GraphRAG (2024)")
     add_para(
         doc,
-        "본 분야에서 실제로 등록·공개되어 있는 유형(category)을 기재한다. 실제 출원 시 인용 특허 번호는 "
-        "KIPRIS·Google Patents·Espacenet에서 변리사가 검증·교체한다.",
+        "본 발명과 가장 유사한 단일 종래 기술은 Microsoft Research가 2024년 4월 24일 공개한 "
+        "GraphRAG 시스템이다. 해당 기술은 다음 문헌 및 공개 구현에 의해 명확히 기록되어 있어 "
+        "특허 심사 단계에서 인용 가능한 공지기술에 해당한다.",
+    )
+    add_bullet(
+        doc,
+        "[비특허문헌 1] Darren Edge, Ha Trinh, Newman Cheng, Joshua Bradley, Alex Chao, "
+        "Apurva Mody, Steven Truitt, Jonathan Larson, \"From Local to Global: A Graph RAG "
+        "Approach to Query-Focused Summarization\", arXiv:2404.16130, Microsoft Research, "
+        "2024.04.24.",
+    )
+    add_bullet(
+        doc,
+        "[비특허문헌 2] Microsoft, \"GraphRAG: Unlocking LLM discovery on narrative private "
+        "data\", Microsoft Research Blog, 2024.02.13.",
+    )
+    add_bullet(
+        doc,
+        "[비특허문헌 3] Microsoft, GraphRAG 공식 오픈소스 구현 — "
+        "https://github.com/microsoft/graphrag (Apache-2.0 License, 2024 공개).",
     )
 
-    add_h3(doc, "가. LLM 기반 보고서 자동 생성 일반")
-    for s in [
-        "자연어 문서 코퍼스 기반 RAG(Retrieval-Augmented Generation) 보고서 생성 특허군 "
-        "(검색 키: 'LLM 보고서 자동 생성 RAG', 'retrieval augmented generation report')",
-        "정형 데이터(의료기록·금융 거래 등)로부터 LLM이 보고서를 생성하는 특허군 "
-        "(검색 키: 'structured data report generation LLM', '프롬프트 기반 보고서 생성')",
-        "Microsoft, \"From Local to Global: A Graph RAG Approach to Query-Focused Summarization\", "
-        "arXiv:2404.16130 (2024)",
-    ]:
-        add_bullet(doc, s)
-
-    add_h3(doc, "나. 위성·드론 영상 객체 탐지 및 변화 탐지")
-    for s in [
-        "SAM/SAM2/SAM3 등 Meta의 Segment Anything Model 관련 출원 및 논문",
-        "위성영상 시계열 변화탐지(change detection) 특허군 "
-        "(검색 키: 'satellite imagery change detection patent', '위성영상 변화탐지')",
-        "Project Maven(미 국방부 AWCFT) 관련 공개 자료",
-    ]:
-        add_bullet(doc, s)
-
-    add_h3(doc, "다. 군사 IMINT 보고서·doctrine 분야")
-    for s in [
-        "정형 IMINT 보고서 형식(CLASSIFICATION/EXECUTIVE SUMMARY/SITUATION/…)을 자동 작성하는 시스템 특허군 "
-        "(검색 키: 'intelligence report automation', 'IMINT report generation')",
-        "군사 의사결정 보조 AI 시스템 특허군 (Palantir 등)",
-    ]:
-        add_bullet(doc, s)
-
-    add_h3(doc, "라. AI 에이전트(Agent) 일반")
-    for s in [
-        "다중 단계 도구 사용(tool-use) 기반 AI 에이전트 특허군 "
-        "(검색 키: 'AI agent tool use', 'multi-step LLM agent')",
-        "동일 LLM을 반복 호출하여 생성→번역→검증을 수행하는 에이전트 패턴",
-    ]:
-        add_bullet(doc, s)
+    add_para(doc, "Microsoft GraphRAG의 핵심 구성은 다음과 같다.")
+    add_bullet(
+        doc,
+        "(가) 입력 문서 코퍼스(자연어 텍스트)를 청크 단위로 분할한 후, 대규모 언어 모델(LLM)을 "
+        "이용해 각 청크에서 엔티티(entity)와 관계(relation)를 추출하여 지식 그래프를 구축한다.",
+    )
+    add_bullet(
+        doc,
+        "(나) 구축된 지식 그래프에 대해 Leiden 등의 그래프 군집 알고리즘을 적용해 계층적 커뮤니티를 "
+        "탐지하고, 각 커뮤니티의 요약문을 LLM이 자연어로 생성하여 보고서 형태로 저장한다.",
+    )
+    add_bullet(
+        doc,
+        "(다) 사용자 질의에 대해 (i) 노드 이웃 단위로 검색하는 Local Search 모드와 "
+        "(ii) 커뮤니티 요약을 검색하는 Global Search 모드의 두 가지 검색을 제공한다.",
+    )
+    add_bullet(
+        doc,
+        "(라) 검색 결과를 LLM 프롬프트에 컨텍스트로 주입하여 질의응답 또는 요약을 생성한다.",
+    )
 
     add_h2(doc, "(5) 종래 기술의 문제점 / 한계")
+    add_para(
+        doc,
+        "Microsoft GraphRAG는 자연어 문서 코퍼스에 대한 일반 목적의 질의응답·요약 시스템으로 "
+        "설계되어, 본 발명의 적용 도메인인 군사 위성·드론 영상 인텔리전스 보고서 자동 생성에 그대로 "
+        "적용할 경우 아래와 같은 본질적 한계를 갖는다.",
+    )
     problems = [
-        ("단발 프레임 한계", "1프레임의 탐지 결과만 LLM에 전달하여 시계열 패턴이 보고서에 반영되지 않음."),
-        ("텍스트 RAG의 부적합성",
-         "입력이 정형 튜플(클래스·좌표·신뢰도·시각)인데 자연어로 풀어 다시 임베딩하는 우회 구조 → "
-         "정보 손실·임베딩 비용·비결정성."),
-        ("집계·관계 질의 약점",
-         "\"이 객체가 몇 번째 출현인가\", \"함께 자주 등장하는 객체는?\" 등을 LLM에 떠넘김 → 응답 일관성 저하."),
-        ("GPS 노이즈 취약", "같은 객체 좌표 미세 차이를 동일 인스턴스로 흡수하는 결정론적 메커니즘 부재."),
-        ("군사 의미론 부재",
-         "'소실(disappeared)'을 '파괴(destroyed)'로 LLM이 오해석할 위험 → 군사적 오판 가능성."),
-        ("토큰 효율 문제",
-         "모든 탐지 결과(정지·이동 포함)를 LLM에 전달 → 변화 분석에 무관한 객체로 컨텍스트 낭비."),
-        ("감사 가능성 부족",
-         "LLM이 왜 특정 결론을 도출했는지 행 단위로 추적 불가 → 군사·법적 책임 환경에서 운용 곤란."),
+        ("입력 도메인 불일치 — 자연어 vs 정형 영상 탐지 튜플",
+         "Microsoft GraphRAG는 입력을 '자연어 텍스트 청크'로 전제한다. 그러나 본 발명의 입력은 영상 "
+         "객체 탐지·페어링 결과인 정형 튜플(class, lat, lon, status, confidence, time)이다. "
+         "이를 GraphRAG에 적용하려면 (i) 정형 튜플을 자연어로 풀어서 → (ii) 청크화 → (iii) 임베딩 → "
+         "(iv) LLM 엔티티 추출의 4단계 우회를 거쳐야 하며 그 과정에서 정확한 수치(좌표·신뢰도)가 "
+         "토큰화 손실을 입는다."),
+        ("LLM 의존 비결정적 엔티티 추출",
+         "Microsoft GraphRAG는 그래프 노드·엣지 추출을 LLM 호출로 수행한다. 동일 입력에 대해 매번 "
+         "다른 엔티티가 추출될 수 있어 군사 시스템에 요구되는 결정론·재현성·감사가능성을 만족하지 "
+         "못한다. 또한 노드 수가 증가할수록 LLM 호출 비용이 선형으로 증가한다."),
+        ("시계열 누적 메커니즘 부재",
+         "Microsoft GraphRAG는 정적 코퍼스에 대한 단일 인덱싱을 전제로 한다. 동일 자산이 다른 "
+         "시점에 동일 지역에서 반복 관측될 때 이를 동일 엔티티로 누적 카운팅하는 결정론적 키 "
+         "메커니즘이 정의되어 있지 않다. 결과적으로 '이 지역에서 N번째 반복 출현' 같은 시계열 패턴이 "
+         "보고서에 반영되지 못한다."),
+        ("GPS 노이즈 흡수 메커니즘 부재",
+         "동일 객체의 두 관측이 GPS 측정 오차로 미세하게 다른 좌표(예: 37.5765 ↔ 37.5766)일 때 "
+         "Microsoft GraphRAG는 두 좌표를 서로 다른 엔티티로 임베딩한다. 이를 동일 자산으로 통합하기 "
+         "위한 격자 양자화(quantization) 단계가 부재하다."),
+        ("도메인 안전성 제약 부재",
+         "Microsoft GraphRAG는 일반 목적 프롬프트를 사용하므로 군사 도메인의 의미론적 가드레일 "
+         "(예: 'DISAPPEARED'를 'destroyed'로 오해석하면 안 됨)을 시스템 프롬프트에 강제하는 구성이 "
+         "없다. 일반 LLM이 '미관측'을 '확정 파괴'로 표현하여 군사적 오판을 유발할 수 있다."),
+        ("변화 객체 한정 메커니즘 부재",
+         "Microsoft GraphRAG는 검색된 모든 컨텍스트를 LLM에 전달한다. 군사 변화 분석에 필요한 "
+         "신규 출현(new)·소실(disappeared) 객체만을 추출해 토큰을 절약하는 도메인 특화 필터링 "
+         "구성이 없다."),
+        ("정형 IMINT 보고서 형식 강제 부재",
+         "Microsoft GraphRAG는 일반 요약문을 산출한다. CLASSIFICATION/EXECUTIVE SUMMARY/SITUATION/"
+         "CHANGE ANALYSIS/THREAT ASSESSMENT/INTELLIGENCE GAPS/RECOMMENDED ACTIONS/APPENDIX의 "
+         "표준 IMINT 8개 섹션을 강제하여 분석관 친화 산출물을 보장하는 구성이 없다."),
     ]
-    add_table(doc, ["#", "문제", "내용"],
+    add_table(doc, ["#", "Microsoft GraphRAG의 한계", "본 발명 적용 시 문제점"],
               [[str(i + 1), t, d] for i, (t, d) in enumerate(problems)],
-              widths=[1.0, 4.0, 11.0])
+              widths=[0.8, 4.5, 10.7])
+
+    add_para(
+        doc,
+        "따라서 Microsoft GraphRAG는 본 발명의 직접적 종래 기술이나, 군사 영상 인텔리전스 도메인에서 "
+        "요구되는 (i) 정형 튜플 직접 인덱싱, (ii) 결정론적 LLM-free 엔티티 추출, (iii) 시계열 누적 "
+        "카운터, (iv) 격자 양자화, (v) 도메인 의미론 제약, (vi) 변화 객체 한정 전달, (vii) 표준 "
+        "IMINT 형식 강제의 7가지 차별 구성을 모두 결여하고 있으므로 본 발명의 진보성이 인정된다.",
+        bold=False,
+    )
 
     # ───────── 2. 상세 설명 ─────────
     add_h1(doc, "2. 상세 설명")
