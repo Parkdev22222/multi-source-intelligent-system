@@ -193,116 +193,138 @@ def build():
 
     add_h2(doc, "(4) 종래 기술")
 
-    add_h3(doc, "Palantir AIP (Artificial Intelligence Platform), 2023")
+    add_h3(doc, "Palantir MetaConstellation + AIP 통합 위성영상 인텔리전스 시스템 (2022 ~ 2023)")
     add_para(
         doc,
-        "본 발명과 가장 유사한 단일 종래 기술은 Palantir Technologies가 2023년 4월 공개·시연한 "
-        "AIP(Artificial Intelligence Platform) 시스템이다. AIP는 대규모 언어 모델(LLM)을 도구 사용 "
-        "기반 에이전트로 활용하여 군사·정보 분야의 정형 데이터로부터 인텔리전스 보고서·의사결정 "
-        "보조 출력을 자동 생성하는 상용 플랫폼으로, 본 발명이 속하는 \"LLM 에이전트 기반 판독보고서 "
-        "자동 생성\" 카테고리에서 가장 직접적으로 공개·시연된 선행 시스템에 해당한다.",
+        "본 발명과 가장 유사한 단일 종래 기술은 Palantir Technologies가 2022년 발표한 위성영상 "
+        "임무 통합 플랫폼 MetaConstellation과 2023년 공개한 LLM 에이전트 플랫폼 AIP(Artificial "
+        "Intelligence Platform)을 결합한 위성영상 기반 인텔리전스 보고서 자동 생성 시스템이다. "
+        "이 결합 시스템은 (i) 다중 위성 사업자(BlackSky·Capella·Maxar 등)로부터 영상을 수집하고, "
+        "(ii) 영상에서 객체 탐지·변화 식별을 수행하며, (iii) LLM 에이전트가 객체 이력을 참조해 "
+        "지휘관용 자연어 보고서를 생성하는 일련의 파이프라인을 공개·시연하였다. 따라서 본 발명이 "
+        "속하는 \"위성영상 → LLM 에이전트 변화탐지 → 객체 이력 기반 판독보고서 자동 생성\" "
+        "카테고리에서 가장 직접적으로 공개·시연된 선행 시스템에 해당한다.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 1] Palantir Technologies, \"Introducing AIP — Palantir Artificial "
-        "Intelligence Platform\", Official product announcement & demonstration video "
-        "(YouTube), 2023.04.25.",
+        "[비특허문헌 1] Palantir Technologies, \"MetaConstellation: A Multi-Provider Satellite "
+        "Tasking Platform\", Official product announcement, 2022.10.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 2] Palantir Technologies, \"Palantir AIP | Defense and Military\", "
-        "Official product documentation page, palantir.com/platforms/aip.",
+        "[비특허문헌 2] Palantir Technologies, \"Introducing AIP — Palantir Artificial "
+        "Intelligence Platform\", Official product announcement & demonstration video, 2023.04.25.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 3] Palantir Technologies, AIP defense use-case demo "
-        "(\"Responding to Adversary Movement\" 시나리오) — 위성·정찰 정보를 LLM 에이전트가 "
-        "분석해 지휘관에게 보고하는 공개 시연 영상, 2023.",
+        "[비특허문헌 3] Palantir Technologies, AIP defense use-case demonstration "
+        "(\"Responding to Adversary Movement\" 시나리오) — 위성영상으로 적 부대 이동을 탐지·분석하고 "
+        "LLM 에이전트가 지휘관에게 권고 보고서를 생성하는 공개 시연, 2023.",
+    )
+    add_bullet(
+        doc,
+        "[비특허문헌 4] Palantir Technologies, \"Palantir AIP | Defense and Military\", "
+        "공식 제품 문서, palantir.com/platforms/aip.",
+    )
+    add_bullet(
+        doc,
+        "[비특허문헌 5] 우크라이나 군 내 Palantir 위성영상 + AIP 운용 사례 (2022 ~ 2024) "
+        "관련 공개 보도 자료 (Washington Post, TIME 등 다수).",
     )
     add_para(
         doc,
-        "(특허 출원 시 변리사가 Palantir 및 관련 특허 패밀리 US 출원번호를 KIPRIS·USPTO에서 "
-        "검증·보완 권장.)",
+        "(출원 단계에서 Palantir의 미국 특허 패밀리 — 예: US 2024/0xxxxx — 를 KIPRIS·USPTO·Espacenet "
+        "에서 변리사가 정확한 번호로 검증·보완 권장.)",
     )
 
-    add_para(doc, "Palantir AIP의 핵심 구성은 다음과 같이 공개되어 있다.")
+    add_para(doc, "Palantir MetaConstellation + AIP의 핵심 구성은 다음과 같이 공개되어 있다.")
     add_bullet(
         doc,
-        "(가) 위성·정찰·센서로부터 수집된 다중 소스 정형 데이터(객체 위치·시각·식별 정보 등)를 "
-        "Foundry Ontology에 등록하여 통합 데이터 레이어를 구성한다.",
+        "(가) MetaConstellation은 다중 위성 사업자의 영상을 통합 수집하고, Palantir Foundry에 "
+        "정형 데이터 레이어로 등록한다.",
     )
     add_bullet(
         doc,
-        "(나) LLM(GPT-4 등)을 에이전트로 활용하여 자연어 지시(예: \"적 부대의 이동을 분석하고 "
-        "대응 방안을 제시하라\")를 받아 도구 사용(tool-use)을 통해 데이터 조회·분석·시뮬레이션을 "
-        "수행하고 그 결과를 자연어 보고서로 출력한다.",
+        "(나) 영상에 대해 객체 탐지·식별·변화 식별을 수행하며, 그 결과를 Foundry Ontology의 "
+        "엔티티(예: 차량·시설·인원)에 매핑하여 시간순 이력으로 축적한다.",
     )
     add_bullet(
         doc,
-        "(다) 출력 보고서는 분석관·지휘관 친화 형식(요약·권고사항 포함)을 따르며, 사용자가 "
-        "추가 질의를 통해 보고서를 정제(refine)할 수 있는 대화형 에이전트 워크플로우를 제공한다.",
+        "(다) AIP는 LLM(GPT-4 등)을 도구 사용 에이전트로 활용하여 \"이 지역의 변화를 분석하고 "
+        "권고 사항을 제시하라\" 같은 자연어 지시를 받아 Ontology 데이터를 조회·분석한 뒤 자연어 "
+        "보고서를 생성한다.",
     )
     add_bullet(
         doc,
-        "(라) 보안·감사(audit) 목적으로 에이전트의 모든 데이터 접근 및 도구 호출 이력을 로깅한다.",
+        "(라) 출력 보고서는 요약·권고 포함 분석관·지휘관 친화 형식을 따르며 대화형 추가 질의 "
+        "(refine)를 지원한다.",
+    )
+    add_bullet(
+        doc,
+        "(마) 보안·감사 목적으로 에이전트의 데이터 접근·도구 호출 이력을 모두 로깅한다.",
     )
 
     add_h2(doc, "(5) 종래 기술의 문제점 / 한계")
     add_para(
         doc,
-        "Palantir AIP는 LLM 에이전트를 활용한 인텔리전스 보고서 자동 생성 분야의 가장 직접적인 "
-        "선행 시스템이나, 본 발명과 비교할 때 아래와 같은 본질적 한계를 갖는다.",
+        "Palantir MetaConstellation + AIP 통합 시스템은 위성영상으로부터 LLM 에이전트가 변화를 "
+        "분석하고 보고서를 생성하는 본 발명 카테고리의 가장 직접적 종래 기술이나, 본 발명과 "
+        "비교할 때 아래와 같은 7가지 본질적 한계를 갖는다.",
     )
     problems = [
-        ("시계열 누적 메모리 부재 — 매 질의가 독립적",
-         "Palantir AIP의 에이전트는 매 질의 시점의 데이터 스냅샷을 LLM에 제공한다. "
-         "동일 지역에서 동일 자산이 다수 세션에 걸쳐 반복 관측될 때 이를 누적 통계로 압축하여 "
-         "LLM에게 제시하는 결정론적 메모리 구조가 부재하다. 결과적으로 \"이 지역 10일간 5회째 반복 "
-         "배치, 직전 3회 모두 소실 후 재출현\" 같은 시계열 패턴을 LLM이 인식하지 못한다."),
-        ("자산 간 결합 패턴 자동 발견 부재",
-         "Palantir AIP는 LLM 에이전트가 사용자 질의에 응답해 데이터를 *조회*하는 구조이며, "
-         "관측 데이터 자체에서 자산 클래스 간 공출현 패턴(예: 기갑+포병 복합체, C2 인프라)을 "
-         "그래프 알고리즘으로 자동 군집화·발견하는 구성이 없다. doctrine 패턴 식별을 사용자 질의 "
-         "기술 수준에 의존하게 된다."),
-        ("도메인 안전성 제약 부재 — 'DISAPPEARED' 의미 가드레일",
-         "Palantir AIP는 일반 목적의 LLM 에이전트로, 군사 영상 인텔리전스 도메인 특유의 의미론적 "
-         "제약(예: 영상 미관측의 'DISAPPEARED'를 'destroyed'로 표현해서는 안 됨)을 시스템 프롬프트에 "
-         "강제 주입하는 구성이 정의되어 있지 않다. 일반 LLM이 미관측 객체를 확정 파괴로 보고할 위험이 "
-         "남아 군사적 오판을 유발할 수 있다."),
+        ("폐쇄형 Ontology 의존 vs 결정론적 자동 인덱싱",
+         "Palantir 시스템은 Foundry Ontology를 사전에 분석관·엔지니어가 수동 설계·등록·유지보수해야 "
+         "한다. 새로운 자산 클래스(예: 신규 무기 체계)가 등장하면 Ontology 변경 작업이 요구된다. "
+         "본 발명은 (객체 클래스 × 격자 양자화 위치) 고유 쌍을 결정론적 키 생성 규칙만으로 자동 노드화 "
+         "하므로 사전 Ontology 정의·관리가 불필요하고 SAM3 등의 텍스트 프롬프트 탐지기와 결합 시 "
+         "신규 클래스 확장이 자동이다."),
+        ("객체 이력 저장 방식 — 평탄 이력 vs 그래프 누적 카운터",
+         "Palantir의 Foundry Ontology는 관측 이벤트를 평탄 행(row) 단위로 누적하여, 동일 자산의 "
+         "반복 관측이 다수의 개별 이벤트 행으로 분산 저장된다. 본 발명은 (자산 노드, 위치 노드)의 "
+         "쌍에 카운터(new/matched/moved/disappeared)를 결정론적으로 누적하여 \"이 지역 N번째 출현, "
+         "K번째 소실 후 재등장\" 같은 시계열 통계를 단일 노드 조회로 O(1) 시간에 산출할 수 있다."),
+        ("자산 간 공출현 패턴 자동 발견 메커니즘 부재 (Louvain)",
+         "Palantir AIP는 LLM 에이전트가 사용자의 자연어 질의에 응답해 데이터를 조회·요약하는 구조이며, "
+         "관측 데이터 자체에서 자산 클래스 간 공출현(co-occurrence) 패턴 — 예: 기갑+APC+포병 = 기갑 "
+         "복합체, 레이더+지휘소 = C2 인프라 — 을 그래프 알고리즘으로 자동 군집화·발견하는 구성이 "
+         "정의되어 있지 않다. 본 발명은 co_occurred_with 엣지 가중치에 Louvain 알고리즘을 적용해 "
+         "doctrine 패턴을 자동 식별하여 LLM이 사용자 질의 없이도 패턴 컨텍스트를 참조할 수 있다."),
+        ("LLM 컨텍스트 주입 방식 — 자유 조회 vs 사전 압축 컨텍스트 블록",
+         "Palantir AIP는 LLM 에이전트가 도구 호출(tool-use)을 통해 그때그때 데이터를 조회·요약하여 "
+         "컨텍스트를 동적으로 구성한다. 결과적으로 LLM 호출 횟수·토큰 사용량·응답 지연이 가변적이고 "
+         "재현성이 떨어진다. 본 발명은 보고서 생성 직전에 Local + Global 그래프 검색으로 ~500 토큰의 "
+         "압축된 결정론적 historical context 블록을 사전 산출하여 단일 LLM 호출로 보고서를 생성하므로 "
+         "토큰·지연·재현성 모두 우위이다."),
+        ("도메인 안전성 가드레일 부재 — 'DISAPPEARED' 의미 제약",
+         "Palantir AIP는 범용 LLM 에이전트로, 군사 영상 인텔리전스 특유의 의미론적 제약(예: 영상에서 "
+         "객체가 미관측되었다는 의미의 'DISAPPEARED'를 'destroyed' 또는 '파괴 확인'으로 표현해서는 "
+         "안 됨)을 시스템 프롬프트 차원에서 강제하는 구성이 정의되어 있지 않다. 본 발명은 시스템 "
+         "프롬프트에 이 의미 제약을 명시적으로 강제하여 LLM의 군사적 오판을 차단한다."),
         ("변화 객체 한정 전달 메커니즘 부재",
-         "Palantir AIP는 사용자 질의 범위에 해당하는 데이터를 LLM 에이전트가 자유롭게 조회·전달한다. "
-         "영상 변화 분석에 필수적인 \"신규 출현(new)·소실(disappeared) 객체만 추출, 정지(matched)·이동"
-         "(moved) 제외\"의 도메인 특화 사전 필터링 단계가 정의되어 있지 않아 LLM이 활동 지표와 "
-         "비활동 지표를 구분하지 못하거나 토큰을 낭비할 수 있다."),
+         "Palantir AIP는 LLM 에이전트가 질의 범위 내 모든 데이터를 자유롭게 조회한다. 본 발명은 "
+         "페어링 결과 중 활동 지표인 'new', 'disappeared' 상태 객체만 추출하여 LLM에 전달하고 "
+         "'matched'(정지), 'moved'(이동) 객체는 컨텍스트에서 제외하여 분석 집중도와 토큰 효율을 "
+         "동시에 확보한다."),
         ("표준 IMINT 8개 섹션 강제 부재",
-         "Palantir AIP의 산출 보고서는 사용자 질의에 따라 형식이 유동적이다. "
-         "CLASSIFICATION / EXECUTIVE SUMMARY / SITUATION / CHANGE ANALYSIS / THREAT ASSESSMENT / "
-         "INTELLIGENCE GAPS / RECOMMENDED ACTIONS / APPENDIX의 8개 표준 IMINT 섹션을 LLM "
-         "프롬프트 차원에서 강제하는 구성이 정의되어 있지 않아, 분석관 표준 양식 준수를 보장하지 "
-         "못한다."),
-        ("GPS 노이즈 흡수 — 동일 자산 통합 메커니즘 부재",
-         "동일 객체의 두 관측이 GPS 측정 오차로 미세하게 다른 좌표(예: 37.5765 ↔ 37.5766)일 때 "
-         "이를 동일 자산 인스턴스로 통합하기 위한 격자 양자화(예: 0.01° = 약 1km)를 키 생성 단계에 "
-         "강제하는 구성이 정의되어 있지 않다. 따라서 누적 통계가 동일 객체의 미세 좌표 변동에 의해 "
-         "분산될 수 있다."),
-        ("Ontology 의존성 vs 결정론적 자동 인덱싱",
-         "Palantir AIP는 Foundry Ontology를 사전에 설계·관리해야 하며, 새로운 자산 유형이 등장할 때 "
-         "Ontology 변경이 요구된다. 본 발명은 (객체 클래스 × 위치) 고유 쌍을 결정론적 키 생성 규칙만으로 "
-         "자동 노드화하므로 사전 Ontology 정의가 불필요하고 신규 클래스 확장이 자동이다."),
+         "Palantir AIP의 출력 보고서는 사용자 질의 형식에 따라 유동적이다. 본 발명은 CLASSIFICATION / "
+         "EXECUTIVE SUMMARY / SITUATION / CHANGE ANALYSIS / THREAT ASSESSMENT / INTELLIGENCE GAPS / "
+         "RECOMMENDED ACTIONS / APPENDIX의 8개 표준 IMINT 섹션을 시스템 프롬프트 차원에서 강제하여 "
+         "분석관 표준 양식 준수를 보장하며, 동일 LLM 재호출 기반 한국어 번역(섹션 헤더·좌표·신뢰도 "
+         "토큰 보존)으로 다국어 일관성을 확보한다."),
     ]
-    add_table(doc, ["#", "Palantir AIP의 한계", "본 발명 적용 시 문제점"],
+    add_table(doc, ["#", "Palantir MetaConstellation + AIP의 한계", "본 발명의 대응 구성"],
               [[str(i + 1), t, d] for i, (t, d) in enumerate(problems)],
               widths=[0.8, 4.5, 10.7])
 
     add_para(
         doc,
-        "따라서 Palantir AIP는 본 발명과 동일한 \"LLM 에이전트 기반 인텔리전스 보고서 자동 생성\" "
-        "카테고리의 가장 직접적 종래 기술이나, 군사 영상 시계열 인텔리전스 도메인에서 요구되는 "
-        "(i) 결정론적 시계열 그래프 누적 메모리, (ii) Louvain 기반 자산 공출현 패턴 자동 발견, "
-        "(iii) 'DISAPPEARED ≠ destroyed' 의미 가드레일, (iv) new/disappeared 변화 객체 한정 전달, "
-        "(v) IMINT 표준 8섹션 강제, (vi) 격자 양자화 기반 동일 자산 통합, (vii) Ontology 비의존 "
-        "자동 인덱싱의 7가지 차별 구성을 모두 결여하므로 본 발명의 진보성이 인정된다.",
-        bold=False,
+        "따라서 Palantir MetaConstellation + AIP 통합 시스템은 \"위성영상 → LLM 에이전트 변화탐지 → "
+        "객체 이력 기반 판독보고서\"라는 본 발명의 직접적 카테고리에서 가장 가까운 종래 기술이나, "
+        "(i) Ontology 비의존 결정론적 자동 인덱싱, (ii) 그래프 카운터 기반 시계열 누적 메모리, "
+        "(iii) Louvain 기반 자산 공출현 패턴 자동 발견, (iv) 사전 압축 historical context 블록, "
+        "(v) 'DISAPPEARED ≠ destroyed' 도메인 의미 가드레일, (vi) new/disappeared 변화 객체 한정 "
+        "전달, (vii) IMINT 표준 8섹션 강제 및 동일 LLM 번역의 7가지 차별 구성을 모두 결여하고 있어 "
+        "본 발명의 진보성이 인정된다.",
     )
 
     # ───────── 2. 상세 설명 ─────────
