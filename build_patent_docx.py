@@ -193,138 +193,136 @@ def build():
 
     add_h2(doc, "(4) 종래 기술")
 
-    add_h3(doc, "Palantir MetaConstellation + AIP 통합 위성영상 인텔리전스 시스템 (2022 ~ 2023)")
+    add_h3(doc, "US 12,488,225 B1 — Modular Open System Architecture for Common Intelligence Picture Generation (Booz Allen Hamilton, 2025년 등록)")
     add_para(
         doc,
-        "본 발명과 가장 유사한 단일 종래 기술은 Palantir Technologies가 2022년 발표한 위성영상 "
-        "임무 통합 플랫폼 MetaConstellation과 2023년 공개한 LLM 에이전트 플랫폼 AIP(Artificial "
-        "Intelligence Platform)을 결합한 위성영상 기반 인텔리전스 보고서 자동 생성 시스템이다. "
-        "이 결합 시스템은 (i) 다중 위성 사업자(BlackSky·Capella·Maxar 등)로부터 영상을 수집하고, "
-        "(ii) 영상에서 객체 탐지·변화 식별을 수행하며, (iii) LLM 에이전트가 객체 이력을 참조해 "
-        "지휘관용 자연어 보고서를 생성하는 일련의 파이프라인을 공개·시연하였다. 따라서 본 발명이 "
+        "본 발명과 가장 직접적으로 비교 가능한 실제 등록 특허는 미국 특허 US 12,488,225 B1 "
+        "(이하 '인용발명')이다. 인용발명은 2025년에 등록된 비교적 최근의 정부 정보(인텔리전스) 분야 "
+        "특허로서, 다중 출처(multi-source) 정보 데이터를 통합하여 공통 인텔리전스 픽처(Common "
+        "Intelligence Picture, CIP)를 자동 생성하는 모듈형 개방 시스템 아키텍처(MOSA)에 관한 것이며, "
+        "그 핵심 구성에 대규모 언어 모델(LLM)을 다중 정보 융합 엔진으로 활용한다. 이는 본 발명이 "
         "속하는 \"위성영상 → LLM 에이전트 변화탐지 → 객체 이력 기반 판독보고서 자동 생성\" "
-        "카테고리에서 가장 직접적으로 공개·시연된 선행 시스템에 해당한다.",
+        "카테고리에서 가장 가까운 실제 등록 특허에 해당한다.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 1] Palantir Technologies, \"MetaConstellation: A Multi-Provider Satellite "
-        "Tasking Platform\", Official product announcement, 2022.10.",
+        "[인용특허] US Patent 12,488,225 B1, \"Modular open system architecture for common "
+        "intelligence picture generation\", 양수인: Booz Allen Hamilton Inc. (추정), "
+        "USPTO 등록 2025.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 2] Palantir Technologies, \"Introducing AIP — Palantir Artificial "
-        "Intelligence Platform\", Official product announcement & demonstration video, 2023.04.25.",
+        "[비특허문헌 1] Booz Allen Hamilton, \"Booz Allen i2S2: Interactive AI for Space\", "
+        "공식 제품 페이지, boozallen.com/markets/space/i2s2-interactive-ai-for-space.html — "
+        "인용특허의 상용 구현체에 해당.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 3] Palantir Technologies, AIP defense use-case demonstration "
-        "(\"Responding to Adversary Movement\" 시나리오) — 위성영상으로 적 부대 이동을 탐지·분석하고 "
-        "LLM 에이전트가 지휘관에게 권고 보고서를 생성하는 공개 시연, 2023.",
+        "[비특허문헌 2] Booz Allen Hamilton, \"Booz Allen Deploys the Power of Generative AI "
+        "in Space\", investors.boozallen.com 보도자료.",
     )
     add_bullet(
         doc,
-        "[비특허문헌 4] Palantir Technologies, \"Palantir AIP | Defense and Military\", "
-        "공식 제품 문서, palantir.com/platforms/aip.",
-    )
-    add_bullet(
-        doc,
-        "[비특허문헌 5] 우크라이나 군 내 Palantir 위성영상 + AIP 운용 사례 (2022 ~ 2024) "
-        "관련 공개 보도 자료 (Washington Post, TIME 등 다수).",
+        "[비특허문헌 3] Booz Allen Hamilton & Meta, \"AI Vision Language Model for Space\" "
+        "공동 시연 발표, BusinessWire 2025.04.25.",
     )
     add_para(
         doc,
-        "(출원 단계에서 Palantir의 미국 특허 패밀리 — 예: US 2024/0xxxxx — 를 KIPRIS·USPTO·Espacenet "
-        "에서 변리사가 정확한 번호로 검증·보완 권장.)",
+        "(출원 단계에서 변리사가 USPTO 및 KIPRIS에서 정확한 양수인·발명자·청구항 전문을 "
+        "재확인 권장.)",
     )
 
-    add_para(doc, "Palantir MetaConstellation + AIP의 핵심 구성은 다음과 같이 공개되어 있다.")
+    add_para(doc, "인용발명(US 12,488,225)의 핵심 구성은 다음과 같다.")
     add_bullet(
         doc,
-        "(가) MetaConstellation은 다중 위성 사업자의 영상을 통합 수집하고, Palantir Foundry에 "
-        "정형 데이터 레이어로 등록한다.",
+        "(가) 모듈형 개방 시스템 아키텍처(MOSA)를 기반으로 위성·OSINT·CYBER·SIGINT 등 다중 출처 "
+        "정보를 단일 공통 인텔리전스 픽처(CIP)로 통합한다.",
     )
     add_bullet(
         doc,
-        "(나) 영상에 대해 객체 탐지·식별·변화 식별을 수행하며, 그 결과를 Foundry Ontology의 "
-        "엔티티(예: 차량·시설·인원)에 매핑하여 시간순 이력으로 축적한다.",
+        "(나) 다중 정보 융합 LLM(multi-source intelligence fusion LLM)이 우선 정보 요구사항"
+        "(Priority Intelligence Requirements, PIR)을 자연어로 입력받아 대화형 질의응답을 통해 "
+        "분석관과 상호작용한다.",
     )
     add_bullet(
         doc,
-        "(다) AIP는 LLM(GPT-4 등)을 도구 사용 에이전트로 활용하여 \"이 지역의 변화를 분석하고 "
-        "권고 사항을 제시하라\" 같은 자연어 지시를 받아 Ontology 데이터를 조회·분석한 뒤 자연어 "
-        "보고서를 생성한다.",
+        "(다) LLM 에이전트가 PIR을 분석하여 위성 임무 부여(satellite tasking), OSINT 수집, "
+        "CYBER 작전, 기타 정보수집 활동의 적절한 대응 방안(courses of action, COA)을 자동 생성한다.",
     )
     add_bullet(
         doc,
-        "(라) 출력 보고서는 요약·권고 포함 분석관·지휘관 친화 형식을 따르며 대화형 추가 질의 "
-        "(refine)를 지원한다.",
+        "(라) 위성 데이터 획득 최적화 플랫폼이 기상·궤도·센서 능력을 평가하여 다중 정보 출처에 대한 "
+        "수집 실현 가능성을 산출한다.",
     )
     add_bullet(
         doc,
-        "(마) 보안·감사 목적으로 에이전트의 데이터 접근·도구 호출 이력을 모두 로깅한다.",
+        "(마) 컨테이너화된 분석 워크벤치(containerized analytics workbench)와 연동하여 "
+        "맞춤형 정보 산출물(PDF, 프레젠테이션 등) 형태의 자동 보고서를 생성한다.",
     )
 
     add_h2(doc, "(5) 종래 기술의 문제점 / 한계")
     add_para(
         doc,
-        "Palantir MetaConstellation + AIP 통합 시스템은 위성영상으로부터 LLM 에이전트가 변화를 "
-        "분석하고 보고서를 생성하는 본 발명 카테고리의 가장 직접적 종래 기술이나, 본 발명과 "
-        "비교할 때 아래와 같은 7가지 본질적 한계를 갖는다.",
+        "인용발명(US 12,488,225)은 본 발명과 동일한 \"LLM + 다중 출처 정보 → 자동 보고서 생성\" "
+        "카테고리에 속하는 가장 가까운 등록 특허이나, 본 발명이 해결하는 \"위성영상 객체 단위 시계열 "
+        "변화탐지 및 그래프 기반 객체 이력 누적 보고\"라는 좁고 구체적인 도메인에서 비교할 때 "
+        "아래와 같은 7가지 본질적 한계를 갖는다.",
     )
     problems = [
-        ("폐쇄형 Ontology 의존 vs 결정론적 자동 인덱싱",
-         "Palantir 시스템은 Foundry Ontology를 사전에 분석관·엔지니어가 수동 설계·등록·유지보수해야 "
-         "한다. 새로운 자산 클래스(예: 신규 무기 체계)가 등장하면 Ontology 변경 작업이 요구된다. "
-         "본 발명은 (객체 클래스 × 격자 양자화 위치) 고유 쌍을 결정론적 키 생성 규칙만으로 자동 노드화 "
-         "하므로 사전 Ontology 정의·관리가 불필요하고 SAM3 등의 텍스트 프롬프트 탐지기와 결합 시 "
-         "신규 클래스 확장이 자동이다."),
-        ("객체 이력 저장 방식 — 평탄 이력 vs 그래프 누적 카운터",
-         "Palantir의 Foundry Ontology는 관측 이벤트를 평탄 행(row) 단위로 누적하여, 동일 자산의 "
-         "반복 관측이 다수의 개별 이벤트 행으로 분산 저장된다. 본 발명은 (자산 노드, 위치 노드)의 "
-         "쌍에 카운터(new/matched/moved/disappeared)를 결정론적으로 누적하여 \"이 지역 N번째 출현, "
-         "K번째 소실 후 재등장\" 같은 시계열 통계를 단일 노드 조회로 O(1) 시간에 산출할 수 있다."),
-        ("자산 간 공출현 패턴 자동 발견 메커니즘 부재 (Louvain)",
-         "Palantir AIP는 LLM 에이전트가 사용자의 자연어 질의에 응답해 데이터를 조회·요약하는 구조이며, "
-         "관측 데이터 자체에서 자산 클래스 간 공출현(co-occurrence) 패턴 — 예: 기갑+APC+포병 = 기갑 "
-         "복합체, 레이더+지휘소 = C2 인프라 — 을 그래프 알고리즘으로 자동 군집화·발견하는 구성이 "
-         "정의되어 있지 않다. 본 발명은 co_occurred_with 엣지 가중치에 Louvain 알고리즘을 적용해 "
-         "doctrine 패턴을 자동 식별하여 LLM이 사용자 질의 없이도 패턴 컨텍스트를 참조할 수 있다."),
-        ("LLM 컨텍스트 주입 방식 — 자유 조회 vs 사전 압축 컨텍스트 블록",
-         "Palantir AIP는 LLM 에이전트가 도구 호출(tool-use)을 통해 그때그때 데이터를 조회·요약하여 "
-         "컨텍스트를 동적으로 구성한다. 결과적으로 LLM 호출 횟수·토큰 사용량·응답 지연이 가변적이고 "
-         "재현성이 떨어진다. 본 발명은 보고서 생성 직전에 Local + Global 그래프 검색으로 ~500 토큰의 "
-         "압축된 결정론적 historical context 블록을 사전 산출하여 단일 LLM 호출로 보고서를 생성하므로 "
-         "토큰·지연·재현성 모두 우위이다."),
+        ("정보 융합 수준 — 다중 출처 추상 융합 vs 객체 단위 시계열 변화",
+         "인용발명은 위성·OSINT·CYBER·SIGINT 등 이질적 정보 출처를 통합 공통 인텔리전스 픽처(CIP)로 "
+         "추상 융합하는 데 초점이 있으며, 영상 내 개별 객체(전차·항공기·시설 등) 단위로 시계열 변화를 "
+         "추적하는 구성이 청구범위 및 명세서에 정의되어 있지 않다. 본 발명은 SAM3 등 텍스트 프롬프트 "
+         "탐지기로 영상 내 객체를 분할·식별한 후, 객체별 페어링(new/matched/moved/disappeared)을 "
+         "수행하여 객체 단위 변화 의미를 LLM에 전달한다."),
+        ("입력 패러다임 — PIR 기반 질의응답 vs 자동 변화탐지 트리거",
+         "인용발명은 분석관이 자연어로 입력한 우선 정보 요구사항(PIR)에 응답해 LLM 에이전트가 "
+         "정보수집·분석을 수행하는 질의응답형 구조이다. 본 발명은 신규 위성영상이 수집되면 자동으로 "
+         "탐지·페어링·그래프 갱신·보고서 생성이 트리거되는 사건 기반(event-driven) 파이프라인으로, "
+         "분석관의 수동 질의 없이도 변화 보고서를 산출한다."),
+        ("객체 이력 저장 — CIP(평탄 통합 픽처) vs 그래프 카운터 누적 메모리",
+         "인용발명의 공통 인텔리전스 픽처(CIP)는 다중 출처 정보를 통합 표시하는 \"현재 시점의 "
+         "스냅샷\" 구조이며, 동일 객체의 반복 관측을 객체별 누적 카운터(new_count, "
+         "disappeared_count 등)로 압축 저장하는 결정론적 그래프 인덱싱 구성이 부재하다. "
+         "본 발명은 (자산 노드 × 위치 노드)에 시계열 카운터를 누적하여 \"이 지역 N번째 출현, "
+         "K번째 소실 후 재등장\" 같은 시계열 통계를 단일 노드 O(1) 조회로 산출한다."),
+        ("자산 간 공출현 패턴 자동 발견 부재 (Louvain)",
+         "인용발명은 LLM이 PIR을 분석해 대응 방안(COA)을 생성하나, 관측 데이터 자체에서 자산 "
+         "클래스 간 공출현 패턴(기갑+APC+포병 = 기갑 복합체, 레이더+지휘소 = C2 인프라 등)을 그래프 "
+         "알고리즘으로 자동 군집화·발견하는 구성이 정의되어 있지 않다. 본 발명은 co_occurred_with "
+         "엣지 가중치에 Louvain 알고리즘을 적용해 doctrine 패턴을 자동 식별하고, 분석관 질의 없이도 "
+         "패턴을 보고서 컨텍스트로 LLM에게 제시한다."),
         ("도메인 안전성 가드레일 부재 — 'DISAPPEARED' 의미 제약",
-         "Palantir AIP는 범용 LLM 에이전트로, 군사 영상 인텔리전스 특유의 의미론적 제약(예: 영상에서 "
-         "객체가 미관측되었다는 의미의 'DISAPPEARED'를 'destroyed' 또는 '파괴 확인'으로 표현해서는 "
-         "안 됨)을 시스템 프롬프트 차원에서 강제하는 구성이 정의되어 있지 않다. 본 발명은 시스템 "
-         "프롬프트에 이 의미 제약을 명시적으로 강제하여 LLM의 군사적 오판을 차단한다."),
-        ("변화 객체 한정 전달 메커니즘 부재",
-         "Palantir AIP는 LLM 에이전트가 질의 범위 내 모든 데이터를 자유롭게 조회한다. 본 발명은 "
-         "페어링 결과 중 활동 지표인 'new', 'disappeared' 상태 객체만 추출하여 LLM에 전달하고 "
-         "'matched'(정지), 'moved'(이동) 객체는 컨텍스트에서 제외하여 분석 집중도와 토큰 효율을 "
-         "동시에 확보한다."),
-        ("표준 IMINT 8개 섹션 강제 부재",
-         "Palantir AIP의 출력 보고서는 사용자 질의 형식에 따라 유동적이다. 본 발명은 CLASSIFICATION / "
-         "EXECUTIVE SUMMARY / SITUATION / CHANGE ANALYSIS / THREAT ASSESSMENT / INTELLIGENCE GAPS / "
-         "RECOMMENDED ACTIONS / APPENDIX의 8개 표준 IMINT 섹션을 시스템 프롬프트 차원에서 강제하여 "
-         "분석관 표준 양식 준수를 보장하며, 동일 LLM 재호출 기반 한국어 번역(섹션 헤더·좌표·신뢰도 "
-         "토큰 보존)으로 다국어 일관성을 확보한다."),
+         "인용발명은 범용 정보 융합 LLM으로, 영상 변화탐지 특유의 의미론적 제약 — \"영상에서 객체가 "
+         "더 이상 관측되지 않음(DISAPPEARED)\"을 \"파괴 확인(destroyed)\"으로 표현해서는 안 됨 — "
+         "을 시스템 프롬프트 차원에서 강제하는 구성이 정의되어 있지 않다. 본 발명은 이 의미 제약을 "
+         "LLM 시스템 프롬프트에 명시 강제하여 미관측을 파괴로 오해석하는 군사적 오판을 차단한다."),
+        ("변화 객체 한정 전달 + 사전 압축 컨텍스트 블록 부재",
+         "인용발명은 LLM이 PIR 범위 내 모든 정보를 조회·융합하므로 LLM 호출 비용·지연·응답 가변성이 "
+         "크다. 본 발명은 (i) 페어링 결과 중 활동 지표인 new·disappeared만 추출하고 (ii) Local + "
+         "Global 그래프 검색으로 ~500 토큰의 압축된 결정론적 historical context 블록을 사전 산출하여 "
+         "단일 LLM 호출로 보고서를 생성하므로 토큰·지연·재현성에서 모두 우위이다."),
+        ("출력 형식 강제 — 맞춤형 PDF/PPT vs 표준 IMINT 8섹션 + 동일 LLM 번역",
+         "인용발명의 보고서는 분석관이 지정한 맞춤형 PDF/프레젠테이션 형식이다. 본 발명은 "
+         "CLASSIFICATION / EXECUTIVE SUMMARY / SITUATION / CHANGE ANALYSIS / THREAT ASSESSMENT / "
+         "INTELLIGENCE GAPS / RECOMMENDED ACTIONS / APPENDIX의 8개 표준 IMINT 섹션을 시스템 프롬프트 "
+         "차원에서 강제하고, 동일 LLM의 재호출을 통한 한국어 번역(섹션 헤더·좌표·신뢰도 토큰 보존)으로 "
+         "다국어 분석관 표준 양식 일관성을 확보한다."),
     ]
-    add_table(doc, ["#", "Palantir MetaConstellation + AIP의 한계", "본 발명의 대응 구성"],
+    add_table(doc, ["#", "인용발명 (US 12,488,225)의 한계", "본 발명의 대응 구성"],
               [[str(i + 1), t, d] for i, (t, d) in enumerate(problems)],
-              widths=[0.8, 4.5, 10.7])
+              widths=[0.8, 4.8, 10.4])
 
     add_para(
         doc,
-        "따라서 Palantir MetaConstellation + AIP 통합 시스템은 \"위성영상 → LLM 에이전트 변화탐지 → "
-        "객체 이력 기반 판독보고서\"라는 본 발명의 직접적 카테고리에서 가장 가까운 종래 기술이나, "
-        "(i) Ontology 비의존 결정론적 자동 인덱싱, (ii) 그래프 카운터 기반 시계열 누적 메모리, "
-        "(iii) Louvain 기반 자산 공출현 패턴 자동 발견, (iv) 사전 압축 historical context 블록, "
-        "(v) 'DISAPPEARED ≠ destroyed' 도메인 의미 가드레일, (vi) new/disappeared 변화 객체 한정 "
-        "전달, (vii) IMINT 표준 8섹션 강제 및 동일 LLM 번역의 7가지 차별 구성을 모두 결여하고 있어 "
-        "본 발명의 진보성이 인정된다.",
+        "따라서 인용발명 US 12,488,225 B1은 본 발명과 동일한 \"LLM 기반 다중 출처 정보 → 자동 "
+        "인텔리전스 보고서\" 카테고리에서 가장 가까운 실제 등록 특허이나, 본 발명이 해결하는 "
+        "위성영상 객체 시계열 변화탐지 도메인의 (i) 객체 단위 페어링 기반 변화 의미 추출, "
+        "(ii) 영상 수집 사건 기반 자동 트리거, (iii) 그래프 카운터 기반 시계열 누적 메모리, "
+        "(iv) Louvain 기반 자산 공출현 패턴 자동 발견, (v) 'DISAPPEARED ≠ destroyed' 도메인 "
+        "의미 가드레일, (vi) new/disappeared 한정 + 사전 압축 historical context 블록, "
+        "(vii) IMINT 8섹션 강제 및 동일 LLM 번역의 7가지 차별 구성을 모두 결여하므로 본 발명의 "
+        "진보성이 인정된다.",
     )
 
     # ───────── 2. 상세 설명 ─────────
