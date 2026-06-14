@@ -66,7 +66,7 @@ from src.database.pairing_db import (
 )
 from src.database.reports_db import delete_reports_by_session
 from src.detection.image_loader import load_metadata_index, iter_images
-from src.detection.sam2_detector import SAM3Detector, DetectionResult
+from src.detection.sam3_detector import SAM3Detector, DetectionResult
 from src.pairing.temporal_pairing import pair_by_tracking, pair_by_similarity
 from src.reporting.military_reporter import MilitaryReporter
 from src.graph.graph_indexer import GraphIndexer
@@ -108,7 +108,7 @@ class MavenPipeline:
     # 이미지 탐지 및 센서 DB 저장
     def _detect_and_store(self, metadata_json: str, session_id: str) -> List[str]:
         """
-        Load all images from metadata index, run SAM2 detection,
+        Load all images from metadata index, run SAM3 detection,
         save image records and detection records to Sensor DB.
 
         Returns list of image_ids processed.
@@ -155,7 +155,7 @@ class MavenPipeline:
             image_id = img_record.id
             image_ids.append(image_id)
 
-            # Run SAM2 detection
+            # Run SAM3 detection
             det_results: List[DetectionResult] = self.detector.detect(loaded, image_id)
 
             if not det_results:
