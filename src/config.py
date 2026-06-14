@@ -76,7 +76,7 @@ REALESRGAN_X2_PATH = os.getenv(
 
 # --- SAM3 Model (Segment Anything Model 3 by Meta AI) ---
 # SAM3 performs text-prompted concept segmentation in a single forward pass,
-# replacing the SAM2 + CLIP two-stage pipeline.
+# replacing the SAM3 + CLIP two-stage pipeline.
 # Model card: https://huggingface.co/facebook/sam3
 SAM3_MODEL_NAME = os.getenv("SAM3_MODEL_NAME", "facebook/sam3")
 SAM3_DEVICE = os.getenv("SAM3_DEVICE", "cuda")  # "cuda" or "cpu"
