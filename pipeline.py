@@ -286,6 +286,7 @@ class MavenPipeline:
                         source_type=d.source_type or meta.source_type,
                     )
                     for d in current_orm
+                    if (d.source_type or "") != "synthetic"
                 ]
 
             # --- Fetch past detections (same session only) ---
@@ -299,6 +300,10 @@ class MavenPipeline:
                 prefer_session_id=session_id,
                 session_only=True,
             )
+            # 합성 탐지 레코드(cross-check 부산물)를 과거 목록에서 제거한다.
+            # 세션 내 이미지가 여러 장일 때 이전 페어링에서 생성된 synthetic 이
+            # 다음 페어링의 past_records 로 흘러들어 bbox 중복을 유발할 수 있음.
+            past_records = [r for r in past_records if (r.source_type or "") != "synthetic"]
 
             # 과거 이미지 ID: 탐지 결과가 없어도 FOV 판단에 사용
             with Session(engine) as _s:

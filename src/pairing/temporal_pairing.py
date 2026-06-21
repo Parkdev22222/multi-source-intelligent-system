@@ -700,6 +700,52 @@ def pair_by_tracking(
                 best_iou = iou
                 best_current = cur
 
+        # IoU fallback 1: bbox 중심점 픽셀 거리 (트래커 예측 위치와 실제 탐지 위치 차이)
+        # 이동체가 프레임 간 bbox 크기의 2배 이상 이동한 경우 IoU 가 0으로 떨어질 수 있음.
+        if best_current is None:
+            tracked_cx = (tracked.bbox_x1 + tracked.bbox_x2) / 2
+            tracked_cy = (tracked.bbox_y1 + tracked.bbox_y2) / 2
+            tracked_w  = max(tracked.bbox_x2 - tracked.bbox_x1, 1.0)
+            tracked_h  = max(tracked.bbox_y2 - tracked.bbox_y1, 1.0)
+            max_px_dist = max(tracked_w, tracked_h) * 2.0
+            best_px_dist = max_px_dist
+            for cur in current_detections:
+                if cur.detection_id in matched_current_ids:
+                    continue
+                if cur.object_class.lower() != expected_cls:
+                    continue
+                cur_cx = (cur.bbox_x1 + cur.bbox_x2) / 2
+                cur_cy = (cur.bbox_y1 + cur.bbox_y2) / 2
+                dist = ((cur_cx - tracked_cx) ** 2 + (cur_cy - tracked_cy) ** 2) ** 0.5
+                if dist < best_px_dist:
+                    best_px_dist = dist
+                    best_current = cur
+            if best_current is not None:
+                logger.debug(
+                    "[Pairing/tracker] IoU 매칭 실패 → 픽셀 중심점 폴백 "
+                    "cls=%s dist=%.1f", expected_cls, best_px_dist,
+                )
+
+        # IoU fallback 2: 위경도 근접도 (픽셀 폴백도 실패한 경우)
+        if best_current is None and past is not None and past.lat is not None:
+            best_geo_dist = COORDINATE_MATCH_RADIUS_DEG
+            for cur in current_detections:
+                if cur.detection_id in matched_current_ids:
+                    continue
+                if cur.object_class.lower() != expected_cls:
+                    continue
+                if cur.lat is None or cur.lon is None:
+                    continue
+                geo_dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
+                if geo_dist < best_geo_dist:
+                    best_geo_dist = geo_dist
+                    best_current = cur
+            if best_current is not None:
+                logger.debug(
+                    "[Pairing/tracker] 픽셀 폴백 실패 → 위경도 폴백 "
+                    "cls=%s geo_dist=%.5f", expected_cls, best_geo_dist,
+                )
+
         if best_current is not None:
             matched_current_ids.add(best_current.detection_id)
 
