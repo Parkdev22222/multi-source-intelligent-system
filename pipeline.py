@@ -50,7 +50,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from src.config import IMAGES_DIR, COORDINATE_MATCH_RADIUS_DEG, TRACKING_MODE
+from src.config import IMAGES_DIR, COORDINATE_MATCH_RADIUS_DEG, TRACKING_MODE, GRAPHRAG_CONTEXT_ENABLED
 from src.database.models import DetectionRecord
 from src.database.sensor_db import (
     insert_image_record,
@@ -404,10 +404,14 @@ class MavenPipeline:
                 graph_stats.get("communities", 0),
             )
 
-        historical_context = self.graph_indexer.get_historical_context(pairings)
-        if historical_context:
-            logger.info("[Pipeline] GraphRAG historical context retrieved (%d chars).",
-                        len(historical_context))
+        historical_context = ""
+        if GRAPHRAG_CONTEXT_ENABLED:
+            historical_context = self.graph_indexer.get_historical_context(pairings)
+            if historical_context:
+                logger.info("[Pipeline] GraphRAG historical context retrieved (%d chars).",
+                            len(historical_context))
+        else:
+            logger.info("[Pipeline] GraphRAG historical context disabled (GRAPHRAG_CONTEXT_ENABLED=false).")
 
         report = self.reporter.generate_report(
             pairings,

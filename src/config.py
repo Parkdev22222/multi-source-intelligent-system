@@ -266,6 +266,9 @@ GRAPH_DB_PATH = str(DB_DIR / "graph.db")
 GRAPHRAG_COMMUNITY_INTERVAL = int(os.getenv("GRAPHRAG_COMMUNITY_INTERVAL", "1"))
 # Radius (degrees) used when querying historical context from the graph
 GRAPHRAG_CONTEXT_RADIUS_DEG = float(os.getenv("GRAPHRAG_CONTEXT_RADIUS", "0.05"))
+# Set to "0" or "false" to disable injecting historical graph context into the LLM prompt.
+# Prevents accumulated multi-run data from inflating report numbers.
+GRAPHRAG_CONTEXT_ENABLED = os.getenv("GRAPHRAG_CONTEXT_ENABLED", "false").lower() not in ("0", "false", "no")
 
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
