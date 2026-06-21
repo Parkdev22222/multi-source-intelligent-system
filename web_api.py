@@ -31,6 +31,7 @@ import pycountry
 import reverse_geocoder as _rg
 
 
+# 위경도로 국가명 반환
 def _get_country_name(lat: float, lon: float) -> Optional[str]:
     """위경도로 국가명(영문) 반환. 좌표 없으면 None."""
     try:
@@ -42,7 +43,7 @@ def _get_country_name(lat: float, lon: float) -> Optional[str]:
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -87,6 +88,7 @@ _MUTE_PATHS = (
 )
 
 class _SilentAccessFilter(logging.Filter):
+    # 폴링 경로 요청 로그를 필터링
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
         return not any(p in msg for p in _MUTE_PATHS)
@@ -116,6 +118,7 @@ _sse_clients: list = []   # 연결된 클라이언트 Queue 목록
 _sse_lock = threading.Lock()
 
 
+# DB 갱신 이벤트를 SSE 클라이언트에 브로드캐스트
 def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float = 0.0,
                        changed: list | None = None):
     """모든 SSE 구독 클라이언트에게 DB 업데이트 이벤트를 브로드캐스트한다.
@@ -145,6 +148,92 @@ def _notify_db_updated(run_count: int = 0, success: bool = True, elapsed: float 
                 pass
 
 
+# 임의 SSE 페이로드를 모든 클라이언트에 브로드캐스트
+def _broadcast_sse(payload: str):
+    with _sse_lock:
+        dead = []
+        for q in list(_sse_clients):
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            try:
+                _sse_clients.remove(q)
+            except ValueError:
+                pass
+
+
+# 세션 ID → 분석 작업 상태 ("processing" | "done" | "error:<msg>")
+_analyze_jobs: dict[str, str] = {}
+_analyze_jobs_lock = threading.Lock()
+
+
+# 분석을 백그라운드 스레드로 실행하고 완료 시 SSE로 알림
+def _run_analyze_background(session_id: str, target_description: str):
+    try:
+        from pipeline import MavenPipeline
+        pipeline = MavenPipeline()
+        pipeline.run_pairing_and_report(
+            session_id, target_description=target_description
+        )
+    except Exception as exc:
+        logger.error("[API] background analyze error: %s", exc, exc_info=True)
+        with _analyze_jobs_lock:
+            _analyze_jobs[session_id] = f"error:{exc}"
+        _broadcast_sse(json.dumps({
+            "type":       "analyze_error",
+            "session_id": session_id,
+            "message":    str(exc),
+        }))
+        return
+
+    # WP 완료 처리
+    after_rpt_id = _get_latest_report_id()
+    with _swp_lock:
+        wp_info = _session_wp_map.pop(session_id, None)
+
+    if wp_info:
+        if len(wp_info) == 2:
+            sat_id, wp_id = wp_info
+            with _sat_lock:
+                sm = _sat_missions.get(sat_id, {})
+                wp = next((w for w in sm.get("waypoints", []) if w["id"] == wp_id), None)
+                if wp:
+                    wp["status"] = "complete"
+                    if after_rpt_id:
+                        wp["report_id"] = after_rpt_id
+            _save_sat_missions()
+        else:
+            _, wp_id, mission_id = wp_info
+            mission = _missions.get(mission_id)
+            if mission:
+                wp = next((w for w in mission["waypoints"] if w["id"] == wp_id), None)
+                if wp:
+                    wp["status"] = "complete"
+                    if after_rpt_id:
+                        wp["report_id"] = after_rpt_id
+                non_done = [
+                    w for w in mission["waypoints"]
+                    if w["status"] not in ("complete", "ingested", "failed")
+                ]
+                if not non_done:
+                    mission["status"]      = "complete"
+                    mission["finished_at"] = datetime.utcnow().isoformat()
+            _save_missions_to_file()
+
+    with _analyze_jobs_lock:
+        _analyze_jobs[session_id] = f"done:{after_rpt_id or ''}"
+
+    _notify_db_updated(changed=["reports", "detections"])
+    _broadcast_sse(json.dumps({
+        "type":       "analyze_complete",
+        "session_id": session_id,
+        "report_id":  after_rpt_id,
+    }))
+
+
+# 파이프라인 단계 이벤트를 SSE 전송
 def _notify_pipeline_stage(status: dict):
     """파이프라인 단계 변경 이벤트를 모든 SSE 클라이언트에 브로드캐스트한다."""
     payload = json.dumps({
@@ -169,12 +258,15 @@ def _notify_pipeline_stage(status: dict):
                 pass
 
 
+# 이미지 적재 완료 이벤트 SSE 브로드캐스트
 def _notify_image_ingested(
     session_id: str,
     image_ids: list,
     lat: float | None = None,
     lon: float | None = None,
     target_description: str = "",
+    wp_name: str = "",
+    wp_seq: int = 0,
 ):
     """이미지 적재 완료 이벤트 브로드캐스트 – 단계별 워크플로우 UI 트리거."""
     payload = json.dumps({
@@ -184,6 +276,8 @@ def _notify_image_ingested(
         "lat":                lat,
         "lon":                lon,
         "target_description": target_description,
+        "wp_name":            wp_name,
+        "wp_seq":             wp_seq,
         "ts":                 datetime.utcnow().isoformat(),
     })
     with _sse_lock:
@@ -234,6 +328,7 @@ _campaign: dict = {
 _camp_lock = threading.Lock()
 
 
+# 임무 파일 로드 및 고착 상태 초기화
 def _load_missions_from_file():
     if _MISSIONS_FILE.exists():
         try:
@@ -250,6 +345,7 @@ def _load_missions_from_file():
                 wp["status"] = "failed"
 
 
+# 임무 정보를 JSON 파일로 저장
 def _save_missions_to_file():
     _MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with _mission_lock:
@@ -263,6 +359,7 @@ def _save_missions_to_file():
 _load_missions_from_file()
 
 
+# 위성 임무 파일 로드 및 상태 초기화
 def _load_sat_missions():
     if _SAT_MISSIONS_FILE.exists():
         try:
@@ -277,6 +374,7 @@ def _load_sat_missions():
                 wp["status"] = "failed"
 
 
+# 위성 임무 정보를 JSON 파일로 저장
 def _save_sat_missions():
     _SAT_MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with _sat_lock:
@@ -287,6 +385,7 @@ def _save_sat_missions():
 
 # ── 서버 시작 시 상태 파일 초기화 ─────────────────────────────────────────
 # 이전 실행에서 고착된 pipeline_status / sat_missions 를 항상 깨끗하게 시작한다.
+# 서버 시작 시 상태 파일 초기화
 def _reset_state_files() -> None:
     """pipeline_status.json → idle, sat_missions.json → {} 로 초기화."""
     try:
@@ -342,6 +441,7 @@ POSITION_CHANGE_THRESHOLD_DEG = 0.003   # ~300 m – 이 이상 이동하면 실
 AUTO_SIM_POLL_SEC              = 10      # 위치 체크 간격 (초)
 
 
+# 위성 위치 변경 여부 확인
 def _any_satellite_moved(new_sats: list) -> bool:
     """이전 위치 대비 임계값 이상 이동한 위성이 있으면 True."""
     prev = _auto_state["last_positions"]
@@ -357,6 +457,7 @@ def _any_satellite_moved(new_sats: list) -> bool:
     return False
 
 
+# DB에서 최신 보고서 ID 조회
 def _get_latest_report_id() -> str | None:
     """DB에서 가장 최근 보고서 ID 반환. 조회 실패 시 None."""
     try:
@@ -367,6 +468,7 @@ def _get_latest_report_id() -> str | None:
         return None
 
 
+# 웨이포인트 실행 결과를 상태에 반영
 def _finish_wp(wp: dict, result: dict, before_report_id: str | None = None):
     """웨이포인트 실행 결과 반영 (성공/실패 공통).
 
@@ -393,6 +495,7 @@ def _finish_wp(wp: dict, result: dict, before_report_id: str | None = None):
         wp["error"]  = result.get("stderr_tail", "")[:300]
 
 
+# 자동 시뮬레이션 백그라운드 루프 실행
 def _auto_sim_worker():
     """
     자동 시뮬레이션 백그라운드 스레드.
@@ -488,6 +591,8 @@ def _auto_sim_worker():
                             lat=wp_ref["lat"],
                             lon=wp_ref["lon"],
                             target_description=wp_ref.get("target_description", ""),
+                            wp_name=wp_ref.get("name", ""),
+                            wp_seq=wp_ref.get("seq", 0) + 1,
                         )
                     else:
                         wp_ref["status"] = "failed"
@@ -589,6 +694,8 @@ def _auto_sim_worker():
                             lat=next_wp["lat"],
                             lon=next_wp["lon"],
                             target_description=next_wp.get("target_description", ""),
+                            wp_name=next_wp.get("name", ""),
+                            wp_seq=next_wp.get("seq", 0) + 1,
                         )
                     else:
                         next_wp["status"] = "failed"
@@ -663,11 +770,13 @@ def _auto_sim_worker():
 
 _DB_POLL_INTERVAL = 2   # 폴링 간격 (초)
 
+# DB 행 수 폴링 후 변화 시 SSE 알림
 def _db_poll_worker():
     """탐지/이미지 DB 행 수를 주기적으로 확인해 변화 시 SSE 알림."""
     import sqlite3
     from src.config import SENSOR_DB_PATH, REPORTS_DB_PATH
 
+    # DB 테이블별 행 수 조회
     def _row_counts():
         counts = {"images": 0, "detections": 0, "reports": 0}
         for db_path, queries in [
@@ -727,6 +836,7 @@ threading.Thread(target=_auto_sim_worker, daemon=True, name="AutoSimThread").sta
 threading.Thread(target=_db_poll_worker,  daemon=True, name="DBPollThread").start()
 
 
+# 이미지를 PNG base64 문자열로 변환
 def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
     """이미지 파일(TIFF 포함)을 PNG로 변환 후 base64 반환."""
     from PIL import Image, ImageFile
@@ -740,6 +850,7 @@ def _image_to_png_b64(image_path: Path, max_size: int = 512) -> str:
         return base64.b64encode(buf.getvalue()).decode()
 
 
+# bbox 좌표 공간 크기 계산 반환
 def _det_space(file_w: int, file_h: int,
                det_width: int | None, det_height: int | None) -> tuple[int, int]:
     """bbox 좌표 기준 공간 크기 반환.
@@ -754,6 +865,7 @@ def _det_space(file_w: int, file_h: int,
     return file_w, file_h
 
 
+# 탐지 박스 오버레이 이미지를 base64로 반환
 def _image_with_detections_b64(
     image_path: Path,
     detections: list,
@@ -795,6 +907,7 @@ def _image_with_detections_b64(
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/satellites")
+# 현재 위성 위치 목록 반환
 def api_satellites():
     """위성 모의기에서 계산된 현재 위성 위치 목록을 반환.
 
@@ -832,6 +945,7 @@ def api_satellites():
 
 
 @app.get("/api/simulator/status")
+# 자동 시뮬레이션 상태 조회
 def api_simulator_status():
     """자동 시뮬레이션 현재 상태 조회."""
     mission_info = None
@@ -873,6 +987,7 @@ def api_simulator_status():
 
 
 @app.post("/api/simulator/auto/toggle")
+# 자동 시뮬레이션 ON/OFF 토글
 def api_simulator_auto_toggle():
     """자동 시뮬레이션 ON/OFF 토글."""
     _auto_state["enabled"] = not _auto_state["enabled"]
@@ -881,6 +996,7 @@ def api_simulator_auto_toggle():
 
 
 @app.post("/api/simulator/step")
+# 위성 모의기 1스텝 실행
 def api_simulator_step():
     """
     위성 모의기 1스텝 실행:
@@ -924,6 +1040,7 @@ def api_simulator_step():
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/detections")
+# 해당 지역 최신 탐지 결과 반환
 def api_detections(
     lat:    float = Query(..., description="위도"),
     lon:    float = Query(..., description="경도"),
@@ -956,6 +1073,7 @@ def api_detections(
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/image/latest")
+# 해당 지역 최신 위성영상 메타데이터 반환
 def api_latest_image(
     lat:    float = Query(...),
     lon:    float = Query(...),
@@ -1000,6 +1118,7 @@ def api_latest_image(
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/images")
+# 전체 위성영상 목록 및 탐지 건수 반환
 def api_all_images(limit: int = Query(default=None)):
     """DB에 저장된 모든 위성영상 메타데이터 + 탐지 건수 목록 (capture_time DESC)."""
     rows = get_all_images_with_count(limit=limit)
@@ -1020,6 +1139,7 @@ def api_all_images(limit: int = Query(default=None)):
 
 
 @app.get("/api/image/{image_id}/thumb")
+# 이미지를 PNG base64 썸네일로 반환
 def api_image_thumb(image_id: str):
     """특정 이미지를 PNG로 변환하여 base64 반환 (TIFF 포함)."""
     record = get_image_record_by_id(image_id)
@@ -1047,9 +1167,10 @@ def api_image_thumb(image_id: str):
 
 
 @app.get("/api/detections/by-image/{image_id}")
+# 특정 이미지의 탐지 결과 전체 반환 (합성 탐지 제외)
 def api_detections_by_image(image_id: str):
-    """특정 이미지에 속한 탐지 결과 전체 반환."""
-    records = get_detections_by_image(image_id)
+    """특정 이미지에 속한 탐지 결과 전체 반환 (source_type='synthetic' 제외)."""
+    records = [r for r in get_detections_by_image(image_id) if r.source_type != "synthetic"]
     return {
         "detections": [
             {
@@ -1070,6 +1191,7 @@ def api_detections_by_image(image_id: str):
 
 
 @app.get("/api/images/by-session/{session_id}")
+# 세션 ID로 이미지 목록 조회
 def api_images_by_session(session_id: str):
     """동일 session_id를 가진 이미지 목록 반환 (탐지 에디터 세션 이동용)."""
     records = get_images_by_session(session_id)
@@ -1092,9 +1214,11 @@ def api_images_by_session(session_id: str):
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/pairings/by-session/{session_id}")
+# 세션 페어링 목록 반환
 def api_pairings_by_session(session_id: str):
     """세션의 pairing 목록 반환 (pairing 에디터용)."""
     records = get_pairings_by_session(session_id)
+    # 페어링 레코드를 딕셔너리로 변환
     def _fmt(r):
         return {
             "id":                    r.id,
@@ -1121,6 +1245,7 @@ def api_pairings_by_session(session_id: str):
 
 
 @app.put("/api/pairing/{pairing_id}")
+# 페어링 단건 업데이트
 async def api_update_pairing(pairing_id: str, request: Request):
     """pairing 단건 업데이트 (status / object_class / confidence 변경)."""
     body = await request.json()
@@ -1131,6 +1256,7 @@ async def api_update_pairing(pairing_id: str, request: Request):
 
 
 @app.delete("/api/pairing/{pairing_id}")
+# 페어링 단건 삭제
 def api_delete_pairing(pairing_id: str):
     """pairing 단건 삭제."""
     ok = delete_pairing(pairing_id)
@@ -1144,6 +1270,7 @@ def api_delete_pairing(pairing_id: str):
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/report/latest")
+# 해당 지역 최신 판독 보고서 반환
 def api_latest_report(
     lat:    float = Query(...),
     lon:    float = Query(...),
@@ -1164,6 +1291,7 @@ def api_latest_report(
 
 
 @app.get("/api/report/{report_id}")
+# 보고서 ID로 단건 조회
 def api_report_by_id(report_id: str):
     report = get_report_by_id(report_id)
     if report is None:
@@ -1172,6 +1300,7 @@ def api_report_by_id(report_id: str):
 
 
 @app.get("/api/report/{report_id}/hwp")
+# 보고서를 HWPX 파일로 다운로드
 def api_report_hwp(report_id: str):
     """보고서를 HWPX 파일로 다운로드한다."""
     report = get_report_by_id(report_id)
@@ -1194,6 +1323,7 @@ def api_report_hwp(report_id: str):
 
 
 @app.get("/api/report/{report_id}/images")
+# 보고서 관련 현재·과거 위성사진 반환
 def api_report_images(report_id: str):
     """보고서 생성에 활용된 이전/현재 위성사진 base64 반환.
 
@@ -1267,6 +1397,7 @@ def api_report_images(report_id: str):
         past_image_id = past_capture_time = None
 
     # ── _build_info: image_id → base64(탐지 박스 포함) ───────────────────────
+    # 이미지 정보와 base64를 딕셔너리로 반환
     def _build_info(image_id: str, capture_time_fallback, with_detections: bool = False):
         rec = get_image_record_by_id(image_id)
         if rec is None:
@@ -1315,6 +1446,7 @@ def api_report_images(report_id: str):
 
 
 @app.get("/api/report/{report_id}/pairings")
+# 보고서 세션 페어링 목록 반환
 def api_report_pairings(report_id: str):
     """보고서 세션의 페어링 목록 (bbox·클래스 포함) 반환 – 매칭 도시용.
 
@@ -1364,7 +1496,7 @@ def api_report_pairings(report_id: str):
 
     # ── 페어링 목록 구성 ─────────────────────────────────────────────────────
     counters: dict[str, int] = {
-        "matched": 0, "new": 0, "disappeared": 0,
+        "matched": 0, "changed": 0, "moved": 0, "new": 0, "disappeared": 0,
         "past_not_included": 0, "current_not_included": 0,
     }
     pairs = []
@@ -1374,6 +1506,10 @@ def api_report_pairings(report_id: str):
         cnt = counters[st]
         if st == "matched":
             label = str(cnt)
+        elif st == "changed":
+            label = f"C{cnt}"
+        elif st == "moved":
+            label = f"M{cnt}"
         elif st == "new":
             label = f"N{cnt}"
         elif st == "disappeared":
@@ -1383,7 +1519,7 @@ def api_report_pairings(report_id: str):
         elif st == "current_not_included":
             label = f"CI{cnt}"
         else:
-            label = f"D{cnt}"
+            label = f"?{cnt}"
 
         pairs.append({
             "id":            p.id,
@@ -1424,6 +1560,7 @@ class ReportContentBody(BaseModel):
 
 
 @app.get("/api/image/{image_id}/raw")
+# 원본 이미지 및 출력 크기 반환
 def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
     """원본 이미지(탐지 박스 없음) + 실제 출력 크기 반환."""
     from PIL import Image as PilImage
@@ -1464,6 +1601,7 @@ def api_image_raw(image_id: str, max_size: int = Query(default=1024, le=2048)):
 
 
 @app.get("/api/image/{image_id}/rendered")
+# 탐지 결과 오버레이 이미지 반환
 def api_image_rendered(image_id: str, t: int = Query(default=0)):
     """현재 DB에 저장된 탐지 결과를 이미지에 그려서 반환 (캐시버스팅용 t 파라미터 지원)."""
     rec = get_image_record_by_id(image_id)
@@ -1474,9 +1612,9 @@ def api_image_rendered(image_id: str, t: int = Query(default=0)):
         img_path = _images_dir / rec.image_path
     if not img_path.exists():
         raise HTTPException(status_code=404, detail="이미지 파일 없음")
-    dets = get_detections_by_image(image_id)
+    dets = [d for d in get_detections_by_image(image_id) if d.source_type != "synthetic"]
     b64 = _image_with_detections_b64(
-        img_path, dets, max_size=480,
+        img_path, dets, max_size=600,
         det_width=rec.det_width, det_height=rec.det_height,
     )
     return {
@@ -1487,6 +1625,7 @@ def api_image_rendered(image_id: str, t: int = Query(default=0)):
 
 
 @app.put("/api/image/{image_id}/detections")
+# 이미지 탐지 결과를 수정본으로 교체
 def api_update_detections(image_id: str, body: DetectionsUpdateBody):
     """이미지의 탐지 결과를 사용자 수정본으로 교체."""
     from src.database.models import DetectionRecord as DetRec
@@ -1524,6 +1663,7 @@ class _RegenBody(BaseModel):
 
 
 @app.post("/api/image/{image_id}/regenerate-report")
+# 수정된 탐지 기반 보고서 재생성
 def api_regenerate_report(
     image_id: str,
     background_tasks: BackgroundTasks,
@@ -1572,6 +1712,7 @@ def api_regenerate_report(
 
 
 @app.post("/api/image/{image_id}/detect-sam3")
+# SAM3 탐지 실행 및 결과 DB 저장
 def api_detect_sam3(image_id: str):
     """
     단계별 워크플로우 Phase 2a (SAM3 경로):
@@ -1620,6 +1761,7 @@ class _AnalyzeBody(BaseModel):
 
 
 @app.post("/api/session/{session_id}/analyze")
+# 세션 페어링 및 보고서 생성 — 즉시 202 반환 후 백그라운드 실행
 def api_session_analyze(
     session_id: str,
     body: _AnalyzeBody = Body(default=_AnalyzeBody()),
@@ -1627,73 +1769,29 @@ def api_session_analyze(
     """
     단계별 워크플로우 Phase 2b:
     탐지 결과(SAM3 또는 수동)가 저장된 세션에 대해
-    Temporal Pairing → Graph RAG 인덱싱 → 판독 보고서 생성을 실행한다.
-    완료 시 관련 WP를 'complete'로 갱신한다.
+    Temporal Pairing → Graph RAG 인덱싱 → 판독 보고서 생성을 백그라운드에서 실행한다.
+    즉시 202 를 반환하고, 완료/오류 시 SSE 이벤트(analyze_complete/analyze_error)로 알린다.
     """
-    try:
-        from pipeline import MavenPipeline
-        pipeline = MavenPipeline()
-        report_text = pipeline.run_pairing_and_report(
-            session_id, target_description=body.target_description
-        )
-    except Exception as exc:
-        logger.error("[API] session analyze error: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(exc))
+    with _analyze_jobs_lock:
+        if _analyze_jobs.get(session_id) == "processing":
+            raise HTTPException(status_code=409, detail="분석이 이미 진행 중입니다.")
+        _analyze_jobs[session_id] = "processing"
 
-    # 관련 WP 완료 처리
-    with _swp_lock:
-        wp_info = _session_wp_map.pop(session_id, None)
+    t = threading.Thread(
+        target=_run_analyze_background,
+        args=(session_id, body.target_description),
+        daemon=True,
+    )
+    t.start()
 
-    after_rpt_id = _get_latest_report_id()
-
-    if wp_info:
-        if len(wp_info) == 2:
-            # 캠페인 모드: (sat_id, wp_id)
-            sat_id, wp_id = wp_info
-            with _sat_lock:
-                sm = _sat_missions.get(sat_id, {})
-                wp = next((w for w in sm.get("waypoints", []) if w["id"] == wp_id), None)
-                if wp:
-                    wp["status"] = "complete"
-                    if after_rpt_id:
-                        wp["report_id"] = after_rpt_id
-            _save_sat_missions()
-        else:
-            # 임무 모드: ("__mission__", wp_id, mission_id)
-            _, wp_id, mission_id = wp_info
-            mission = _missions.get(mission_id)
-            if mission:
-                wp = next((w for w in mission["waypoints"] if w["id"] == wp_id), None)
-                if wp:
-                    wp["status"] = "complete"
-                    if after_rpt_id:
-                        wp["report_id"] = after_rpt_id
-                # 모든 WP가 complete/ingested/failed 이면 미션 완료
-                non_done = [
-                    w for w in mission["waypoints"]
-                    if w["status"] not in ("complete", "ingested", "failed")
-                ]
-                if not non_done:
-                    mission["status"]      = "complete"
-                    mission["finished_at"] = datetime.utcnow().isoformat()
-            _save_missions_to_file()
-
-    # 보고서 레코드 조회
-    from src.database.reports_db import get_reports_by_session
-    reports = get_reports_by_session(session_id)
-    new_report = reports[0] if reports else None
-
-    _notify_db_updated(changed=["reports", "detections"])
-
-    return {
-        "success":        True,
-        "session_id":     session_id,
-        "report_id":      new_report.id if new_report else None,
-        "report_content": report_text,
-    }
+    return JSONResponse(
+        status_code=202,
+        content={"status": "processing", "session_id": session_id},
+    )
 
 
 @app.delete("/api/detection/{detection_id}")
+# 탐지 결과 단건 삭제 및 참조 정리
 def api_delete_detection(detection_id: str):
     """탐지 결과 단건 삭제 → SensorDB에서 제거하고 pairing 참조도 정리."""
     det = get_detection_by_id(detection_id)
@@ -1707,6 +1805,7 @@ def api_delete_detection(detection_id: str):
 
 
 @app.patch("/api/report/{report_id}")
+# 보고서 텍스트 수정
 def api_update_report(report_id: str, body: ReportContentBody):
     """보고서 텍스트를 수정한다."""
     ok = update_report_content(report_id, body.report_content)
@@ -1717,6 +1816,7 @@ def api_update_report(report_id: str, body: ReportContentBody):
 
 
 @app.get("/api/reports")
+# 전체 보고서 목록 반환
 def api_all_reports(limit: int = Query(default=None)):
     reports = get_all_reports(limit=limit)
     items = []
@@ -1749,6 +1849,7 @@ def api_all_reports(limit: int = Query(default=None)):
 # GraphRAG 지식 그래프 API
 # ══════════════════════════════════════════════════════════════════════════
 
+# GraphIndexer 싱글톤 인스턴스 반환
 def _get_graph_indexer():
     """Return a module-level singleton GraphIndexer (lazy-init)."""
     from src.graph.graph_indexer import GraphIndexer
@@ -1758,6 +1859,7 @@ def _get_graph_indexer():
 
 
 @app.get("/api/graph/stats")
+# 지식 그래프 통계 반환
 def api_graph_stats():
     """지식 그래프 통계 (엔티티 수, 관계 수, 커뮤니티 수)."""
     try:
@@ -1768,6 +1870,7 @@ def api_graph_stats():
 
 
 @app.get("/api/graph/entities")
+# 해당 지역 그래프 자산 엔티티 목록 반환
 def api_graph_entities(
     lat:    float = Query(..., description="검색 중심 위도"),
     lon:    float = Query(..., description="검색 중심 경도"),
@@ -1811,6 +1914,7 @@ def api_graph_entities(
 
 
 @app.get("/api/graph/communities")
+# 모든 그래프 커뮤니티 요약 반환
 def api_graph_communities():
     """모든 커뮤니티(공출현 군집) 요약 반환."""
     try:
@@ -1832,6 +1936,7 @@ def api_graph_communities():
 
 
 @app.get("/api/graph/local-search")
+# 지역 기반 그래프 로컬 검색 수행
 def api_graph_local_search(
     lat:    float = Query(...),
     lon:    float = Query(...),
@@ -1856,6 +1961,7 @@ def api_graph_local_search(
 
 
 @app.post("/api/graph/reindex")
+# 그래프 커뮤니티 감지 강제 재실행
 def api_graph_reindex():
     """커뮤니티 감지를 강제로 재실행하고 결과 저장."""
     try:
@@ -1870,6 +1976,7 @@ def api_graph_reindex():
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/events")
+# SSE 스트림으로 실시간 이벤트 전송
 async def api_events():
     """
     Server-Sent Events 스트림.
@@ -1880,6 +1987,7 @@ async def api_events():
     with _sse_lock:
         _sse_clients.append(q)
 
+    # SSE 이벤트 비동기 생성기
     async def event_gen():
         try:
             yield "data: {\"type\":\"connected\"}\n\n"
@@ -1932,6 +2040,7 @@ class _MissionIn(BaseModel):
 
 
 @app.post("/api/missions")
+# 웨이포인트 포함 임무 생성
 def api_create_mission(body: _MissionIn):
     """임무 생성 (웨이포인트 목록 포함)."""
     mid = str(_uuid.uuid4())
@@ -1965,6 +2074,7 @@ def api_create_mission(body: _MissionIn):
 
 
 @app.get("/api/missions")
+# 임무 목록 최신 순 반환
 def api_list_missions():
     """임무 목록 반환 (최신 순)."""
     with _mission_lock:
@@ -1974,6 +2084,7 @@ def api_list_missions():
 
 
 @app.get("/api/mission/{mission_id}")
+# 임무 단건 상태 조회
 def api_get_mission(mission_id: str):
     """임무 단건 조회 (상태 폴링용)."""
     with _mission_lock:
@@ -1984,6 +2095,7 @@ def api_get_mission(mission_id: str):
 
 
 @app.post("/api/mission/{mission_id}/execute")
+# 임무를 자동 시뮬레이터에 등록 실행
 def api_execute_mission(mission_id: str):
     """임무를 자동 시뮬레이터에 등록하여 실행. 웨이포인트를 순서대로 처리."""
     global _active_mission_id
@@ -2010,6 +2122,7 @@ def api_execute_mission(mission_id: str):
 
 
 @app.delete("/api/mission/{mission_id}")
+# 임무 삭제
 def api_delete_mission(mission_id: str):
     """임무 삭제."""
     global _active_mission_id
@@ -2039,6 +2152,7 @@ class _SatMissionIn(BaseModel):
 
 
 @app.get("/api/sat-missions")
+# 위성별 임무계획 전체 반환
 def api_get_sat_missions():
     """위성별 임무계획 전체 반환."""
     from src.satellite.simulator import SATELLITES as _SATS
@@ -2057,6 +2171,7 @@ def api_get_sat_missions():
 
 
 @app.put("/api/sat-mission/{sat_id}")
+# 위성에 웨이포인트 목록 할당
 def api_set_sat_mission(sat_id: str, body: _SatMissionIn):
     """위성에 웨이포인트 목록 할당 (기존 임무 덮어쓰기)."""
     from src.satellite.simulator import SATELLITES as _SATS
@@ -2092,6 +2207,7 @@ def api_set_sat_mission(sat_id: str, body: _SatMissionIn):
 
 
 @app.delete("/api/sat-mission/{sat_id}")
+# 위성 임무계획 초기화
 def api_clear_sat_mission(sat_id: str):
     """위성 임무계획 초기화."""
     with _sat_lock:
@@ -2101,6 +2217,7 @@ def api_clear_sat_mission(sat_id: str):
 
 
 @app.post("/api/campaign/start")
+# 모든 위성 임무계획 일괄 캠페인 시작
 def api_campaign_start():
     """모든 위성 임무계획 일괄 실행 시작."""
     from src.satellite.simulator import SATELLITES as _SATS
@@ -2153,6 +2270,7 @@ def api_campaign_start():
 
 
 @app.delete("/api/campaign")
+# 캠페인 취소 및 상태 초기화
 def api_campaign_cancel():
     """캠페인 취소 / 상태 초기화."""
     with _camp_lock:
@@ -2168,6 +2286,7 @@ def api_campaign_cancel():
 
 
 @app.get("/api/campaign/status")
+# 캠페인 실행 상태 조회
 def api_campaign_status():
     """캠페인 실행 상태 조회."""
     with _camp_lock:
@@ -2175,6 +2294,7 @@ def api_campaign_status():
 
 
 @app.get("/api/pipeline/status")
+# 파이프라인 현재 단계 상태 조회
 def api_pipeline_status():
     """현재 파이프라인 단계 상태 조회 (대시보드 초기 로드용)."""
     from src.pipeline_status import read_status as _read_ps
@@ -2182,6 +2302,7 @@ def api_pipeline_status():
 
 
 @app.post("/api/system/reset")
+# 시스템 전체 상태 초기화
 def api_system_reset():
     """
     시스템 전체 초기화:
@@ -2237,6 +2358,7 @@ def api_system_reset():
     return {"ok": True, "message": "시스템이 초기화되었습니다."}
 
 
+# 보고서 레코드를 딕셔너리로 변환
 def _report_dict(r) -> dict:
     return {
         "id":             r.id,
@@ -2256,6 +2378,7 @@ def _report_dict(r) -> dict:
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/dashboard", response_class=HTMLResponse)
+# 대시보드 HTML 반환
 def dashboard():
     if not _dashboard_path.exists():
         raise HTTPException(status_code=404, detail="dashboard/index.html 없음.")
@@ -2263,5 +2386,6 @@ def dashboard():
 
 
 @app.get("/")
+# API 루트 상태 메시지 반환
 def root():
     return {"message": "MSIS API 실행 중. /dashboard 에서 지도 UI 확인."}

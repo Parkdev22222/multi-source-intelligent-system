@@ -21,6 +21,7 @@ except ImportError:
     )
 
 
+# 위경도 좌표가 육지인지 판별하여 True/False 반환
 def is_land(lat: float, lon: float) -> bool:
     """
     주어진 위경도 좌표가 육지인지 판별한다.

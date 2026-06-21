@@ -109,6 +109,7 @@ class TrackedObject:
 # Utility functions
 # ---------------------------------------------------------------------------
 
+# 마스크를 RLE 형식 JSON 문자열로 인코딩
 def _encode_rle(mask: np.ndarray) -> str:
     flat = mask.flatten().astype(np.uint8).tolist()
     rle: list = []
@@ -123,6 +124,7 @@ def _encode_rle(mask: np.ndarray) -> str:
     return json.dumps({"shape": list(mask.shape), "rle": rle})
 
 
+# 이진 마스크에서 바운딩 박스 좌표 추출
 def _mask_to_bbox(mask: np.ndarray) -> Tuple[float, float, float, float]:
     rows = np.any(mask, axis=1)
     cols = np.any(mask, axis=0)
@@ -131,6 +133,7 @@ def _mask_to_bbox(mask: np.ndarray) -> Tuple[float, float, float, float]:
     return float(x_min), float(y_min), float(x_max), float(y_max)
 
 
+# 마스크에서 최대 연결 성분만 남겨 정밀도 향상
 def _tighten_mask(mask: np.ndarray) -> np.ndarray:
     """
     마스크에서 가장 큰 연결 성분(connected component)만 남긴다.
@@ -150,6 +153,7 @@ def _tighten_mask(mask: np.ndarray) -> np.ndarray:
         return mask
 
 
+# 슬라이딩 윈도우 타일 좌표 목록 생성
 def _tile_coords(img_w: int, img_h: int,
                  tile_size: int, overlap: int) -> List[Tuple[int, int, int, int]]:
     """슬라이딩 윈도우 타일 좌표 목록 (x1, y1, x2, y2) 반환.
@@ -196,6 +200,7 @@ def _tile_coords(img_w: int, img_h: int,
     return tiles
 
 
+# IoU와 IoMin 기반 NMS로 중복 탐지 제거
 def _nms_detections(
     results: List[DetectionResult],
     iou_threshold: float,
@@ -234,6 +239,7 @@ def _nms_detections(
     return kept
 
 
+# 동일 클래스 내 완전 포함 박스를 큰 박스로 병합
 def _merge_contained_detections(results: List[DetectionResult]) -> List[DetectionResult]:
     """동일 클래스에서 한 박스가 다른 박스에 완전히 포함된 경우 큰 박스 하나로 병합한다.
 
@@ -288,6 +294,7 @@ def _merge_contained_detections(results: List[DetectionResult]) -> List[Detectio
     return detections
 
 
+# 타일 경계에서 인접한 동일 클래스 박스를 union으로 병합
 def _merge_adjacent_detections(
     results: List[DetectionResult],
     gap_threshold: int,
@@ -333,6 +340,7 @@ def _merge_adjacent_detections(
     return detections
 
 
+# 두 바운딩 박스의 IoU 값 계산
 def _iou(box_a: Tuple, box_b: Tuple) -> float:
     """두 bbox (x1,y1,x2,y2) 의 IoU."""
     ix1 = max(box_a[0], box_b[0])
@@ -373,6 +381,7 @@ class SAM3Detector:
         self._tracker_load_attempted = False
         self._device = SAM3_DEVICE if torch.cuda.is_available() else "cpu"
 
+    # GPU 메모리에서 모델 가중치 해제 및 VRAM 반환
     def unload(self) -> None:
         """모델 가중치를 GPU에서 해제하고 VRAM을 반환한다."""
         self._model = None
@@ -388,6 +397,7 @@ class SAM3Detector:
     # Model loaders
     # ------------------------------------------------------------------
 
+    # SAM3 이미지 모델을 lazy-load 방식으로 로드
     def _load_model(self) -> None:
         try:
             from sam3.model_builder import build_sam3_image_model
@@ -409,6 +419,7 @@ class SAM3Detector:
             )
             self._model = None
 
+    # SAM3 비디오 예측기를 lazy-load 방식으로 로드
     def _load_tracker(self) -> None:
         self._tracker_load_attempted = True
         try:
@@ -431,6 +442,7 @@ class SAM3Detector:
     # Fallbacks
     # ------------------------------------------------------------------
 
+    # SAM3 미설치 시 빈 탐지 결과 반환
     def _fallback_detect(
         self, image: np.ndarray, image_id: str, meta: ImageMeta
     ) -> List[DetectionResult]:
@@ -441,6 +453,7 @@ class SAM3Detector:
         )
         return []
 
+    # 비디오 예측기 불가 시 과거 위치를 그대로 유지하여 반환
     def _fallback_track(
         self, past_detections: list
     ) -> List[TrackedObject]:
@@ -464,6 +477,7 @@ class SAM3Detector:
     # SAM3 image model: text-prompted detection (class별 1회 forward pass)
     # ------------------------------------------------------------------
 
+    # SAM3 텍스트 프롬프트로 단일 클래스 객체 탐지
     def _detect_class(
         self,
         pil_image,
@@ -562,6 +576,7 @@ class SAM3Detector:
             ))
         return detections
 
+    # 단일 타일에서 전체 클래스 탐지 후 원본 좌표로 변환
     def _detect_on_tile(
         self,
         pil_image,
@@ -600,6 +615,7 @@ class SAM3Detector:
                 )
         return results
 
+    # SAM3로 이미지에서 군사 객체를 탐지하고 결과 반환
     def detect(self, loaded_image: LoadedImage, image_id: str) -> List[DetectionResult]:
         """
         SAM3 텍스트 프롬프트 세그멘테이션으로 군사 객체를 탐지한다.
@@ -744,6 +760,7 @@ class SAM3Detector:
     # SAM3 video predictor: session-based object tracking across frames
     # ------------------------------------------------------------------
 
+    # SAM3 비디오 예측기로 현재 프레임에서 과거 객체 추적
     def track_objects(
         self,
         pil_image,

@@ -128,6 +128,15 @@ class GraphIndexer:
     def retriever(self) -> GraphRetriever:
         return self._retriever
 
+    def clear(self) -> None:
+        """그래프 DB의 모든 데이터를 삭제한다 (세션 시작 전 호출해 누적 방지)."""
+        try:
+            self._store.clear()
+            self._index_count = 0
+            logger.info("[GraphIndexer] Graph DB cleared.")
+        except Exception as exc:
+            logger.warning("[GraphIndexer] Clear error: %s", exc)
+
     def reindex_communities(self) -> int:
         """Force a community-detection run and return the number of communities."""
         try:

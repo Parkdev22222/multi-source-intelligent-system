@@ -90,6 +90,7 @@ SATELLITES: List[dict] = [
 
 # ── 핵심 계산 함수 ─────────────────────────────────────────────────────────
 
+# 케플러 원형궤도 공식으로 위성 위경도 계산
 def _compute_position(cfg: dict, t_real: float) -> dict:
     """
     실제 unix 시각 t_real 에서 위성의 위경도를 계산.
@@ -131,6 +132,7 @@ def _compute_position(cfg: dict, t_real: float) -> dict:
     }
 
 
+# 현재 시각 기준 모든 시뮬레이션 위성 위치 반환
 def get_positions(t_real: Optional[float] = None) -> List[dict]:
     """현재 시각(또는 지정 unix 시각) 기준 모든 시뮬레이션 위성 위치 반환."""
     if t_real is None:
@@ -138,6 +140,7 @@ def get_positions(t_real: Optional[float] = None) -> List[dict]:
     return [_compute_position(cfg, t_real) for cfg in SATELLITES]
 
 
+# 중국·북한 상공 감시 우선 위성을 선택하여 반환
 def get_active_satellite(t_real: Optional[float] = None) -> dict:
     """
     중국·북한 상공 위성을 우선 선택하여 반환.

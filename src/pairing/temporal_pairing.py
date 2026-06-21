@@ -42,6 +42,7 @@ from src.config import (
     CLIP_MODEL_NAME,
     COORDINATE_MATCH_RADIUS_DEG,
     MOVE_DISTANCE_THRESHOLD_DEG,
+    STATIC_EXACT_MATCH_DEG,
     SIMILARITY_CLIP_WEIGHT,
     SIMILARITY_MATCH_THRESHOLD,
     SIMILARITY_SIZE_WEIGHT,
@@ -52,7 +53,7 @@ from src.database.sensor_db import (
     get_most_recent_past_detections,
     insert_detections_bulk,
 )
-from src.detection.sam2_detector import DetectionResult, TrackedObject
+from src.detection.sam3_detector import DetectionResult, TrackedObject
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
@@ -63,10 +64,14 @@ logger = logging.getLogger(__name__)
 IOU_MATCH_THRESHOLD = 0.25
 
 # ---------------------------------------------------------------------------
-# Static (building) object classes – cannot physically move between frames.
+# Static (fixed-position) object classes – physically immovable between frames.
+# These include all permanent ground infrastructure whose lat/lon cannot change.
+#
 # Pairing rules:
-#   1. Only pair two detections whose geo distance ≤ MOVE_DISTANCE_THRESHOLD_DEG
-#      (same location constraint).
+#   1. ONLY pair two detections whose geo distance ≤ STATIC_EXACT_MATCH_DEG
+#      (≈11 m – same-point constraint; allows for satellite-image projection
+#      errors while rejecting clearly different structures).
+#      Any pair beyond this threshold is treated as two distinct objects.
 #   2. When one side is missing a detection, attempt cross-image similarity:
 #      crop the same geo region from both images and compare with CLIP.
 #      If similarity ≥ _STATIC_SIM_THRESHOLD → synthesise a DetectionRecord
@@ -78,6 +83,7 @@ _STATIC_CLASSES: frozenset = frozenset({
     "fuel storage",
     "supply depot",
     "military building",
+    "radar installation",   # 고정 레이더 시설 – 이동 불가
 })
 _STATIC_SIM_THRESHOLD: float = 0.5   # CLIP cosine similarity threshold
 
@@ -86,6 +92,7 @@ _STATIC_SIM_THRESHOLD: float = 0.5   # CLIP cosine similarity threshold
 # Helpers
 # ---------------------------------------------------------------------------
 
+# 타임존 정보를 제거해 naive datetime으로 변환
 def _naive(dt: Optional[datetime]) -> Optional[datetime]:
     """Strip timezone info so naive/aware datetimes can be compared safely."""
     if dt is None:
@@ -93,17 +100,20 @@ def _naive(dt: Optional[datetime]) -> Optional[datetime]:
     return dt.replace(tzinfo=None)
 
 
+# 두 위경도 좌표 간 유클리드 거리 계산
 def _geo_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Simple Euclidean distance in degrees between two lat/lon points."""
     return ((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) ** 0.5
 
 
+# 두 탐지 객체의 bbox 크기 유사도 반환
 def _size_similarity(a: "DetectionResult", b: "DetectionResult") -> float:
     """두 탐지 객체의 크기 유사도 (0~1).
 
     mask_area_px 가 유효하면 세그멘테이션 면적 사용, 없으면 bbox 면적 사용.
     min/max 비율이므로 크기가 같을수록 1.0, 차이가 클수록 0에 가까워진다.
     """
+    # 탐지 객체의 면적(픽셀)을 반환
     def _area(det: "DetectionResult") -> float:
         if det.mask_area_px and det.mask_area_px > 0:
             return det.mask_area_px
@@ -114,6 +124,7 @@ def _size_similarity(a: "DetectionResult", b: "DetectionResult") -> float:
     return min(area_a, area_b) / max(area_a, area_b)
 
 
+# 두 bbox의 IoU(교집합/합집합 비율) 계산
 def _bbox_iou(
     ax1: float, ay1: float, ax2: float, ay2: float,
     bx1: float, by1: float, bx2: float, by2: float,
@@ -142,6 +153,23 @@ def _bbox_iou(
 #                            (current imagery does not cover this area; cannot determine if gone)
 # ---------------------------------------------------------------------------
 
+# 이미지 ID로 FOV 위경도 범위 조회
+def _get_image_fov_bounds(image_id: Optional[str]) -> Optional[tuple]:
+    """
+    Return (lat_min, lat_max, lon_min, lon_max) for a single ImageRecord.
+    Preferred over _collect_fov_bounds() when the image ID is known directly —
+    works even when the detection list for that image is empty.
+    Returns None when image_id is None or the record has no valid bounds.
+    """
+    if not image_id:
+        return None
+    rec = get_image_record_by_id(image_id)
+    if rec is None or None in (rec.lat_min, rec.lat_max, rec.lon_min, rec.lon_max):
+        return None
+    return (rec.lat_min, rec.lat_max, rec.lon_min, rec.lon_max)
+
+
+# 탐지 목록에서 이미지 FOV 통합 범위 반환
 def _collect_fov_bounds(detections: list) -> Optional[tuple]:
     """
     Return the union of geographic bounds (lat_min, lat_max, lon_min, lon_max)
@@ -168,6 +196,7 @@ def _collect_fov_bounds(detections: list) -> Optional[tuple]:
     return (lat_min_all, lat_max_all, lon_min_all, lon_max_all) if found else None
 
 
+# 좌표가 FOV 범위 내에 있는지 확인
 def _in_fov(lat: float, lon: float, bounds: Optional[tuple]) -> bool:
     """
     Return True if (lat, lon) lies within the given bounds.
@@ -181,26 +210,47 @@ def _in_fov(lat: float, lon: float, bounds: Optional[tuple]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Geo-bounds validity guard
+# ---------------------------------------------------------------------------
+
+# 이미지의 geo bounds가 있어야 lat/lon이 신뢰 가능 (없으면 모두 lat_center 폴백)
+def _image_has_geo_bounds(image_id: Optional[str]) -> bool:
+    """이미지 레코드에 lat_min/lat_max/lon_min/lon_max 가 모두 있으면 True.
+    없으면 pixel_to_geo 가 lat_center/lon_center 를 반환하므로 Step 0 geo-match 불가.
+    """
+    if not image_id:
+        return False
+    rec = get_image_record_by_id(image_id)
+    return (
+        rec is not None
+        and None not in (rec.lat_min, rec.lat_max, rec.lon_min, rec.lon_max)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Duplicate-pairing guard
 # ---------------------------------------------------------------------------
 
-# Status priority: matched (양쪽 프레임 모두 확인) > disappeared (현재 FOV 내 소실)
-# > current_not_included / past_not_included (FOV 밖) > new (단독 출현)
+# Status priority: matched (양쪽 프레임 모두 확인) > changed (같은 위치, 구조 변화)
+# > disappeared (현재 FOV 내 소실) > current_not_included / past_not_included (FOV 밖) > new (단독 출현)
 _STATUS_PRIORITY: dict = {
     "matched":              0,
-    "disappeared":          1,
-    "past_not_included":    2,
-    "current_not_included": 3,
-    "new":                  4,
+    "changed":              1,   # 고정 시설물 같은 위치, CLIP 유사도 < 임계값 → 구조 변화
+    "disappeared":          2,
+    "past_not_included":    3,
+    "current_not_included": 4,
+    "new":                  5,
 }
 
 
+# 중복 페어링 레코드를 우선순위 기준으로 제거
 def _dedup_pairing_records(records: List[PairingRecord]) -> List[PairingRecord]:
     """동일 past_detection_id(또는 current_detection_id)에 대해 페어링 레코드가 중복으로
     생성된 경우 우선순위가 높은(더 정보량이 많은) 레코드 하나만 남긴다.
 
     한 객체에 두 개의 상태가 붙는 버그를 최종 방어선으로 차단한다.
     """
+    # 레코드 상태의 우선순위 값 반환
     def _pri(r: PairingRecord) -> int:
         return _STATUS_PRIORITY.get(r.status, 99)
 
@@ -252,6 +302,7 @@ def _dedup_pairing_records(records: List[PairingRecord]) -> List[PairingRecord]:
 # Static-object cross-image similarity helpers
 # ---------------------------------------------------------------------------
 
+# 지리 bbox를 이미지 픽셀 좌표로 변환
 def _geo_bbox_on_image(
     lat_top: float, lon_left: float, lat_bottom: float, lon_right: float,
     img_w: int, img_h: int,
@@ -289,6 +340,7 @@ def _geo_bbox_on_image(
     return x1, y1, x2, y2
 
 
+# 탐지 결과의 지리 bbox 좌표 반환
 def _det_geo_bbox(det, img_record) -> Optional[tuple]:
     """
     Return the geographic bounding box of a detection as
@@ -318,6 +370,7 @@ def _det_geo_bbox(det, img_record) -> Optional[tuple]:
     return lat_top, lon_left, lat_bottom, lon_right
 
 
+# 이미지 ID로 PIL 이미지를 초해상도 적용 후 로드
 def _load_pil_for_image_id(image_id: str) -> Optional["PILImage"]:
     """Load PIL image (with super-resolution) for a given image_id."""
     from PIL import Image as PILImage
@@ -335,6 +388,7 @@ def _load_pil_for_image_id(image_id: str) -> Optional["PILImage"]:
     return PILImage.fromarray(arr)
 
 
+# 두 이미지 크롭 간 CLIP 코사인 유사도 반환
 def _clip_similarity_crops(crop_a: "PILImage", crop_b: "PILImage") -> float:
     """Return CLIP cosine similarity between two PIL crops. Falls back to 0.0 on error."""
     try:
@@ -345,6 +399,7 @@ def _clip_similarity_crops(crop_a: "PILImage", crop_b: "PILImage") -> float:
         return 0.0
 
 
+# 정적 객체의 교차 이미지 유사도 비교 후 합성 탐지 반환
 def _static_cross_check(
     det,                    # DetectionResult or DetectionRecord – the side WITH a bbox
     img_rec_with: "ImageRecord",
@@ -430,7 +485,7 @@ def _static_cross_check(
         lon=lon_c,
         mask_rle=None,
         mask_area_px=None,
-        source_type=source_type,
+        source_type="synthetic",   # 재페어링 시 식별·삭제 가능하도록 고정 마커
         session_id=session_id,
     )
     ids = insert_detections_bulk([synthetic])
@@ -447,6 +502,7 @@ def _static_cross_check(
 # Main pairing function
 # ---------------------------------------------------------------------------
 
+# SAM3 트래커 결과로 페어링 레코드 목록 생성
 def pair_by_tracking(
     tracked_objects: List[TrackedObject],
     current_detections: List[DetectionResult],
@@ -457,6 +513,8 @@ def pair_by_tracking(
     region_lon: float,
     session_id: str,
     source_type: str = "satellite",
+    current_image_id: Optional[str] = None,
+    past_image_id: Optional[str] = None,
 ) -> List[PairingRecord]:
     """
     Build PairingRecord list using Sam3Tracker object IDs.
@@ -524,26 +582,44 @@ def pair_by_tracking(
 
     # ------------------------------------------------------------------
     # 0. Static class geo-based pre-matching
-    #    건물류(static classes)는 물리적으로 이동 불가이므로 SAM3 tracker(픽셀 IoU)
-    #    보다 먼저 위경도 근접도 기준으로 매칭한다.
-    #    같은 클래스이고 geo 거리 ≤ MOVE_DISTANCE_THRESHOLD_DEG 인 쌍 중 가장
-    #    가까운 쌍부터 greedy 할당. 일치 시 "matched".
+    #    고정 시설물(건물·레이더 등)은 물리적으로 이동 불가.
+    #    SAM3 tracker(픽셀 IoU)보다 먼저 위경도 근접도 기준으로 매칭한다.
+    #    같은 클래스이고 geo 거리 ≤ STATIC_EXACT_MATCH_DEG(≈111m) 인 쌍 중 가장
+    #    가까운 쌍부터 greedy 할당. 임계값 초과 쌍은 절대 매칭하지 않는다.
+    #
+    #    ※ 이미지에 lat_min/lat_max/lon_min/lon_max 가 없으면 pixel_to_geo 가
+    #      lat_center/lon_center 를 반환 → 모든 탐지 객체가 동일 좌표로 보여
+    #      무관한 건물들까지 오매칭된다. bounds 확인 후 신뢰할 수 없으면 건너뜀.
     # ------------------------------------------------------------------
     static_cur_list  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
     static_past_list = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
 
-    if static_cur_list and static_past_list:
+    # 과거 이미지 ID: past_image_id 파라미터 우선, 없으면 첫 번째 past 탐지에서 취득
+    _past_iid_t = past_image_id or next(
+        (getattr(d, "image_id", None) for d in past_detections if getattr(d, "image_id", None)),
+        None,
+    )
+    _step0_t_geo_ok = _image_has_geo_bounds(current_image_id) and _image_has_geo_bounds(_past_iid_t)
+    if not _step0_t_geo_ok:
+        logger.debug(
+            "[Pairing/tracker] Step 0 건너뜀: 이미지 geo bounds 없음 "
+            "(cur=%s, past=%s)", current_image_id, _past_iid_t
+        )
+
+    if static_cur_list and static_past_list and _step0_t_geo_ok:
         geo_candidates = []
         for ci, cur in enumerate(static_cur_list):
             for pi, past in enumerate(static_past_list):
                 if cur.object_class.lower() != past.object_class.lower():
                     continue
                 dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
-                if dist <= MOVE_DISTANCE_THRESHOLD_DEG:
+                if dist <= STATIC_EXACT_MATCH_DEG:
                     geo_candidates.append((dist, ci, pi))
         geo_candidates.sort()          # 가장 가까운 쌍부터
         geo_matched_ci: set = set()
         geo_matched_pi: set = set()
+        _s0t_cur_pil = None                          # 현재 프레임 PIL (1회 로드)
+        _s0t_past_pil_cache: Dict[str, Optional] = {}  # image_id → PIL
         for dist, ci, pi in geo_candidates:
             if ci in geo_matched_ci or pi in geo_matched_pi:
                 continue
@@ -553,6 +629,16 @@ def pair_by_tracking(
             geo_matched_pi.add(pi)
             matched_current_ids.add(cur.detection_id)
             matched_past_ids.add(past.id)
+            # 현재·과거 크롭 PIL 로드 (캐시 활용)
+            if _s0t_cur_pil is None:
+                _ciid = getattr(cur, "image_id", None) or current_image_id or ""
+                _s0t_cur_pil = _load_pil_image(_ciid) if _ciid else None
+            _piid = getattr(past, "image_id", None) or ""
+            if _piid not in _s0t_past_pil_cache:
+                _s0t_past_pil_cache[_piid] = _load_pil_image(_piid) if _piid else None
+            _s0t_past_pil = _s0t_past_pil_cache.get(_piid)
+            # CLIP 유사도로 변화 여부 판단: "matched" (변화 없음) or "changed" (구조 변화)
+            _st = _static_pair_status(cur, past, cur_pil=_s0t_cur_pil, past_pil=_s0t_past_pil)
             pairing_records.append(PairingRecord(
                 pairing_time=now,
                 lat_center=region_lat, lon_center=region_lon,
@@ -570,7 +656,7 @@ def pair_by_tracking(
                 past_capture_time=past_capture_time,
                 past_bbox={"x1": past.bbox_x1, "y1": past.bbox_y1,
                            "x2": past.bbox_x2, "y2": past.bbox_y2},
-                status="matched",
+                status=_st,
                 source_type=source_type,
                 session_id=session_id,
             ))
@@ -613,6 +699,52 @@ def pair_by_tracking(
             if iou > best_iou:
                 best_iou = iou
                 best_current = cur
+
+        # IoU fallback 1: bbox 중심점 픽셀 거리 (트래커 예측 위치와 실제 탐지 위치 차이)
+        # 이동체가 프레임 간 bbox 크기의 2배 이상 이동한 경우 IoU 가 0으로 떨어질 수 있음.
+        if best_current is None:
+            tracked_cx = (tracked.bbox_x1 + tracked.bbox_x2) / 2
+            tracked_cy = (tracked.bbox_y1 + tracked.bbox_y2) / 2
+            tracked_w  = max(tracked.bbox_x2 - tracked.bbox_x1, 1.0)
+            tracked_h  = max(tracked.bbox_y2 - tracked.bbox_y1, 1.0)
+            max_px_dist = max(tracked_w, tracked_h) * 2.0
+            best_px_dist = max_px_dist
+            for cur in current_detections:
+                if cur.detection_id in matched_current_ids:
+                    continue
+                if cur.object_class.lower() != expected_cls:
+                    continue
+                cur_cx = (cur.bbox_x1 + cur.bbox_x2) / 2
+                cur_cy = (cur.bbox_y1 + cur.bbox_y2) / 2
+                dist = ((cur_cx - tracked_cx) ** 2 + (cur_cy - tracked_cy) ** 2) ** 0.5
+                if dist < best_px_dist:
+                    best_px_dist = dist
+                    best_current = cur
+            if best_current is not None:
+                logger.debug(
+                    "[Pairing/tracker] IoU 매칭 실패 → 픽셀 중심점 폴백 "
+                    "cls=%s dist=%.1f", expected_cls, best_px_dist,
+                )
+
+        # IoU fallback 2: 위경도 근접도 (픽셀 폴백도 실패한 경우)
+        if best_current is None and past is not None and past.lat is not None:
+            best_geo_dist = COORDINATE_MATCH_RADIUS_DEG
+            for cur in current_detections:
+                if cur.detection_id in matched_current_ids:
+                    continue
+                if cur.object_class.lower() != expected_cls:
+                    continue
+                if cur.lat is None or cur.lon is None:
+                    continue
+                geo_dist = _geo_distance(cur.lat, cur.lon, past.lat, past.lon)
+                if geo_dist < best_geo_dist:
+                    best_geo_dist = geo_dist
+                    best_current = cur
+            if best_current is not None:
+                logger.debug(
+                    "[Pairing/tracker] 픽셀 폴백 실패 → 위경도 폴백 "
+                    "cls=%s geo_dist=%.5f", expected_cls, best_geo_dist,
+                )
 
         if best_current is not None:
             matched_current_ids.add(best_current.detection_id)
@@ -658,7 +790,9 @@ def pair_by_tracking(
     # 2. "new" / "past_not_included"
     #    현재 탐지 객체가 과거 이미지 FOV 밖이면 "past_not_included"
     # ------------------------------------------------------------------
-    past_fov = _collect_fov_bounds(past_detections)
+    # 과거 이미지 ID가 직접 제공된 경우 ImageRecord에서 FOV를 바로 조회
+    # (past_detections가 비어 있어도 정확한 FOV 판단 가능)
+    past_fov = _get_image_fov_bounds(past_image_id) or _collect_fov_bounds(past_detections)
     for cur in current_detections:
         if cur.detection_id in matched_current_ids:
             continue
@@ -687,7 +821,9 @@ def pair_by_tracking(
     # 3. "disappeared" / "current_not_included"
     #    과거 탐지 객체가 현재 이미지 FOV 밖이면 "current_not_included"
     # ------------------------------------------------------------------
-    cur_fov = _collect_fov_bounds(current_detections)
+    # 현재 이미지 ID가 직접 제공된 경우 ImageRecord에서 FOV를 바로 조회
+    # (current_detections가 비어 있어도 정확한 FOV 판단 가능)
+    cur_fov = _get_image_fov_bounds(current_image_id) or _collect_fov_bounds(current_detections)
     for past in past_detections:
         # tracked_past_ids 가 아닌 matched_past_ids 로 guard:
         # Step 0 에서 geo-matched 된 객체(matched_past_ids 에 추가, tracked_past_ids 에는 없을 수 있음)도
@@ -721,9 +857,13 @@ def pair_by_tracking(
     #    from both images.  If similarity ≥ threshold → synthetic detection
     #    inserted and pair recorded as "matched".
     # ------------------------------------------------------------------
-    static_new        = [p for p in pairing_records
-                         if p.status == "new"
-                         and (p.current_object_class or "").lower() in _STATIC_CLASSES]
+    # Static-class objects that are "new" (within past FOV, no geo-match) or
+    # "disappeared" (within current FOV, no geo-match): attempt cross-image
+    # similarity check.  A synthetic DetectionRecord is inserted for the
+    # missing frame only when CLIP cosine similarity ≥ _STATIC_SIM_THRESHOLD.
+    static_new = [p for p in pairing_records
+                  if p.status == "new"
+                  and (p.current_object_class or "").lower() in _STATIC_CLASSES]
     static_disappeared = [p for p in pairing_records
                           if p.status == "disappeared"
                           and (p.past_object_class or "").lower() in _STATIC_CLASSES]
@@ -735,6 +875,7 @@ def pair_by_tracking(
         cur_img_cache: Dict[str, Optional] = {}
         past_img_cache: Dict[str, Optional] = {}
 
+        # 이미지 레코드와 PIL을 캐시에서 조회하거나 로드
         def _get_img_rec_pil(iid: str, cache: dict):
             if iid not in cache:
                 rec = get_image_record_by_id(iid)
@@ -756,10 +897,12 @@ def pair_by_tracking(
             cur_rec, cur_pil = _get_img_rec_pil(cur_det.image_id, cur_img_cache)
             if cur_rec is None or cur_pil is None:
                 continue
-            # Pick the past image that covers the same region
-            if not past_image_ids:
+            # Pick the past image that covers the same region.
+            # Fall back to the function-level past_image_id parameter when the
+            # area has no past detections at all (that is why the object is "new").
+            past_iid = past_image_ids[0] if past_image_ids else past_image_id
+            if not past_iid:
                 continue
-            past_iid = past_image_ids[0]
             past_rec, past_pil = _get_img_rec_pil(past_iid, past_img_cache)
             if past_rec is None or past_pil is None:
                 continue
@@ -799,9 +942,11 @@ def pair_by_tracking(
             past_rec, past_pil = _get_img_rec_pil(past_det.image_id, past_img_cache)
             if past_rec is None or past_pil is None:
                 continue
-            if not cur_image_ids:
+            # Fall back to the function-level current_image_id parameter when the
+            # area has no current detections at all (that is why the object is "disappeared").
+            cur_iid = cur_image_ids[0] if cur_image_ids else current_image_id
+            if not cur_iid:
                 continue
-            cur_iid = cur_image_ids[0]
             cur_rec, cur_pil = _get_img_rec_pil(cur_iid, cur_img_cache)
             if cur_rec is None or cur_pil is None:
                 continue
@@ -844,6 +989,7 @@ def pair_by_tracking(
         mov_cur_img_cache: Dict[str, Optional] = {}
         mov_past_img_cache: Dict[str, Optional] = {}
 
+        # 현재 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _get_mov_img_rec_pil_cur(iid: str):
             if iid not in mov_cur_img_cache:
                 rec = get_image_record_by_id(iid)
@@ -851,6 +997,7 @@ def pair_by_tracking(
                 mov_cur_img_cache[iid] = (rec, pil)
             return mov_cur_img_cache[iid]
 
+        # 과거 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _get_mov_img_rec_pil_past(iid: str):
             if iid not in mov_past_img_cache:
                 rec = get_image_record_by_id(iid)
@@ -965,6 +1112,7 @@ class _CLIPEmbedder:
         self._model = None
         self._processor = None
 
+    # CLIP 모델과 프로세서를 지연 로드
     def _load(self):
         from transformers import AutoModel, AutoProcessor
         logger.info(f"[CLIPEmbedder] Loading {CLIP_MODEL_NAME} ...")
@@ -973,6 +1121,7 @@ class _CLIPEmbedder:
         self._model.eval()
         logger.info("[CLIPEmbedder] Ready.")
 
+    # PIL 크롭 리스트의 L2 정규화 임베딩 반환
     def embed(self, crops: list) -> np.ndarray:
         """
         Compute L2-normalised image embeddings for a list of PIL crops.
@@ -991,8 +1140,16 @@ class _CLIPEmbedder:
 
         with torch.no_grad():
             if hasattr(self._model, "get_image_features"):
-                # CLIPModel path
-                feats = self._model.get_image_features(**inputs)   # (N, D)
+                # CLIPModel path — vision inputs only to avoid text-side interference
+                feats = self._model.get_image_features(**vision_inputs)
+                # newer transformers may return a model output object instead of tensor
+                if not isinstance(feats, torch.Tensor):
+                    if hasattr(feats, "image_embeds"):
+                        feats = feats.image_embeds
+                    elif hasattr(feats, "pooler_output") and feats.pooler_output is not None:
+                        feats = feats.pooler_output
+                    else:
+                        feats = feats.last_hidden_state[:, 0, :]
             else:
                 # ViTModel / CLIPVisionModel path
                 out = self._model(**vision_inputs)
@@ -1008,6 +1165,7 @@ class _CLIPEmbedder:
 _clip_embedder = _CLIPEmbedder()
 
 
+# JSON RLE 문자열을 마스크 배열로 디코드
 def _decode_rle(mask_rle_json: str) -> Optional[np.ndarray]:
     """Decode a JSON RLE string produced by sam2_detector._encode_rle()."""
     try:
@@ -1021,6 +1179,7 @@ def _decode_rle(mask_rle_json: str) -> Optional[np.ndarray]:
         return None
 
 
+# SAM 마스크로 객체 영역만 크롭하여 반환
 def _mask_crop(image: "PILImage", x1: float, y1: float, x2: float, y2: float,
                mask_rle: Optional[str], padding: int = 4) -> Optional["PILImage"]:
     """
@@ -1055,6 +1214,7 @@ def _mask_crop(image: "PILImage", x1: float, y1: float, x2: float, y2: float,
     return image.crop((bx1, by1, bx2, by2))
 
 
+# 센서DB image_id로 디스크에서 PIL 이미지 로드
 def _load_pil_image(image_id: str) -> Optional["PILImage"]:
     """Load a PIL image from disk given a sensor-DB image_id.
 
@@ -1077,6 +1237,52 @@ def _load_pil_image(image_id: str) -> Optional["PILImage"]:
     return PILImage.fromarray(arr)
 
 
+# 같은 위치 고정 시설물 쌍의 CLIP 유사도로 변화 여부를 "matched"/"changed"로 판단
+def _static_pair_status(
+    cur,                                           # DetectionResult – 현재 프레임
+    past,                                          # DetectionRecord  – 과거 프레임
+    cur_pil: Optional["PILImage"] = None,
+    past_pil: Optional["PILImage"] = None,
+) -> str:
+    """
+    Compute CLIP cosine similarity between same-location static facility crops.
+    Returns "matched" (no structural change) when sim >= _STATIC_SIM_THRESHOLD,
+    "changed" (structural alteration detected) when sim < threshold.
+    Falls back conservatively to "matched" when images cannot be loaded.
+    """
+    try:
+        if cur_pil is None:
+            _cur_iid = getattr(cur, "image_id", None) or ""
+            cur_pil = _load_pil_image(_cur_iid) if _cur_iid else None
+        if past_pil is None:
+            _past_iid = getattr(past, "image_id", None) or ""
+            past_pil = _load_pil_image(_past_iid) if _past_iid else None
+        if cur_pil is None or past_pil is None:
+            logger.warning("[StaticPairStatus] PIL 이미지 로드 실패 → 'matched' 기본값 사용")
+            return "matched"
+        crop_cur = _mask_crop(
+            cur_pil, cur.bbox_x1, cur.bbox_y1, cur.bbox_x2, cur.bbox_y2,
+            getattr(cur, "mask_rle", None),
+        )
+        crop_past = _mask_crop(
+            past_pil, past.bbox_x1, past.bbox_y1, past.bbox_x2, past.bbox_y2,
+            getattr(past, "mask_rle", None),
+        )
+        if crop_cur is None or crop_past is None:
+            return "matched"
+        sim = _clip_similarity_crops(crop_cur, crop_past)
+        status = "matched" if sim >= _STATIC_SIM_THRESHOLD else "changed"
+        logger.info(
+            f"[StaticPair] {cur.object_class}  sim={sim:.3f}  "
+            f"threshold={_STATIC_SIM_THRESHOLD}  → {status}"
+        )
+        return status
+    except Exception as exc:
+        logger.warning(f"[StaticPairStatus] 유사도 계산 오류: {exc} → 'matched' 기본값 사용")
+        return "matched"
+
+
+# 탐지 목록에 대한 CLIP 임베딩 배열 생성
 def _compute_embeddings(
     detections: list,
     image: Optional["PILImage"],
@@ -1129,6 +1335,7 @@ def _compute_embeddings(
     return embeds
 
 
+# CLIP 유사도 기반 현재·과거 탐지 페어링 수행
 def pair_by_similarity(
     current_detections: List[DetectionResult],
     past_detections: List[DetectionRecord],
@@ -1139,6 +1346,8 @@ def pair_by_similarity(
     region_lon: float,
     session_id: str,
     source_type: str = "satellite",
+    current_image_id: Optional[str] = None,
+    past_image_id: Optional[str] = None,
 ) -> List[PairingRecord]:
     """
     Build PairingRecord list by matching current detections to past detections
@@ -1204,24 +1413,43 @@ def pair_by_similarity(
     ]
 
     # ------------------------------------------------------------------
-    # Step 0. Static class geo-based pre-matching (같은 위경도 건물 → 무조건 matched)
-    # CLIP 점수와 무관하게, 같은 클래스 건물이 MOVE_DISTANCE_THRESHOLD_DEG 이내이면
+    # Step 0. Static class geo-based pre-matching
+    # CLIP 점수와 무관하게, 같은 클래스 고정 시설물이 STATIC_EXACT_MATCH_DEG(≈111m) 이내이면
     # 가장 가까운 쌍부터 greedy로 matched 페어링 생성.
+    # 임계값 초과 쌍은 절대 매칭하지 않는다 (다른 위치의 건물을 동일 건물로 식별하지 않음).
+    #
+    # ※ 이미지에 lat_min/lat_max/lon_min/lon_max 가 없으면 pixel_to_geo 가
+    #   lat_center/lon_center 를 반환 → 모든 탐지 객체가 동일 좌표로 보여
+    #   무관한 건물들까지 오매칭된다. bounds 확인 후 신뢰할 수 없으면 건너뜀.
     # ------------------------------------------------------------------
     _s_cur  = [d for d in current_detections if d.object_class.lower() in _STATIC_CLASSES]
     _s_past = [d for d in past_detections    if d.object_class.lower() in _STATIC_CLASSES]
     _geo_pre_cur_ids:  set = set()
     _geo_pre_past_ids: set = set()
-    if _s_cur and _s_past:
+
+    # 과거 이미지 ID: past_image_id 파라미터 우선, 없으면 첫 번째 past 탐지에서 취득
+    _past_iid_s = past_image_id or next(
+        (getattr(d, "image_id", None) for d in past_detections if getattr(d, "image_id", None)),
+        None,
+    )
+    _step0_s_geo_ok = _image_has_geo_bounds(current_image_id) and _image_has_geo_bounds(_past_iid_s)
+    if not _step0_s_geo_ok:
+        logger.debug(
+            "[Pairing/similarity] Step 0 건너뜀: 이미지 geo bounds 없음 "
+            "(cur=%s, past=%s)", current_image_id, _past_iid_s
+        )
+
+    if _s_cur and _s_past and _step0_s_geo_ok:
         _gcands = sorted(
             (_geo_distance(c.lat, c.lon, p.lat, p.lon), ci, pi)
             for ci, c in enumerate(_s_cur)
             for pi, p in enumerate(_s_past)
             if c.object_class.lower() == p.object_class.lower()
-            and _geo_distance(c.lat, c.lon, p.lat, p.lon) <= MOVE_DISTANCE_THRESHOLD_DEG
+            and _geo_distance(c.lat, c.lon, p.lat, p.lon) <= STATIC_EXACT_MATCH_DEG
         )
         _gc_seen: set = set()
         _gp_seen: set = set()
+        _s0s_past_pil_cache: Dict[str, Optional] = {}  # image_id → PIL
         for _dist, _ci, _pi in _gcands:
             if _ci in _gc_seen or _pi in _gp_seen:
                 continue
@@ -1231,6 +1459,13 @@ def pair_by_similarity(
             _gp_seen.add(_pi)
             _geo_pre_cur_ids.add(_c.detection_id)
             _geo_pre_past_ids.add(_p.id)
+            # 과거 프레임 PIL 로드 (캐시 활용); 현재 PIL은 함수 인자로 제공됨
+            _piid = getattr(_p, "image_id", None) or ""
+            if _piid not in _s0s_past_pil_cache:
+                _s0s_past_pil_cache[_piid] = _load_pil_image(_piid) if _piid else None
+            _s0s_past_pil = _s0s_past_pil_cache.get(_piid)
+            # CLIP 유사도로 변화 여부 판단: "matched" (변화 없음) or "changed" (구조 변화)
+            _st = _static_pair_status(_c, _p, cur_pil=current_image, past_pil=_s0s_past_pil)
             pairing_records.append(PairingRecord(
                 pairing_time=now, lat_center=region_lat, lon_center=region_lon,
                 current_detection_id=_c.detection_id,
@@ -1247,7 +1482,7 @@ def pair_by_similarity(
                 past_capture_time=past_capture_time,
                 past_bbox={"x1": _p.bbox_x1, "y1": _p.bbox_y1,
                            "x2": _p.bbox_x2, "y2": _p.bbox_y2},
-                status="matched", source_type=source_type, session_id=session_id,
+                status=_st, source_type=source_type, session_id=session_id,
             ))
     # 이미 geo-matched된 탐지는 CLIP 처리에서 제외
     current_detections = [d for d in current_detections if d.detection_id not in _geo_pre_cur_ids]
@@ -1255,8 +1490,8 @@ def pair_by_similarity(
 
     if not current_detections or not past_detections:
         # Nothing to match – apply FOV check for each unmatched detection
-        _past_fov_early  = _collect_fov_bounds(past_detections)
-        _cur_fov_early   = _collect_fov_bounds(current_detections)
+        _past_fov_early = _get_image_fov_bounds(past_image_id) or _collect_fov_bounds(past_detections)
+        _cur_fov_early  = _get_image_fov_bounds(current_image_id) or _collect_fov_bounds(current_detections)
         for cur in current_detections:
             s = "new" if _in_fov(cur.lat, cur.lon, _past_fov_early) else "past_not_included"
             pairing_records.append(PairingRecord(
@@ -1312,10 +1547,10 @@ def pair_by_similarity(
             # 동일 클래스인 경우만 같은 객체 후보로 허용
             if cur.object_class.lower() != past.object_class.lower():
                 continue
-            # 건물류: 위경도가 동일(MOVE_DISTANCE_THRESHOLD_DEG 이내)한 쌍만 허용
-            if cur.object_class.lower() in _STATIC_CLASSES:
-                if _geo_distance(cur.lat, cur.lon, past.lat, past.lon) > MOVE_DISTANCE_THRESHOLD_DEG:
-                    continue
+            # 고정 시설물은 Step 0 에서 정확 위치 쌍을 처리하고 리스트에서 제거한다.
+            # candidate loop 에 남은 static 객체는 Step 0 임계값 초과(≈111m+) 또는
+            # 형상 변화로 centroid 가 크게 이동한 경우이므로, geo 가드 없이 CLIP 으로만
+            # 최선 쌍을 선택한다. Gale-Shapley 가 유사도 최고 쌍부터 greedy 할당한다.
             if clip_sim_matrix is not None:
                 base_score = float(clip_sim_matrix[ci, pi])
             else:
@@ -1378,10 +1613,22 @@ def pair_by_similarity(
         pairs.append((cur, past))
 
     # ------------------------------------------------------------------
-    # 1. "matched"
+    # 1. "matched" / "changed"
+    #    CLIP 후보 루프로 매칭된 static 쌍도 _static_pair_status() 로 변화 판정.
     # ------------------------------------------------------------------
+    _s1_past_pil_cache: Dict[str, Optional] = {}
     for cur, past in pairs:
-        status = "matched"
+        if cur.object_class.lower() in _STATIC_CLASSES:
+            _piid = getattr(past, "image_id", None) or ""
+            if _piid not in _s1_past_pil_cache:
+                _s1_past_pil_cache[_piid] = _load_pil_image(_piid) if _piid else None
+            status = _static_pair_status(
+                cur, past,
+                cur_pil=current_image,
+                past_pil=_s1_past_pil_cache.get(_piid),
+            )
+        else:
+            status = "matched"
         pairing_records.append(PairingRecord(
             pairing_time=now, lat_center=region_lat, lon_center=region_lon,
             current_detection_id=cur.detection_id,
@@ -1404,7 +1651,7 @@ def pair_by_similarity(
     # ------------------------------------------------------------------
     # 2. "new" / "past_not_included"
     # ------------------------------------------------------------------
-    past_fov_sim = _collect_fov_bounds(past_detections)
+    past_fov_sim = _get_image_fov_bounds(past_image_id) or _collect_fov_bounds(past_detections)
     for cur in current_detections:
         if cur.detection_id in matched_cur_ids:
             continue
@@ -1424,7 +1671,7 @@ def pair_by_similarity(
     # ------------------------------------------------------------------
     # 3. "disappeared" / "current_not_included"
     # ------------------------------------------------------------------
-    cur_fov_sim = _collect_fov_bounds(current_detections)
+    cur_fov_sim = _get_image_fov_bounds(current_image_id) or _collect_fov_bounds(current_detections)
     for past in past_detections:
         if past.id in matched_past_ids:
             continue
@@ -1444,6 +1691,10 @@ def pair_by_similarity(
     # ------------------------------------------------------------------
     # 4. Static-class cross-image check for unmatched "new" / "disappeared"
     # ------------------------------------------------------------------
+    # Static-class objects that are "new" (within past FOV, no geo-match) or
+    # "disappeared" (within current FOV, no geo-match): attempt cross-image
+    # similarity check.  A synthetic DetectionRecord is inserted for the
+    # missing frame only when CLIP cosine similarity ≥ _STATIC_SIM_THRESHOLD.
     static_new_sim = [p for p in pairing_records
                       if p.status == "new"
                       and (p.current_object_class or "").lower() in _STATIC_CLASSES]
@@ -1455,9 +1706,9 @@ def pair_by_similarity(
         cur_img_cache2: Dict[str, Optional] = {}
         past_img_cache2: Dict[str, Optional] = {}
         past_image_ids2 = list({d.image_id for d in past_detections if d.image_id})
-        cur_image_ids2  = list({d.detection_id and d.image_id
-                                for d in current_detections if d.image_id})
+        cur_image_ids2  = list({d.image_id for d in current_detections if d.image_id})
 
+        # 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _rec_pil(iid, cache):
             if iid not in cache:
                 rec = get_image_record_by_id(iid)
@@ -1476,9 +1727,12 @@ def pair_by_similarity(
             if cur_det is None or not cur_det.image_id:
                 continue
             cur_rec, cur_pil = _rec_pil(cur_det.image_id, cur_img_cache2)
-            if cur_rec is None or cur_pil is None or not past_image_ids2:
+            if cur_rec is None or cur_pil is None:
                 continue
-            past_iid = past_image_ids2[0]
+            # Fall back to function-level past_image_id when area has no past detections.
+            past_iid = past_image_ids2[0] if past_image_ids2 else past_image_id
+            if not past_iid:
+                continue
             past_rec, past_pil = _rec_pil(past_iid, past_img_cache2)
             if past_rec is None or past_pil is None:
                 continue
@@ -1518,10 +1772,12 @@ def pair_by_similarity(
             past_rec, past_pil = _rec_pil(past_det.image_id, past_img_cache2)
             if past_rec is None or past_pil is None:
                 continue
-            # current image: get image_id from any current detection
+            # current image: get image_id from any current detection or function parameter.
+            # current_detections may be empty when all current static detections were
+            # geo-matched in Step 0, so fall back to current_image_id parameter.
             cur_iid2 = next(
                 (d.image_id for d in current_detections if d.image_id), None
-            )
+            ) or current_image_id
             if cur_iid2 is None:
                 continue
             cur_rec, cur_pil = _rec_pil(cur_iid2, cur_img_cache2)
@@ -1566,6 +1822,7 @@ def pair_by_similarity(
         mov_cur_img_cache2: Dict[str, Optional] = {}
         mov_past_img_cache2: Dict[str, Optional] = {}
 
+        # 현재 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _rec_pil_mov_cur(iid: str):
             if iid not in mov_cur_img_cache2:
                 rec = get_image_record_by_id(iid)
@@ -1573,6 +1830,7 @@ def pair_by_similarity(
                 mov_cur_img_cache2[iid] = (rec, pil)
             return mov_cur_img_cache2[iid]
 
+        # 과거 이미지 레코드·PIL을 캐시에서 조회하거나 로드
         def _rec_pil_mov_past(iid: str):
             if iid not in mov_past_img_cache2:
                 rec = get_image_record_by_id(iid)

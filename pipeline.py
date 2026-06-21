@@ -50,11 +50,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from src.config import IMAGES_DIR, COORDINATE_MATCH_RADIUS_DEG, TRACKING_MODE
+from src.config import IMAGES_DIR, COORDINATE_MATCH_RADIUS_DEG, TRACKING_MODE, GRAPHRAG_CONTEXT_ENABLED
 from src.database.models import DetectionRecord
 from src.database.sensor_db import (
     insert_image_record,
     insert_detections_bulk,
+    replace_detections_for_image,
+    get_image_record_by_path,
+    delete_synthetic_detections_by_session,
 )
 from src.database.pairing_db import (
     insert_pairings_bulk,
@@ -63,7 +66,7 @@ from src.database.pairing_db import (
 )
 from src.database.reports_db import delete_reports_by_session
 from src.detection.image_loader import load_metadata_index, iter_images
-from src.detection.sam2_detector import SAM3Detector, DetectionResult
+from src.detection.sam3_detector import SAM3Detector, DetectionResult
 from src.pairing.temporal_pairing import pair_by_tracking, pair_by_similarity
 from src.reporting.military_reporter import MilitaryReporter
 from src.graph.graph_indexer import GraphIndexer
@@ -102,9 +105,10 @@ class MavenPipeline:
     # Step 1: Ingest + Detect
     # ------------------------------------------------------------------
 
+    # 이미지 탐지 및 센서 DB 저장
     def _detect_and_store(self, metadata_json: str, session_id: str) -> List[str]:
         """
-        Load all images from metadata index, run SAM2 detection,
+        Load all images from metadata index, run SAM3 detection,
         save image records and detection records to Sensor DB.
 
         Returns list of image_ids processed.
@@ -122,29 +126,50 @@ class MavenPipeline:
                 _detection_stage_set = True
             meta = loaded.meta
 
-            # Insert image record into Sensor DB
-            # det_width/det_height: bbox 좌표 기준 공간 (SR 적용 후 실제 배열 크기)
+            # 동일 image_path 레코드가 이미 있으면 재사용 — 파이프라인 재실행 시 중복 방지.
+            # 단, session_id·det_width/height·geo bounds 는 현재 실행 값으로 항상 갱신한다.
+            # geo bounds 가 없으면 pixel_to_geo 가 모든 탐지를 lat_center 로 폴백하므로
+            # FOV 판단(past_not_included / current_not_included)이 불가해진다.
+            from src.database.sensor_db import update_image_record_meta
             det_h, det_w = loaded.array.shape[:2]
-            img_record = insert_image_record(
-                capture_time=meta.capture_time,
-                source_type=meta.source_type,
-                image_path=meta.image_path,
-                lat_center=meta.lat_center,
-                lon_center=meta.lon_center,
-                lat_min=meta.lat_min,
-                lat_max=meta.lat_max,
-                lon_min=meta.lon_min,
-                lon_max=meta.lon_max,
-                resolution_m=meta.resolution_m,
-                sensor_platform=meta.sensor_platform,
-                det_width=det_w,
-                det_height=det_h,
-                session_id=session_id,
-            )
+            existing_record = get_image_record_by_path(meta.image_path)
+            if existing_record is not None:
+                updated = update_image_record_meta(
+                    image_id=existing_record.id,
+                    session_id=session_id,
+                    det_width=det_w,
+                    det_height=det_h,
+                    lat_min=meta.lat_min,
+                    lat_max=meta.lat_max,
+                    lon_min=meta.lon_min,
+                    lon_max=meta.lon_max,
+                )
+                img_record = updated if updated is not None else existing_record
+                logger.info(
+                    f"  [reuse] ImageRecord updated for {meta.image_path[:40]}… "
+                    f"id={img_record.id[:8]}  session={session_id[:8]}"
+                )
+            else:
+                img_record = insert_image_record(
+                    capture_time=meta.capture_time,
+                    source_type=meta.source_type,
+                    image_path=meta.image_path,
+                    lat_center=meta.lat_center,
+                    lon_center=meta.lon_center,
+                    lat_min=meta.lat_min,
+                    lat_max=meta.lat_max,
+                    lon_min=meta.lon_min,
+                    lon_max=meta.lon_max,
+                    resolution_m=meta.resolution_m,
+                    sensor_platform=meta.sensor_platform,
+                    det_width=det_w,
+                    det_height=det_h,
+                    session_id=session_id,
+                )
             image_id = img_record.id
             image_ids.append(image_id)
 
-            # Run SAM2 detection
+            # Run SAM3 detection
             det_results: List[DetectionResult] = self.detector.detect(loaded, image_id)
 
             if not det_results:
@@ -174,8 +199,11 @@ class MavenPipeline:
                 for det in det_results
             ]
 
-            # Bulk insert to Sensor DB
-            insert_detections_bulk(orm_detections)
+            # 기존 레코드이면 교체, 신규이면 bulk insert
+            if existing_record is not None:
+                replace_detections_for_image(image_id, orm_detections)
+            else:
+                insert_detections_bulk(orm_detections)
             logger.info(
                 f"  [{img_record.id[:8]}] Stored {len(orm_detections)} detections "
                 f"for image at ({meta.lat_center:.4f}, {meta.lon_center:.4f})"
@@ -187,6 +215,7 @@ class MavenPipeline:
     # Step 2: Temporal Pairing
     # ------------------------------------------------------------------
 
+    # 시간적 페어링 수행 및 DB 저장
     def _pair_and_store(
         self,
         metadata_json: str,
@@ -271,6 +300,7 @@ class MavenPipeline:
                         source_type=d.source_type or meta.source_type,
                     )
                     for d in current_orm
+                    if (d.source_type or "") != "synthetic"
                 ]
 
             # --- Fetch past detections (same session only) ---
@@ -284,6 +314,23 @@ class MavenPipeline:
                 prefer_session_id=session_id,
                 session_only=True,
             )
+            # 합성 탐지 레코드(cross-check 부산물)를 과거 목록에서 제거한다.
+            # 세션 내 이미지가 여러 장일 때 이전 페어링에서 생성된 synthetic 이
+            # 다음 페어링의 past_records 로 흘러들어 bbox 중복을 유발할 수 있음.
+            past_records = [r for r in past_records if (r.source_type or "") != "synthetic"]
+
+            # 과거 이미지 ID: 탐지 결과가 없어도 FOV 판단에 사용
+            with Session(engine) as _s:
+                _past_img = (
+                    _s.query(ImageRecord)
+                    .filter(
+                        ImageRecord.session_id == session_id,
+                        ImageRecord.capture_time < capture_time_naive,
+                    )
+                    .order_by(ImageRecord.capture_time.desc())
+                    .first()
+                )
+                past_image_id_for_fov = _past_img.id if _past_img else None
 
             # --- Build pairing records ---
             orig_h, orig_w = loaded.array.shape[:2]
@@ -301,6 +348,8 @@ class MavenPipeline:
                     region_lon=meta.lon_center,
                     session_id=session_id,
                     source_type=meta.source_type,
+                    current_image_id=image_id,
+                    past_image_id=past_image_id_for_fov,
                 )
             else:
                 # Strategy A (default): SAM3 video tracker
@@ -319,6 +368,8 @@ class MavenPipeline:
                     region_lon=meta.lon_center,
                     session_id=session_id,
                     source_type=meta.source_type,
+                    current_image_id=image_id,
+                    past_image_id=past_image_id_for_fov,
                 )
 
             if pairing_records:
@@ -331,6 +382,7 @@ class MavenPipeline:
     # Step 3: Report Generation
     # ------------------------------------------------------------------
 
+    # GraphRAG 컨텍스트 기반 군사 보고서 생성
     def _generate_report(
         self,
         session_id: str,
@@ -343,13 +395,24 @@ class MavenPipeline:
         Graph RAG indexing is always performed here so context is available
         from the very first run (not only after explicit regeneration).
         """
+        from src.database.sensor_db import get_images_by_session, get_detections_by_image
+
         pairings = get_pairings_by_session(session_id)
         if pairings:
             latest_pt = max(p.pairing_time for p in pairings)
             pairings = [p for p in pairings if p.pairing_time == latest_pt]
 
-        # --- GraphRAG: index current pairings then retrieve historical context ---
+        # 현재 이미지의 실제 탐지 건수 (synthetic 제외) — 보고서 헤더 정확도를 위해 DB에서 직접 산출
+        n_real_current = None
+        imgs = get_images_by_session(session_id)
+        if imgs:
+            latest_img = max(imgs, key=lambda i: i.capture_time)
+            dets = get_detections_by_image(latest_img.id)
+            n_real_current = sum(1 for d in dets if (d.source_type or "") != "synthetic")
+
+        # --- GraphRAG: 이번 세션 데이터만 반영 (이전 누적 삭제 후 재인덱싱) ---
         if pairings:
+            self.graph_indexer.clear()   # 이전 실행 누적 데이터 제거
             self.graph_indexer.index_pairings(pairings, session_id)
             graph_stats = self.graph_indexer.stats()
             logger.info(
@@ -361,10 +424,12 @@ class MavenPipeline:
                 graph_stats.get("communities", 0),
             )
 
-        historical_context = self.graph_indexer.get_historical_context(pairings)
-        if historical_context:
-            logger.info("[Pipeline] GraphRAG historical context retrieved (%d chars).",
-                        len(historical_context))
+        historical_context = ""
+        if GRAPHRAG_CONTEXT_ENABLED:
+            historical_context = self.graph_indexer.get_historical_context(pairings)
+            if historical_context:
+                logger.info("[Pipeline] GraphRAG historical context retrieved (%d chars).",
+                            len(historical_context))
 
         report = self.reporter.generate_report(
             pairings,
@@ -372,6 +437,7 @@ class MavenPipeline:
             session_id=session_id,
             historical_context=historical_context,
             target_description=target_description,
+            n_real_detections=n_real_current,
         )
         return report
 
@@ -379,6 +445,7 @@ class MavenPipeline:
     # Re-run from existing detections (사용자 편집 후 재처리)
     # ------------------------------------------------------------------
 
+    # 수정된 탐지 기반 페어링·보고서 재실행
     def rerun_from_detections(self, image_id: str, target_description: str = "") -> str:
         """
         이미지 1장에 대해 SensorDB에 저장된 탐지 결과(사용자 수정 포함)를 기반으로
@@ -400,6 +467,7 @@ class MavenPipeline:
 
         from src.config import IMAGES_DIR
         from src.database.sensor_db import (
+            get_engine,
             get_image_record_by_id,
             get_detections_by_image,
             get_most_recent_past_detections,
@@ -434,7 +502,10 @@ class MavenPipeline:
         orig_h, orig_w = arr.shape[:2]
         pil_image = PILImage.fromarray(arr)
 
-        # ── 3. 현재 탐지 결과 (SensorDB) ────────────────────────────────────
+        # ── 3. 합성 탐지 선제 삭제 → 실제 탐지 결과만 읽기 ────────────────────
+        # 반드시 read 이전에 삭제해야 synthetic이 current_dets에 포함되지 않음
+        delete_synthetic_detections_by_session(session_id)
+
         orm_dets     = get_detections_by_image(image_id)
         current_dets = [
             DetectionResult(
@@ -450,6 +521,7 @@ class MavenPipeline:
                 source_type=d.source_type or img_rec.source_type,
             )
             for d in orm_dets
+            if (d.source_type or "") != "synthetic"  # 방어적 필터 — 삭제 후에도 혹시 남은 경우 제외
         ]
         logger.info(f"[Rerun] current detections: {len(current_dets)}")
 
@@ -461,9 +533,27 @@ class MavenPipeline:
             before_time=capture_time,
             prefer_session_id=session_id,
         )
+        # 과거 합성 탐지도 제외 (다른 세션에서 생성된 synthetic 포함 방지)
+        past_records = [p for p in past_records if (p.source_type or "") != "synthetic"]
         logger.info(f"[Rerun] past detections: {len(past_records)}")
 
-        # ── 5. 기존 pairing 삭제 ─────────────────────────────────────────────
+        # 과거 이미지 ID: 탐지 결과가 없어도 FOV 판단에 사용
+        capture_naive_rerun = capture_time.replace(tzinfo=None) if getattr(capture_time, "tzinfo", None) else capture_time
+        from sqlalchemy.orm import Session as _OrmSess2
+        from src.database.models import ImageRecord as _IRec2
+        with _OrmSess2(get_engine()) as _s2:
+            _past_img2 = (
+                _s2.query(_IRec2)
+                .filter(
+                    _IRec2.session_id == session_id,
+                    _IRec2.capture_time < capture_naive_rerun,
+                )
+                .order_by(_IRec2.capture_time.desc())
+                .first()
+            )
+            past_image_id_rerun = _past_img2.id if _past_img2 else None
+
+        # ── 5. 기존 pairing 삭제 (합성 탐지는 step 3에서 이미 삭제함) ──────────
         delete_pairings_by_session(session_id)
 
         # ── 6. Temporal Pairing ──────────────────────────────────────────────
@@ -478,6 +568,8 @@ class MavenPipeline:
                 region_lon=img_rec.lon_center,
                 session_id=session_id,
                 source_type=img_rec.source_type,
+                current_image_id=img_rec.id,
+                past_image_id=past_image_id_rerun,
             )
         else:
             tracked_objects = (
@@ -494,6 +586,8 @@ class MavenPipeline:
                 region_lon=img_rec.lon_center,
                 session_id=session_id,
                 source_type=img_rec.source_type,
+                current_image_id=img_rec.id,
+                past_image_id=past_image_id_rerun,
             )
 
         if pairing_records:
@@ -515,6 +609,7 @@ class MavenPipeline:
     # Step-based API (단계별 실행)
     # ------------------------------------------------------------------
 
+    # 이미지 적재만 수행하고 ID 목록 반환
     def ingest_only(self, metadata_json: str, session_id: str) -> List[str]:
         """
         Phase 1: 이미지 적재만 수행 (SAM3 탐지 없음).
@@ -557,6 +652,7 @@ class MavenPipeline:
         _clear_ps()
         return image_ids
 
+    # 단일 이미지에 SAM3 탐지 실행 후 DB 저장
     def detect_sam3_for_image(self, image_id: str) -> List[DetectionRecord]:
         """
         Phase 2a (SAM3 경로): 저장된 이미지 1장에 SAM3 탐지를 실행하고
@@ -631,12 +727,13 @@ class MavenPipeline:
             )
             for det in det_results
         ]
-        insert_detections_bulk(orm_detections)
+        replace_detections_for_image(image_id, orm_detections)
         logger.info(
             "[Detect/SAM3] %d건 저장 완료 (image=%s)", len(orm_detections), image_id[:8]
         )
         return orm_detections
 
+    # 탐지 완료 세션의 페어링 및 보고서 생성
     def run_pairing_and_report(
         self,
         session_id: str,
@@ -750,6 +847,19 @@ class MavenPipeline:
                 session_only=True,
             )
 
+            # 과거 이미지 ID: 탐지 결과가 없어도 FOV 판단에 사용
+            with OrmSession(engine) as _fov_sess:
+                _past_img_fov = (
+                    _fov_sess.query(ImageRecord)
+                    .filter(
+                        ImageRecord.session_id == session_id,
+                        ImageRecord.capture_time < ct_naive,
+                    )
+                    .order_by(ImageRecord.capture_time.desc())
+                    .first()
+                )
+                past_image_id_analyze = _past_img_fov.id if _past_img_fov else None
+
             # 이미지 파일 로드 (SAM3 추적기용)
             img_path = _Path(img_info["image_path"])
             if not img_path.is_absolute():
@@ -776,6 +886,8 @@ class MavenPipeline:
                     region_lon=img_info["lon_center"],
                     session_id=session_id,
                     source_type=img_info["source_type"],
+                    current_image_id=img_info["id"],
+                    past_image_id=past_image_id_analyze,
                 )
             else:
                 tracked_objects = (
@@ -793,6 +905,8 @@ class MavenPipeline:
                     region_lon=img_info["lon_center"],
                     session_id=session_id,
                     source_type=img_info["source_type"],
+                    current_image_id=img_info["id"],
+                    past_image_id=past_image_id_analyze,
                 )
 
             if pairing_records:
@@ -819,6 +933,7 @@ class MavenPipeline:
     # Public API
     # ------------------------------------------------------------------
 
+    # 전체 파이프라인 엔드투엔드 실행
     def run(
         self,
         metadata_json: str,

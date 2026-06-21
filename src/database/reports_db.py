@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 _engine = None
 
 
+# 보고서 DB 엔진을 반환(싱글톤)
 def get_engine():
     global _engine
     if _engine is None:
@@ -23,6 +24,7 @@ def get_engine():
     return _engine
 
 
+# 생성된 보고서를 DB에 저장하고 레코드 반환
 def insert_report(
     report_time: datetime,
     report_content: str,
@@ -68,6 +70,7 @@ def insert_report(
         return record
 
 
+# 저장된 모든 보고서를 최신순으로 반환
 def get_all_reports(limit: int = None) -> List[ReportRecord]:
     """Return all reports ordered by saved_time descending."""
     engine = get_engine()
@@ -84,6 +87,7 @@ def get_all_reports(limit: int = None) -> List[ReportRecord]:
         return records
 
 
+# report_id로 보고서 레코드 조회
 def get_report_by_id(report_id: str) -> Optional[ReportRecord]:
     engine = get_engine()
     with Session(engine) as session:
@@ -93,6 +97,7 @@ def get_report_by_id(report_id: str) -> Optional[ReportRecord]:
         return record
 
 
+# 보고서 텍스트 내용을 수정
 def update_report_content(report_id: str, new_content: str) -> bool:
     """보고서 텍스트를 수정한다. 성공 시 True, 보고서 없으면 False."""
     engine = get_engine()
@@ -106,6 +111,7 @@ def update_report_content(report_id: str, new_content: str) -> bool:
         return True
 
 
+# 세션의 모든 보고서 레코드 삭제
 def delete_reports_by_session(session_id: str) -> int:
     """세션의 모든 report_records를 삭제한다. 보고서 재생성 전 호출."""
     engine = get_engine()
@@ -120,6 +126,7 @@ def delete_reports_by_session(session_id: str) -> int:
     return deleted
 
 
+# 세션 ID에 해당하는 보고서 전체 반환
 def get_reports_by_session(session_id: str) -> List[ReportRecord]:
     engine = get_engine()
     with Session(engine) as session:
@@ -134,6 +141,7 @@ def get_reports_by_session(session_id: str) -> List[ReportRecord]:
         return records
 
 
+# 주어진 세션 중 가장 최근 보고서 반환
 def get_latest_report_for_sessions(session_ids: List[str]) -> Optional[ReportRecord]:
     """Return the most recent ReportRecord matching any of the given session_ids."""
     if not session_ids:
