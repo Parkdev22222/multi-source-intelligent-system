@@ -126,14 +126,28 @@ class MavenPipeline:
                 _detection_stage_set = True
             meta = loaded.meta
 
-            # 동일 image_path 레코드가 이미 있으면 재사용 — 파이프라인 재실행 시 중복 방지
+            # 동일 image_path 레코드가 이미 있으면 재사용 — 파이프라인 재실행 시 중복 방지.
+            # 단, session_id·det_width/height·geo bounds 는 현재 실행 값으로 항상 갱신한다.
+            # geo bounds 가 없으면 pixel_to_geo 가 모든 탐지를 lat_center 로 폴백하므로
+            # FOV 판단(past_not_included / current_not_included)이 불가해진다.
+            from src.database.sensor_db import update_image_record_meta
             det_h, det_w = loaded.array.shape[:2]
             existing_record = get_image_record_by_path(meta.image_path)
             if existing_record is not None:
-                img_record = existing_record
+                updated = update_image_record_meta(
+                    image_id=existing_record.id,
+                    session_id=session_id,
+                    det_width=det_w,
+                    det_height=det_h,
+                    lat_min=meta.lat_min,
+                    lat_max=meta.lat_max,
+                    lon_min=meta.lon_min,
+                    lon_max=meta.lon_max,
+                )
+                img_record = updated if updated is not None else existing_record
                 logger.info(
-                    f"  [reuse] ImageRecord already exists for {meta.image_path[:40]}… "
-                    f"id={img_record.id[:8]}"
+                    f"  [reuse] ImageRecord updated for {meta.image_path[:40]}… "
+                    f"id={img_record.id[:8]}  session={session_id[:8]}"
                 )
             else:
                 img_record = insert_image_record(

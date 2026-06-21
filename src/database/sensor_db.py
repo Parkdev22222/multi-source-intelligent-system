@@ -92,6 +92,43 @@ def insert_image_record(
         return record
 
 
+def update_image_record_meta(
+    image_id: str,
+    session_id: Optional[str] = None,
+    det_width: Optional[int] = None,
+    det_height: Optional[int] = None,
+    lat_min: Optional[float] = None,
+    lat_max: Optional[float] = None,
+    lon_min: Optional[float] = None,
+    lon_max: Optional[float] = None,
+) -> Optional[ImageRecord]:
+    """
+    Update mutable fields of an existing ImageRecord and return the updated
+    detached object.  Only non-None arguments overwrite existing values.
+    """
+    engine = get_engine()
+    with Session(engine) as sess:
+        rec = sess.get(ImageRecord, image_id)
+        if rec is None:
+            return None
+        if session_id is not None:
+            rec.session_id = session_id
+        if det_width is not None:
+            rec.det_width = det_width
+        if det_height is not None:
+            rec.det_height = det_height
+        if lat_min is not None:
+            rec.lat_min = lat_min
+            rec.lat_max = lat_max
+            rec.lon_min = lon_min
+            rec.lon_max = lon_max
+        sess.commit()
+        sess.refresh(rec)
+        sess.expunge(rec)
+        logger.debug(f"[SensorDB] Updated ImageRecord id={image_id}")
+        return rec
+
+
 # ---------------------------------------------------------------------------
 # Detection record CRUD
 # ---------------------------------------------------------------------------
