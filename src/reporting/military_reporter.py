@@ -295,7 +295,6 @@ class _VllmBackend:
         logger.info(f"[Reporter] Loading {LLM_MODEL_NAME} via vLLM (AWQ)...")
         self._llm = LLM(
             model=LLM_MODEL_NAME,
-            quantization="awq",
             dtype="float16",
             gpu_memory_utilization=LLM_GPU_MEMORY_UTILIZATION,
             max_model_len=LLM_MAX_MODEL_LEN,

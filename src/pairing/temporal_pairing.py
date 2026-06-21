@@ -1094,8 +1094,16 @@ class _CLIPEmbedder:
 
         with torch.no_grad():
             if hasattr(self._model, "get_image_features"):
-                # CLIPModel path
-                feats = self._model.get_image_features(**inputs)   # (N, D)
+                # CLIPModel path — vision inputs only to avoid text-side interference
+                feats = self._model.get_image_features(**vision_inputs)
+                # newer transformers may return a model output object instead of tensor
+                if not isinstance(feats, torch.Tensor):
+                    if hasattr(feats, "image_embeds"):
+                        feats = feats.image_embeds
+                    elif hasattr(feats, "pooler_output") and feats.pooler_output is not None:
+                        feats = feats.pooler_output
+                    else:
+                        feats = feats.last_hidden_state[:, 0, :]
             else:
                 # ViTModel / CLIPVisionModel path
                 out = self._model(**vision_inputs)
