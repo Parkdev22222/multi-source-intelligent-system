@@ -290,6 +290,8 @@ class _VllmBackend:
 
     # vLLM을 사용해 EXAONE 모델 로드
     def _load(self):
+        import os
+        os.environ.setdefault("FLASHINFER_DISABLE_VERSION_CHECK", "1")
         from vllm import LLM
 
         logger.info(f"[Reporter] Loading {LLM_MODEL_NAME} via vLLM (AWQ)...")
