@@ -469,7 +469,10 @@ class MavenPipeline:
         orig_h, orig_w = arr.shape[:2]
         pil_image = PILImage.fromarray(arr)
 
-        # ── 3. 현재 탐지 결과 (SensorDB) ────────────────────────────────────
+        # ── 3. 합성 탐지 선제 삭제 → 실제 탐지 결과만 읽기 ────────────────────
+        # 반드시 read 이전에 삭제해야 synthetic이 current_dets에 포함되지 않음
+        delete_synthetic_detections_by_session(session_id)
+
         orm_dets     = get_detections_by_image(image_id)
         current_dets = [
             DetectionResult(
@@ -485,6 +488,7 @@ class MavenPipeline:
                 source_type=d.source_type or img_rec.source_type,
             )
             for d in orm_dets
+            if (d.source_type or "") != "synthetic"  # 방어적 필터 — 삭제 후에도 혹시 남은 경우 제외
         ]
         logger.info(f"[Rerun] current detections: {len(current_dets)}")
 
@@ -496,6 +500,8 @@ class MavenPipeline:
             before_time=capture_time,
             prefer_session_id=session_id,
         )
+        # 과거 합성 탐지도 제외 (다른 세션에서 생성된 synthetic 포함 방지)
+        past_records = [p for p in past_records if (p.source_type or "") != "synthetic"]
         logger.info(f"[Rerun] past detections: {len(past_records)}")
 
         # 과거 이미지 ID: 탐지 결과가 없어도 FOV 판단에 사용
@@ -514,9 +520,7 @@ class MavenPipeline:
             )
             past_image_id_rerun = _past_img2.id if _past_img2 else None
 
-        # ── 5. 기존 pairing 및 합성 탐지 삭제 ──────────────────────────────────
-        # 합성 탐지(source_type='synthetic')를 먼저 삭제해야 재페어링 시 중복 누적 방지
-        delete_synthetic_detections_by_session(session_id)
+        # ── 5. 기존 pairing 삭제 (합성 탐지는 step 3에서 이미 삭제함) ──────────
         delete_pairings_by_session(session_id)
 
         # ── 6. Temporal Pairing ──────────────────────────────────────────────
