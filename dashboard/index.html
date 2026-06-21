@@ -4506,7 +4506,6 @@ function setupSSE() {
           msg.wp_seq   || 0,
         );
         await pollSimStatus();
-      }
       } else if (msg.type === 'analyze_complete') {
         // 백그라운드 분석 완료 — 모달이 해당 세션 중이면 결과 반영
         if (msg.session_id === _dsSessionId) {
