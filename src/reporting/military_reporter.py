@@ -300,6 +300,7 @@ class _VllmBackend:
             gpu_memory_utilization=LLM_GPU_MEMORY_UTILIZATION,
             max_model_len=LLM_MAX_MODEL_LEN,
             tensor_parallel_size=LLM_TENSOR_PARALLEL_SIZE,
+            trust_remote_code=True,
         )
         logger.info(f"[Reporter] {LLM_MODEL_NAME} loaded.")
 
