@@ -434,6 +434,7 @@ class MavenPipeline:
 
         from src.config import IMAGES_DIR
         from src.database.sensor_db import (
+            get_engine,
             get_image_record_by_id,
             get_detections_by_image,
             get_most_recent_past_detections,
