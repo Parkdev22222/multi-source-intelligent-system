@@ -506,6 +506,7 @@ class MilitaryReporter:
         session_id: Optional[str] = None,
         historical_context: str = "",
         target_description: str = "",
+        n_real_detections: Optional[int] = None,
     ) -> str:
         """
         Generate a military intelligence report from the given pairing records,
@@ -578,7 +579,10 @@ class MilitaryReporter:
         n_disappeared_rep  = sum(1 for p in pairings if p.status == 'disappeared')
         n_past_not_inc     = sum(1 for p in pairings if p.status == 'past_not_included')
         n_cur_not_inc      = sum(1 for p in pairings if p.status == 'current_not_included')
-        n_current = n_new_rep + n_matched_rep + n_past_not_inc
+        # synthetic 탐지(pairing이 추가로 삽입한 추정 객체)를 제외한 실제 탐지 건수
+        # n_real_detections 가 제공된 경우 그 값을 우선 사용
+        n_current = n_real_detections if n_real_detections is not None \
+            else (n_new_rep + n_matched_rep + n_past_not_inc)
         lang_note = "한국어 (EXAONE 번역)" if LLM_TRANSLATE_TO_KOREAN else "English"
         header = (
             f"{'='*72}\n"

@@ -376,10 +376,20 @@ class MavenPipeline:
         Graph RAG indexing is always performed here so context is available
         from the very first run (not only after explicit regeneration).
         """
+        from src.database.sensor_db import get_images_by_session, get_detections_by_image
+
         pairings = get_pairings_by_session(session_id)
         if pairings:
             latest_pt = max(p.pairing_time for p in pairings)
             pairings = [p for p in pairings if p.pairing_time == latest_pt]
+
+        # 현재 이미지의 실제 탐지 건수 (synthetic 제외) — 보고서 헤더 정확도를 위해 DB에서 직접 산출
+        n_real_current = None
+        imgs = get_images_by_session(session_id)
+        if imgs:
+            latest_img = max(imgs, key=lambda i: i.capture_time)
+            dets = get_detections_by_image(latest_img.id)
+            n_real_current = sum(1 for d in dets if (d.source_type or "") != "synthetic")
 
         # --- GraphRAG: index current pairings then retrieve historical context ---
         if pairings:
@@ -405,6 +415,7 @@ class MavenPipeline:
             session_id=session_id,
             historical_context=historical_context,
             target_description=target_description,
+            n_real_detections=n_real_current,
         )
         return report
 
