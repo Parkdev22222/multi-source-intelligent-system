@@ -440,6 +440,19 @@ class GraphStore:
                 sess.commit()
 
     # ------------------------------------------------------------------ #
+    # Clear                                                                #
+    # ------------------------------------------------------------------ #
+
+    def clear(self) -> None:
+        """모든 엔티티·관계·커뮤니티를 삭제하고 NetworkX 캐시를 초기화한다."""
+        with self._session() as sess:
+            sess.query(CommunityRecord).delete()
+            sess.query(RelationRecord).delete()
+            sess.query(EntityRecord).delete()
+            sess.commit()
+        self._nx_graph = None
+
+    # ------------------------------------------------------------------ #
     # Stats                                                                #
     # ------------------------------------------------------------------ #
 

@@ -391,8 +391,9 @@ class MavenPipeline:
             dets = get_detections_by_image(latest_img.id)
             n_real_current = sum(1 for d in dets if (d.source_type or "") != "synthetic")
 
-        # --- GraphRAG: index current pairings then retrieve historical context ---
+        # --- GraphRAG: 이번 세션 데이터만 반영 (이전 누적 삭제 후 재인덱싱) ---
         if pairings:
+            self.graph_indexer.clear()   # 이전 실행 누적 데이터 제거
             self.graph_indexer.index_pairings(pairings, session_id)
             graph_stats = self.graph_indexer.stats()
             logger.info(
@@ -410,8 +411,6 @@ class MavenPipeline:
             if historical_context:
                 logger.info("[Pipeline] GraphRAG historical context retrieved (%d chars).",
                             len(historical_context))
-        else:
-            logger.info("[Pipeline] GraphRAG historical context disabled (GRAPHRAG_CONTEXT_ENABLED=false).")
 
         report = self.reporter.generate_report(
             pairings,
