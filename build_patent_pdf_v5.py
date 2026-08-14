@@ -304,35 +304,14 @@ def build():
 
     s.append(h3("4) 차별성 설명"))
     s.append(para(
-        "본 발명은 위성·드론 영상 인텔리전스 분야에서 다음 5가지 축의 독자적 기술 구성을 결합한다는 "
-        "점에서 차별된다.", indent=False
-    ))
-    s.append(bullet(
-        "<b>객체 인스턴스 단위 페어링</b>: 정규 패치(격자) 단위 접근이 아닌, SAM3 세그멘테이션 모델로 "
-        "각 개별 객체를 인스턴스 단위로 식별하여 두 시점 간 1:1 매칭 수행 → 객체가 격자를 넘어 이동한 "
-        "경우에도 동일 객체 안정 추적 가능."
-    ))
-    s.append(bullet(
-        "<b>마스크 배경 제거 + Gale-Shapley 안정 매칭</b>: SAM 마스크로 객체 외부 픽셀을 영(0)으로 "
-        "zeroing한 후 CLIP 임베딩을 산출하고, 노벨 경제학상 수상의 Gale-Shapley 지연 승인 알고리즘으로 "
-        "1:1 안정 매칭을 수행 → 배경 노이즈 원천 제거 및 그리디 매칭의 국소 최적 함정 회피."
-    ))
-    s.append(bullet(
-        "<b>5상태 정밀 분류</b>: 변화 여부의 이진 판정이 아닌 matched/changed/new/disappeared/"
-        "past_not_included/current_not_included의 5개 이상 상태로 정밀 배정 → 특히 촬영 범위 차이를 "
-        "자산 변화로 오인하는 치명적 오판을 원천 배제."
-    ))
-    s.append(bullet(
-        "<b>LLM 비호출 결정론 GraphRAG 시계열 인덱싱</b>: 위경도 격자 양자화 결정론 키에 기반해 "
-        "페어링 결과를 <b>거대언어모델 호출 없이</b> 지식 그래프 카운터에 누적 upsert → 동일 입력에 "
-        "매번 동일한 그래프 산출로 완전 재현성·감사 가능성 확보. Louvain 알고리즘으로 자산 doctrine "
-        "군집(예: 산업 시설군, 교통 인프라)을 자동 발견."
-    ))
-    s.append(bullet(
-        "<b>AI Agent 판독보고서 자율 생성</b>: Local + Global 이중 검색으로 사전 압축된 시공간 "
-        "컨텍스트(~500 토큰)를 LLM 프롬프트에 prepend하고, 표준 IMINT 8섹션 구조와 도메인 의미 "
-        "가드레일을 강제하며, 동일 LLM 인스턴스를 재호출해 좌표·수치 토큰을 바이패스한 무오염 한국어 "
-        "번역까지 자율 생성 → 환각 차단 + 다국어 일관성 확보."
+        "본 발명은 위성·드론 영상에 대해 <b>SAM3 세그멘테이션 모델로 개별 객체를 인스턴스 단위로 "
+        "식별하고 SAM 마스크로 배경을 zeroing한 CLIP 임베딩과 Gale-Shapley 안정 매칭</b>으로 두 시점 "
+        "간 객체를 1:1로 페어링하여 <b>5상태(matched/changed/new/disappeared/past_not_included/"
+        "current_not_included)로 정밀 분류</b>하고, 그 결과를 위경도 격자 양자화 결정론 키에 기반해 "
+        "<b>거대언어모델(LLM) 호출 없이 지식 그래프에 누적 인덱싱(GraphRAG)</b>한 후 Louvain 알고리즘 "
+        "으로 자산 doctrine 군집을 자동 발견하며, Local+Global 이중 검색으로 사전 압축된 시공간 "
+        "컨텍스트를 LLM 프롬프트에 주입하여 <b>표준 IMINT 8섹션 판독보고서를 자율 생성</b>하는 통합 "
+        "end-to-end 구성을 갖는다는 점에서 차별된다."
     ))
 
     s.append(h2("(2) 발명 제안 배경"))
