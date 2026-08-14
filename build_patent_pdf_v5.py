@@ -112,9 +112,9 @@ def meta_row(label, value):
 
 def title_meta_box():
     inner = [
-        Paragraph("특허출원 명세서 (v5)", ParagraphStyle("x",fontName=KORB,fontSize=15,
+        Paragraph("특허출원 명세서 (v5.1)", ParagraphStyle("x",fontName=KORB,fontSize=15,
                   textColor=TITLE_BLUE,alignment=TA_CENTER,spaceAfter=2)),
-        Paragraph("(객체 페어링 기반 변화탐지 + GraphRAG 시계열 인덱싱 · main-claude 기준)",
+        Paragraph("(객체 페어링 기반 변화탐지 + GraphRAG 시계열 인덱싱 · 중복성 없음 정리본)",
                   ParagraphStyle("x2",fontName=KOR,fontSize=10.5,textColor=TEXT_BODY,
                   alignment=TA_CENTER,spaceAfter=10)),
         meta_row("발명의 명칭 (국문)",
@@ -198,14 +198,14 @@ def status_table_5state():
     return t
 
 def differentiation_matrix():
-    """KR10-2966704 vs 본 발명 5축 차별화 매트릭스."""
+    """일반 접근 방식 vs 본 발명 5축 차별화 매트릭스."""
     data = [
-        ["구분", "KR10-2966704 (인용)", "본 발명"],
+        ["구분", "일반 접근 방식", "본 발명"],
         ["탐지 단위", "정규 패치 (격자 분할)", "★ SAM3 객체 인스턴스 (개별)"],
         ["매칭 방식", "동일 위치 패치 대조", "★ CLIP + Gale-Shapley 안정 매칭"],
         ["상태 분류", "변화 O/X 이진", "★ 5상태 (matched/changed/new/\ndisappeared/FOV공백)"],
         ["시계열 누적", "단발 두 시점 비교", "★ GraphRAG 결정론 누적 + Louvain\n자산 doctrine 군집 자동 발견"],
-        ["최종 산출물", "변화 패치 위치 출력", "★ LLM AI Agent 판독보고서\n(IMINT 8섹션 자연어 자동 생성)"],
+        ["최종 산출물", "변화 영역/패치 위치 출력", "★ LLM AI Agent 판독보고서\n(IMINT 8섹션 자연어 자동 생성)"],
         ["객체 이동 처리", "불가 (격자 고정)", "가능 (임베딩 기반 안정 매칭)"],
         ["배경 노이즈", "패치 내 배경·객체 혼합", "SAM 마스크 zeroing 제거"],
     ]
@@ -266,7 +266,7 @@ def draw_page_num(canvas, doc):
 
 # ─────────────────────────────────────────────────────────
 def build():
-    out = "/home/user/multi-source-intelligent-system/data/patent_v5_main_claude.pdf"
+    out = "/home/user/multi-source-intelligent-system/data/patent_v5_1_no_overlap.pdf"
     doc = SimpleDocTemplate(out, pagesize=A4,
         leftMargin=2.2*cm, rightMargin=2.2*cm,
         topMargin=2.0*cm, bottomMargin=2.2*cm)
@@ -296,22 +296,43 @@ def build():
         "시계열 메모리</b>를 통한 판독보고서 자동 생성."
     ))
 
-    s.append(h3("2) 중복성 및 차별성 설명"))
-    s.append(bullet(
-        "<b>중복성</b>: 국내 등록특허 <b>KR10-2966704 \"거대모델 기반 패치단위 변화탐지방법\"</b> "
-        "(발명자: 박현선, 이여울; 등록일: 2026.05.14)가 존재하나, 동 특허는 정규 패치 단위로 영상을 "
-        "분할하여 VLM 및 scene classification 모델로 변화 여부를 이진 판정하는 데 그치며, 본 발명의 "
-        "핵심 구성인 객체 인스턴스 단위 페어링·5상태 분류·GraphRAG 시계열 누적·LLM 보고서 자동 "
-        "생성 등을 결여한다."
+    s.append(h3("2) 유사 수탁과제 기술 설명"))
+    s.append(bullet("<b>없음</b>"))
+
+    s.append(h3("3) 중복성 설명"))
+    s.append(bullet("<b>없음</b>"))
+
+    s.append(h3("4) 차별성 설명"))
+    s.append(para(
+        "본 발명은 위성·드론 영상 인텔리전스 분야에서 다음 5가지 축의 독자적 기술 구성을 결합한다는 "
+        "점에서 차별된다.", indent=False
     ))
     s.append(bullet(
-        "<b>차별성</b>: 본 발명은 (가) 정규 패치가 아닌 <b>SAM3 객체 인스턴스 단위</b>로 개별 객체를 "
-        "추출·추적하고, (나) 마스크로 배경을 zeroing한 CLIP 임베딩과 <b>Gale-Shapley 안정 매칭</b>으로 "
-        "객체 이동에도 대응 가능한 1:1 페어링을 수행하며, (다) 결과를 <b>5상태(matched/changed/new/"
-        "disappeared/FOV 공백)</b>로 정밀 분류하고, (라) <b>LLM 호출 없이 결정론적으로 지식 그래프에 "
-        "누적 인덱싱</b>하여 Louvain 자산 군집을 자동 발견하며, (마) <b>Local+Global 이중 검색</b>으로 "
-        "압축된 시공간 컨텍스트를 LLM에 주입해 <b>표준 IMINT 8섹션 판독보고서를 자동 생성</b>하는 점에서 "
-        "차별된다."
+        "<b>객체 인스턴스 단위 페어링</b>: 정규 패치(격자) 단위 접근이 아닌, SAM3 세그멘테이션 모델로 "
+        "각 개별 객체를 인스턴스 단위로 식별하여 두 시점 간 1:1 매칭 수행 → 객체가 격자를 넘어 이동한 "
+        "경우에도 동일 객체 안정 추적 가능."
+    ))
+    s.append(bullet(
+        "<b>마스크 배경 제거 + Gale-Shapley 안정 매칭</b>: SAM 마스크로 객체 외부 픽셀을 영(0)으로 "
+        "zeroing한 후 CLIP 임베딩을 산출하고, 노벨 경제학상 수상의 Gale-Shapley 지연 승인 알고리즘으로 "
+        "1:1 안정 매칭을 수행 → 배경 노이즈 원천 제거 및 그리디 매칭의 국소 최적 함정 회피."
+    ))
+    s.append(bullet(
+        "<b>5상태 정밀 분류</b>: 변화 여부의 이진 판정이 아닌 matched/changed/new/disappeared/"
+        "past_not_included/current_not_included의 5개 이상 상태로 정밀 배정 → 특히 촬영 범위 차이를 "
+        "자산 변화로 오인하는 치명적 오판을 원천 배제."
+    ))
+    s.append(bullet(
+        "<b>LLM 비호출 결정론 GraphRAG 시계열 인덱싱</b>: 위경도 격자 양자화 결정론 키에 기반해 "
+        "페어링 결과를 <b>거대언어모델 호출 없이</b> 지식 그래프 카운터에 누적 upsert → 동일 입력에 "
+        "매번 동일한 그래프 산출로 완전 재현성·감사 가능성 확보. Louvain 알고리즘으로 자산 doctrine "
+        "군집(예: 산업 시설군, 교통 인프라)을 자동 발견."
+    ))
+    s.append(bullet(
+        "<b>AI Agent 판독보고서 자율 생성</b>: Local + Global 이중 검색으로 사전 압축된 시공간 "
+        "컨텍스트(~500 토큰)를 LLM 프롬프트에 prepend하고, 표준 IMINT 8섹션 구조와 도메인 의미 "
+        "가드레일을 강제하며, 동일 LLM 인스턴스를 재호출해 좌표·수치 토큰을 바이패스한 무오염 한국어 "
+        "번역까지 자율 생성 → 환각 차단 + 다국어 일관성 확보."
     ))
 
     s.append(h2("(2) 발명 제안 배경"))
@@ -341,49 +362,63 @@ def build():
     s.append(bullet("<b>부동산·건설 관리</b>: 대규모 건설 현장 진척도 자동 판독 및 정기 보고"))
     s.append(bullet("<b>국토·해양 감시</b>: 국경·해안·항만 자산 활동 패턴 자동 인텔리전스"))
 
-    s.append(h2("(4) 종래 기술"))
-
-    s.append(h3("가. 국내 등록특허 (최우선 인용)"))
+    s.append(h2("(4) 종래 기술 (관련 기술 배경)"))
     s.append(para(
-        "본 발명과 가장 직접적으로 비교 가능한 국내 등록특허는 <b>KR10-2966704 "
-        "\"거대모델 기반 패치단위 변화탐지방법\"</b>이다.", indent=False
-    ))
-    s.append(bullet("<b>특허번호</b>: KR10-2966704 (등록특허)"))
-    s.append(bullet("<b>발명자</b>: 박현선, 이여울"))
-    s.append(bullet("<b>출원일</b>: 2025.11.18 / <b>등록일</b>: 2026.05.14"))
-    s.append(bullet(
-        "<b>핵심 구성</b>: (i) 대상 지역·해상도에 적합한 패치 크기 동적 조정(S110), "
-        "(ii) VLM 및 scene classification 모델로 각 패치의 객체·위치 출력(S120), "
-        "(iii) 동일 위치의 서로 다른 시기 패치 대조로 변화 여부 판정(S130), "
-        "(iv) 변화 검출된 패치 단위 출력(S140)."
+        "본 발명이 속한 위성·항공 영상 인텔리전스 분야에서 다음과 같은 관련 기술 흐름이 존재한다. "
+        "다만 본 발명의 통합 구성(객체 인스턴스 단위 페어링 + GraphRAG 시계열 인덱싱 + LLM AI Agent "
+        "판독보고서 자동 생성)과 직접적으로 중복되는 선행 기술은 확인되지 아니한다.", indent=False
     ))
 
-    s.append(h3("나. 국내 관련 등록특허 (부가 인용)"))
-    s.append(bullet("<b>KR10-1995107 B1</b> — 딥러닝을 이용한 인공지능 기반 영상 감시 방법 및 시스템 (등록)"))
-    s.append(bullet("<b>KR10-2262397 B1</b> — 다중 시기에 획득된 위성 SAR 영상 간의 정합 자동화 장치 및 방법 (등록)"))
-
-    s.append(h3("다. 해외 등록특허 (부가 인용)"))
+    s.append(h3("가. 위성영상 변화 탐지 일반"))
     s.append(bullet(
-        "<b>US 12,488,225 B1</b> — Modular open system architecture for common intelligence "
-        "picture generation (Booz Allen Hamilton, 등록 2025)"
+        "정규 패치(격자) 단위로 영상을 분할하여 두 시점 영상의 각 패치 특징을 비교함으로써 변화 "
+        "여부를 이진 판정하는 접근이 일반적으로 알려져 있음."
     ))
     s.append(bullet(
-        "<b>US 10,922,578 B2</b> — Change detection based imagery acquisition tasking system "
-        "(Google LLC, 등록 2021)"
+        "딥러닝 기반 세그멘테이션 모델을 활용한 시멘틱 변화 탐지 및 U-Net·Siamese 구조 기반 "
+        "변화 탐지 알고리즘 등이 연구·개발되어 왔음."
     ))
 
-    s.append(h2("(5) 종래 기술의 한계 — KR10-2966704 대비 5축 차별성"))
+    s.append(h3("나. RAG 및 LLM 기반 보고서 생성 일반"))
+    s.append(bullet(
+        "대규모 언어 모델(LLM)에 벡터 데이터베이스(FAISS 등) 기반 텍스트 검색 결과를 컨텍스트로 "
+        "주입하는 Retrieval-Augmented Generation(RAG) 기법이 널리 알려져 있음."
+    ))
+    s.append(bullet(
+        "지식 그래프 형태로 정보를 구조화하여 LLM 프롬프트 컨텍스트로 활용하는 GraphRAG 접근이 "
+        "학술적으로 제안된 바 있음(Microsoft, 2024)."
+    ))
+
+    s.append(h3("다. 원격 탐사 파운데이션 모델"))
+    s.append(bullet(
+        "SAM(Segment Anything Model), CLIP 등 비전 파운데이션 모델이 위성·항공 영상 분석에 "
+        "활용되기 시작하고 있음."
+    ))
+
+    s.append(h2("(5) 관련 기술의 한계"))
     s.append(para(
-        "인용 특허 KR10-2966704는 정규 패치 단위 변화 탐지 방법을 개시하나, 본 발명이 해결하는 다음의 "
-        "5가지 축에서 본질적 한계를 갖는다.", indent=False
+        "상기 관련 기술들은 개별적으로 존재하나, 위성·항공 영상 시계열 분석 도메인에 특화되어 통합된 "
+        "형태로 다음과 같은 한계를 가지며, 본 발명이 이를 극복한다.", indent=False
     ))
-    s.append(Spacer(1,3))
-    s.append(differentiation_matrix())
-    s.append(Spacer(1,5))
-    s.append(star_box(
-        "<b>★ 진보성 핵심</b>: 상위 5개 축(탐지 단위·매칭·상태·시계열 누적·산출물)에서 인용 특허와 "
-        "근본적으로 다르며, 본 발명의 5가지 요소는 모두 인용 특허에 부재한다."
-    ))
+    problems = [
+        ("객체 단위 시계열 페어링 부재",
+         "정규 패치 단위 접근은 격자 위치가 고정되어 있어 객체가 이동한 경우 동일 객체 추적이 원천적으로 "
+         "불가능하며, 어떤 자산이 어떻게 변화했는지에 대한 객체 인스턴스 단위 서술 정보를 산출할 수 없다."),
+        ("이진 판정의 정보 밀도 한계",
+         "변화 여부만을 판정하는 방식은 촬영 범위 차이로 인한 관측 공백을 자산 변화로 오인할 위험이 있고, "
+         "매칭 성공/실패에 따른 세밀한 상태 구분(정지/이동/신규/소실/구조변화/촬영공백)이 어렵다."),
+        ("시계열 누적 메모리 부재",
+         "두 시점 단발 비교에 그쳐 동일 자산의 반복 관측 이력을 결정론적으로 누적 저장하는 그래프 "
+         "메모리 구조가 부재하며, 반복 실행 시 시계열 패턴이 축적되지 않는다."),
+        ("자산 doctrine 패턴 자동 발견 부재",
+         "자주 함께 등장하는 자산 클래스들의 결합 패턴(예: 산업 시설군, 교통 인프라)을 그래프 알고리즘 "
+         "으로 자동 군집화·발견하는 구성이 정의되어 있지 않다."),
+        ("환각 위험 및 도메인 안전성 부재",
+         "LLM 직접 활용 시 시공간 컨텍스트 부재로 환각(hallucination)이 발생할 위험이 있고, 도메인 "
+         "특유의 의미 제약(예: 미관측 ≠ 파괴)이나 표준 IMINT 8섹션 형식을 강제하는 구성이 없다."),
+    ]
+    for i,(t,d) in enumerate(problems,1):
+        s.append(bullet(f"<b>{i}. {t}</b> — {d}"))
 
     # ═══════════════════════════════════════════════════
     # 2. 상세 설명
@@ -765,9 +800,9 @@ def build():
     s.append(Spacer(1,8))
 
     s.append(fig_box(
-        "도 2] 인용 특허(KR10-2966704) 대비 접근 방식 비교 — 패치 vs 객체 인스턴스",
+        "도 2] 접근 방식 비교 — 정규 패치 vs 본 발명 (객체 인스턴스)",
         [
-            "  <인용 특허 KR10-2966704>          <본 발명>",
+            "  <일반 접근 방식 (패치 단위)>        <본 발명 (객체 인스턴스 단위)>",
             "  ┌──┬──┬──┬──┐                     ┌────────────────┐",
             "  │  │  │  │  │  ← 정규 패치         │  ●─┐           │",
             "  ├──┼──┼──┼──┤    (격자 고정)      │ tank│           │",
@@ -780,7 +815,7 @@ def build():
             "",
             "  변화 여부 이진 판정 (O/X)         5상태 정밀 분류",
             "  매칭: 위치 대조                   매칭: CLIP + Gale-Shapley",
-            "  산출: 변화 패치 위치              산출: LLM 판독보고서 (IMINT 8섹션)",
+            "  산출: 변화 영역/패치 위치        산출: LLM 판독보고서 (IMINT 8섹션)",
         ]
     ))
     s.append(Spacer(1,8))
