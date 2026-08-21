@@ -225,10 +225,10 @@ for i in range(3):
     ax.add_patch(Circle((10.5, cy), 0.15, facecolor=PAIR, edgecolor="white", lw=1))
     ax.text(10.8, cy, f"현재{i+1}", ha="left", va="center", fontsize=8.5, color=TEXT)
 
-# 매칭 선 (대각선 매칭)
-ax.plot([2.65, 10.35], [4.4, 5.0], color=GREEN, lw=2.5, alpha=0.9)
-ax.plot([2.65, 10.35], [4.7, 4.7], color=GREEN, lw=2.5, alpha=0.9)
-ax.plot([2.65, 10.35], [5.0, 4.4], color=GREEN, lw=2.5, alpha=0.9)
+# 매칭 선 (유사도 행렬 기준: 과거i ↔ 현재i 로 straight matching)
+ax.plot([2.65, 10.35], [4.4, 4.4], color=GREEN, lw=2.5, alpha=0.9)  # 과거1↔현재1 (0.89)
+ax.plot([2.65, 10.35], [4.7, 4.7], color=GREEN, lw=2.5, alpha=0.9)  # 과거2↔현재2 (0.87)
+ax.plot([2.65, 10.35], [5.0, 5.0], color=GREEN, lw=2.5, alpha=0.9)  # 과거3↔현재3 (0.81)
 
 # 매칭 이름 표시
 ax.text(6.5, 5.25, "각자에게 최선의 짝을 안정적으로 배정",
