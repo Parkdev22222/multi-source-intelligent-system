@@ -139,8 +139,19 @@ stage_bg(8.9, 1.9, "3단계", "각 객체를 비전 AI 인코더에 넣어 외�
 
 np.random.seed(42)
 
-def flow_row(x_obj, y_row, x_enc, x_vec, obj_label, vec_label, color_obj=PAIR):
-    """객체 3개 → 인코더 박스 → 벡터 3개 흐름 (한 행)."""
+# 같은 객체는 (거의) 같은 벡터가 나와야 함을 시각화하기 위해
+# 3쌍의 "베이스 패턴"을 만들고, 과거·현재에 미세 노이즈만 추가하여 재사용.
+_BASE_PATTERNS = [
+    [0.14, 0.08, 0.13, 0.05, 0.10],   # 객체 1 base
+    [0.06, 0.15, 0.09, 0.13, 0.07],   # 객체 2 base
+    [0.11, 0.06, 0.08, 0.14, 0.13],   # 객체 3 base
+]
+
+
+def flow_row(x_obj, y_row, x_enc, x_vec, obj_label, vec_label,
+             color_obj=PAIR, noise_seed=0):
+    """객체 3개 → 인코더 박스 → 벡터 3개 흐름 (한 행).
+    벡터 값은 _BASE_PATTERNS + 소량 노이즈 → 과거·현재 시각적 유사성 확보."""
     # 객체 3개
     ax.text(x_obj + 0.3, y_row + 0.85, obj_label, ha="center", fontsize=9,
             fontweight="bold", color=TEXT)
@@ -161,25 +172,29 @@ def flow_row(x_obj, y_row, x_enc, x_vec, obj_label, vec_label, color_obj=PAIR):
                                   arrowstyle="->,head_length=8,head_width=6",
                                   color="#334155", lw=1.8))
 
-    # 벡터 3개 (막대)
+    # 벡터 3개 (막대) — 베이스 패턴 + 소량 노이즈
     ax.text(x_vec + 0.5, y_row + 0.85, vec_label, ha="center", fontsize=9,
             fontweight="bold", color=TEXT)
+    rng = np.random.default_rng(noise_seed)
     for i in range(3):
         yy = y_row + 0.2 + i * 0.22
-        for j in range(5):
-            h = np.random.uniform(0.05, 0.15)
+        base = _BASE_PATTERNS[i]
+        for j, bv in enumerate(base):
+            h = max(0.03, bv + rng.uniform(-0.012, 0.012))  # 미세 노이즈만
             ax.add_patch(Rectangle((x_vec + 0.05 + j * 0.15, yy),
                                     0.13, h,
                                     facecolor=EMB_PURPLE, edgecolor="none"))
 
 
-# 상단 행: 과거
+# 상단 행: 과거 (noise_seed=1)
 flow_row(x_obj=1.0, y_row=10.15, x_enc=3.8, x_vec=8.4,
-         obj_label="과거 객체 3개", vec_label="과거 벡터 3개")
+         obj_label="과거 객체 3개", vec_label="과거 벡터 3개",
+         noise_seed=1)
 
-# 하단 행: 현재
+# 하단 행: 현재 (noise_seed=2) — 같은 객체는 거의 같은 벡터가 나옴
 flow_row(x_obj=1.0, y_row=9.05, x_enc=3.8, x_vec=8.4,
-         obj_label="현재 객체 3개", vec_label="현재 벡터 3개")
+         obj_label="현재 객체 3개", vec_label="현재 벡터 3개",
+         noise_seed=2)
 
 # 중앙 인코더 박스 (두 행에 걸쳐 하나로 그림)
 ax.add_patch(FancyBboxPatch((3.8, 9.05), 1.8, 2.0, boxstyle="round,pad=0.08",
@@ -191,7 +206,7 @@ ax.text(4.7, 9.85, "(ViT / CLIP)", ha="center", va="center",
 
 # 하단 설명
 ax.text(6.5, 8.95,
-        "→ 같은 인코더에 넣어 나온 벡터끼리 비교하면 외형이 얼마나 닮았는지 알 수 있음",
+        "→ 같은 객체는 (거의) 같은 벡터가 나오므로, 벡터끼리 비교하면 외형 유사도를 알 수 있음",
         ha="center", fontsize=8.5, color=MUTED, style="italic")
 
 arrow_down(6.5, 8.9, 7.85, label=None)
