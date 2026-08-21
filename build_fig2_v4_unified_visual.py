@@ -196,39 +196,47 @@ arrow_down(3.65, 14.65, 13.5, color=FIX_MAIN, lw=2, label="결합됨")
 ax.text(3.65, 13.25, "② 결합된 쌍의 CLIP 외형 비교",
         ha="center", fontsize=10, fontweight="bold", color=FIX_MAIN)
 
-# 두 crop 나란히
+# 두 crop 세로로 배치 (병렬 입력)
 def crop_img(x, y, obj_color, label):
-    ax.add_patch(Rectangle((x, y), 0.8, 0.8, facecolor="#f5f5f4",
+    ax.add_patch(Rectangle((x, y), 0.75, 0.6, facecolor="#f5f5f4",
                            edgecolor=GREY, lw=1))
-    ax.add_patch(Rectangle((x+0.15, y+0.15), 0.5, 0.5,
+    ax.add_patch(Rectangle((x+0.15, y+0.1), 0.45, 0.4,
                            facecolor=obj_color, edgecolor="white", lw=0.5))
-    ax.text(x+0.4, y-0.2, label, ha="center", fontsize=8, color=MUTED)
+    ax.text(x-0.05, y+0.3, label, ha="right", va="center",
+            fontsize=8, fontweight="bold", color=TEXT)
 
-crop_img(0.8, 12.15, FIX_MAIN, "과거 crop")
-crop_img(2.35, 12.15, FIX_MAIN, "현재 crop")
+# 과거·현재 crop (세로 스택)
+crop_img(1.15, 12.65, FIX_MAIN, "과거 crop")
+crop_img(1.15, 11.85, FIX_MAIN, "현재 crop")
 
-# CLIP 박스
-ax.add_patch(FancyBboxPatch((3.65, 12.15), 1.5, 0.8, boxstyle="round,pad=0.04",
+# CLIP 박스 (두 crop 오른쪽 중앙)
+ax.add_patch(FancyBboxPatch((3.5, 12.05), 1.7, 1.0, boxstyle="round,pad=0.04",
                              facecolor=FIX_LIGHT, edgecolor=FIX_MAIN, lw=1.2))
-ax.text(4.4, 12.55, "CLIP\n유사도",
-        ha="center", va="center", fontsize=9, fontweight="bold", color="#78350f")
+ax.text(4.35, 12.72, "CLIP",
+        ha="center", va="center", fontsize=10, fontweight="bold", color="#78350f")
+ax.text(4.35, 12.42, "유사도 계산",
+        ha="center", va="center", fontsize=8.5, color="#78350f", style="italic")
 
-# 화살표
-arrow(1.6, 12.55, 2.35, 12.55, color="#334155", lw=1.2, mut=6)
-arrow(3.15, 12.55, 3.65, 12.55, color="#334155", lw=1.2, mut=6)
-arrow(5.15, 12.55, 5.7, 12.55, color="#334155", lw=1.2, mut=6)
+# 두 crop → CLIP 화살표 (양쪽에서 병렬로)
+arrow(1.9, 12.95, 3.5, 12.75, color="#334155", lw=1.4, mut=7)
+arrow(1.9, 12.15, 3.5, 12.35, color="#334155", lw=1.4, mut=7)
+
+# CLIP → 결과 화살표
+arrow(5.2, 12.55, 5.7, 12.55, color="#334155", lw=1.4, mut=7)
 
 # 결과 (matched or changed)
-ax.add_patch(FancyBboxPatch((5.7, 12.6), 1.35, 0.35, boxstyle="round,pad=0.02",
+ax.add_patch(FancyBboxPatch((5.7, 12.7), 1.35, 0.35, boxstyle="round,pad=0.02",
                              facecolor=MOV_MAIN, edgecolor="none"))
-ax.text(6.35, 12.77, "matched", ha="center", va="center", fontsize=9,
+ax.text(6.35, 12.87, "matched", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.add_patch(FancyBboxPatch((5.7, 12.15), 1.35, 0.35, boxstyle="round,pad=0.02",
+ax.add_patch(FancyBboxPatch((5.7, 12.05), 1.35, 0.35, boxstyle="round,pad=0.02",
                              facecolor=FIX_MAIN, edgecolor="none"))
-ax.text(6.35, 12.32, "changed", ha="center", va="center", fontsize=9,
+ax.text(6.35, 12.22, "changed", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(7.1, 12.77, "≥ 0.5", ha="left", fontsize=7, color=MUTED)
-ax.text(7.1, 12.32, "< 0.5", ha="left", fontsize=7, color=MUTED)
+ax.text(6.35, 12.5, "유사도에 따라 분기", ha="center", fontsize=7,
+        color=MUTED, style="italic")
+ax.text(7.1, 12.87, "≥ 0.5", ha="left", fontsize=7, color=MUTED)
+ax.text(7.1, 12.22, "< 0.5", ha="left", fontsize=7, color=MUTED)
 
 arrow_down(3.65, 11.85, 10.9, color=FIX_MAIN, lw=2)
 
@@ -237,30 +245,37 @@ arrow_down(3.65, 11.85, 10.9, color=FIX_MAIN, lw=2)
 ax.text(3.65, 10.55, "③ 한쪽 유실 시 가상 탐지 합성",
         ha="center", fontsize=10, fontweight="bold", color=FIX_MAIN)
 
-# 과거만 있고 현재는 없음
-crop_img(0.8, 9.3, FIX_MAIN, "과거 crop")
-# 현재는 미탐지 (X 표시)
-ax.add_patch(Rectangle((2.35, 9.3), 0.8, 0.8, facecolor="#f5f5f4",
+# 현재는 미탐지 (X 표시) — 상단
+ax.add_patch(Rectangle((0.85, 9.75), 0.8, 0.6, facecolor="#f5f5f4",
                        edgecolor=GREY, lw=1))
-ax.text(2.75, 9.7, "?", ha="center", va="center", fontsize=30, color=RED,
+ax.text(1.25, 10.05, "?", ha="center", va="center", fontsize=22, color=RED,
         fontweight="bold")
-ax.text(2.75, 9.1, "현재 (탐지 실패)", ha="center", fontsize=7, color=RED)
+ax.text(1.25, 9.6, "현재 (탐지 실패)", ha="center", fontsize=7, color=RED)
 
-# 화살표 아래로 (강제 crop)
-ax.annotate("", xy=(2.75, 8.3), xytext=(2.75, 8.9),
+# 같은 위경도로 강제 crop 생성 (아래로 화살표)
+ax.annotate("", xy=(1.25, 9.15), xytext=(1.25, 9.55),
             arrowprops=dict(arrowstyle="->", color=NEUTRAL, lw=1.2))
-ax.text(3.4, 8.6, "같은 위경도\n강제 crop", fontsize=7.5, color=MUTED, style="italic")
+ax.text(2.0, 9.35, "같은 위경도\n강제 crop", fontsize=7, color=MUTED, style="italic")
 
-# 강제 crop 결과
-crop_img(2.35, 7.5, FIX_MAIN, "강제 crop")
+# 두 crop 세로로 배치 (병렬 입력): 과거 crop + 강제 crop
+crop_img(1.15, 8.35, FIX_MAIN, "과거 crop")
+crop_img(1.15, 7.55, FIX_MAIN, "강제 crop")
 
-# 다시 CLIP 비교
-ax.add_patch(FancyBboxPatch((3.65, 7.5), 1.5, 0.8, boxstyle="round,pad=0.04",
+# CLIP 재검증 박스 (두 crop 오른쪽 중앙)
+ax.add_patch(FancyBboxPatch((3.5, 7.75), 1.7, 1.0, boxstyle="round,pad=0.04",
                              facecolor=FIX_LIGHT, edgecolor=FIX_MAIN, lw=1.2))
-ax.text(4.4, 7.9, "CLIP\n재검증", ha="center", va="center", fontsize=9,
-        fontweight="bold", color="#78350f")
-arrow(3.15, 7.9, 3.65, 7.9, color="#334155", lw=1.2, mut=6)
-arrow(5.15, 7.9, 5.7, 7.9, color="#334155", lw=1.2, mut=6)
+ax.text(4.35, 8.42, "CLIP",
+        ha="center", va="center", fontsize=10, fontweight="bold", color="#78350f")
+ax.text(4.35, 8.12, "재검증",
+        ha="center", va="center", fontsize=8.5, color="#78350f", style="italic")
+
+# 두 crop → CLIP 병렬 화살표
+arrow(1.9, 8.65, 3.5, 8.45, color="#334155", lw=1.4, mut=7)
+arrow(1.9, 7.85, 3.5, 8.05, color="#334155", lw=1.4, mut=7)
+
+# CLIP → 결과 분기
+arrow(5.2, 8.25, 5.7, 8.05, color="#334155", lw=1.2, mut=6)
+arrow(5.2, 8.25, 5.7, 7.55, color="#334155", lw=1.2, mut=6)
 
 # 결과
 ax.add_patch(FancyBboxPatch((5.7, 7.85), 1.35, 0.4,
