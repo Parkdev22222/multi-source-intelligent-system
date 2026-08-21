@@ -133,36 +133,66 @@ arrow_down(9.75, 11.6, 10.7)
 
 # ═══════════════════════════════════════════════════════════════
 # [3단계] 시각 특징 벡터로 변환 (임베딩)
+#   [객체] ──► [비전 AI 인코더] ──► [특징 벡터]  (좌→우 단순 흐름)
 # ═══════════════════════════════════════════════════════════════
-stage_bg(8.9, 1.8, "3단계", "각 객체의 외형을 숫자 벡터로 변환 (ViT/CLIP 비전 인코더)")
-
-# 좌: 과거 3개 객체 → 벡터
-def emb_group(x0, y0, label):
-    ax.text(x0+1.4, y0+1.4, label, ha="center", fontsize=10, fontweight="bold", color=TEXT)
-    for i in range(3):
-        # 객체 아이콘
-        ax.add_patch(Rectangle((x0, y0+i*0.35), 0.25, 0.2, facecolor=PAIR, edgecolor="white", lw=0.5))
-        # 화살표
-        ax.add_patch(FancyArrowPatch((x0+0.3, y0+0.1+i*0.35), (x0+0.65, y0+0.1+i*0.35),
-                                      arrowstyle="->,head_length=4,head_width=3",
-                                      color="#334155", lw=1))
-        # 벡터 (막대들)
-        for j in range(6):
-            h = np.random.uniform(0.05, 0.18)
-            ax.add_patch(Rectangle((x0+0.7+j*0.13, y0+i*0.35), 0.11, h, facecolor=EMB_PURPLE, edgecolor="none"))
-    ax.text(x0+1.4, y0-0.25, "특징 벡터", ha="center", fontsize=8, color=MUTED, style="italic")
+stage_bg(8.9, 1.9, "3단계", "각 객체를 비전 AI 인코더에 넣어 외형을 숫자 벡터로 변환 (ViT/CLIP)")
 
 np.random.seed(42)
-emb_group(1.3, 9.2, "과거 객체 → 벡터")
-emb_group(8.3, 9.2, "현재 객체 → 벡터")
 
-# 중앙 설명 박스
-ax.add_patch(FancyBboxPatch((5.0, 9.4), 3.0, 1.0, boxstyle="round,pad=0.05",
-                            facecolor="#fef3c7", edgecolor="#f59e0b", lw=1))
-ax.text(6.5, 10.0, "비전 AI 인코더", ha="center", fontsize=10,
-        fontweight="bold", color="#78350f")
-ax.text(6.5, 9.65, "(ViT / CLIP)", ha="center", fontsize=9,
-        color="#78350f", style="italic")
+def flow_row(x_obj, y_row, x_enc, x_vec, obj_label, vec_label, color_obj=PAIR):
+    """객체 3개 → 인코더 박스 → 벡터 3개 흐름 (한 행)."""
+    # 객체 3개
+    ax.text(x_obj + 0.3, y_row + 0.85, obj_label, ha="center", fontsize=9,
+            fontweight="bold", color=TEXT)
+    for i in range(3):
+        yy = y_row + 0.2 + i * 0.22
+        ax.add_patch(Rectangle((x_obj + 0.15, yy), 0.3, 0.16,
+                                facecolor=color_obj, edgecolor="white", lw=0.5))
+
+    # 객체 → 인코더 화살표
+    ax.add_patch(FancyArrowPatch((x_obj + 0.55, y_row + 0.45),
+                                  (x_enc - 0.05, y_row + 0.45),
+                                  arrowstyle="->,head_length=8,head_width=6",
+                                  color="#334155", lw=1.8))
+
+    # 인코더 → 벡터 화살표
+    ax.add_patch(FancyArrowPatch((x_enc + 1.85, y_row + 0.45),
+                                  (x_vec - 0.05, y_row + 0.45),
+                                  arrowstyle="->,head_length=8,head_width=6",
+                                  color="#334155", lw=1.8))
+
+    # 벡터 3개 (막대)
+    ax.text(x_vec + 0.5, y_row + 0.85, vec_label, ha="center", fontsize=9,
+            fontweight="bold", color=TEXT)
+    for i in range(3):
+        yy = y_row + 0.2 + i * 0.22
+        for j in range(5):
+            h = np.random.uniform(0.05, 0.15)
+            ax.add_patch(Rectangle((x_vec + 0.05 + j * 0.15, yy),
+                                    0.13, h,
+                                    facecolor=EMB_PURPLE, edgecolor="none"))
+
+
+# 상단 행: 과거
+flow_row(x_obj=1.0, y_row=10.15, x_enc=3.8, x_vec=8.4,
+         obj_label="과거 객체 3개", vec_label="과거 벡터 3개")
+
+# 하단 행: 현재
+flow_row(x_obj=1.0, y_row=9.05, x_enc=3.8, x_vec=8.4,
+         obj_label="현재 객체 3개", vec_label="현재 벡터 3개")
+
+# 중앙 인코더 박스 (두 행에 걸쳐 하나로 그림)
+ax.add_patch(FancyBboxPatch((3.8, 9.05), 1.8, 2.0, boxstyle="round,pad=0.08",
+                            facecolor="#fef3c7", edgecolor="#f59e0b", lw=1.5))
+ax.text(4.7, 10.35, "비전 AI\n인코더", ha="center", va="center",
+        fontsize=11, fontweight="bold", color="#78350f")
+ax.text(4.7, 9.85, "(ViT / CLIP)", ha="center", va="center",
+        fontsize=8.5, color="#78350f", style="italic")
+
+# 하단 설명
+ax.text(6.5, 8.95,
+        "→ 같은 인코더에 넣어 나온 벡터끼리 비교하면 외형이 얼마나 닮았는지 알 수 있음",
+        ha="center", fontsize=8.5, color=MUTED, style="italic")
 
 arrow_down(6.5, 8.9, 7.85, label=None)
 
