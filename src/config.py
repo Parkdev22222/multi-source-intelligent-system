@@ -76,7 +76,7 @@ REALESRGAN_X2_PATH = os.getenv(
 
 # --- SAM3 Model (Segment Anything Model 3 by Meta AI) ---
 # SAM3 performs text-prompted concept segmentation in a single forward pass,
-# replacing the SAM2 + CLIP two-stage pipeline.
+# replacing the SAM3 + CLIP two-stage pipeline.
 # Model card: https://huggingface.co/facebook/sam3
 SAM3_MODEL_NAME = os.getenv("SAM3_MODEL_NAME", "facebook/sam3")
 SAM3_DEVICE = os.getenv("SAM3_DEVICE", "cuda")  # "cuda" or "cpu"
@@ -151,6 +151,15 @@ COORDINATE_MATCH_RADIUS_DEG = float(os.getenv("COORD_MATCH_RADIUS", "0.01"))
 # Minimum lat/lon displacement (degrees) for static object same-location constraint.
 # 0.001 deg ≈ 111 m at equator – used as geo proximity threshold for static classes.
 MOVE_DISTANCE_THRESHOLD_DEG = float(os.getenv("MOVE_DISTANCE_THRESHOLD", "0.001"))
+
+# Same-location threshold for physically fixed facilities (buildings, radar, etc.).
+# Two detections of the same fixed object from different satellite frames
+# can differ by 10-100 m due to image geo-registration errors and detection
+# centroid variability (especially at 5-30 m/px resolution).
+# Greedy nearest-first assignment in Step 0 prevents mismatching adjacent buildings
+# even with a generous threshold.
+# Default 0.001 deg ≈ 111 m (overridable via STATIC_EXACT_MATCH env var).
+STATIC_EXACT_MATCH_DEG = float(os.getenv("STATIC_EXACT_MATCH", "0.001"))
 
 # --- LLM (EXAONE-3.5-7.8B-Instruct-AWQ via vLLM) ---
 LLM_MODEL_NAME = os.getenv(
@@ -257,6 +266,8 @@ GRAPH_DB_PATH = str(DB_DIR / "graph.db")
 GRAPHRAG_COMMUNITY_INTERVAL = int(os.getenv("GRAPHRAG_COMMUNITY_INTERVAL", "1"))
 # Radius (degrees) used when querying historical context from the graph
 GRAPHRAG_CONTEXT_RADIUS_DEG = float(os.getenv("GRAPHRAG_CONTEXT_RADIUS", "0.05"))
+# Set to "0" or "false" to disable injecting graph context into the LLM prompt.
+GRAPHRAG_CONTEXT_ENABLED = os.getenv("GRAPHRAG_CONTEXT_ENABLED", "true").lower() not in ("0", "false", "no")
 
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

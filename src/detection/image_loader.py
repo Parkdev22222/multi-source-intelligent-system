@@ -49,6 +49,7 @@ class LoadedImage:
     array: np.ndarray            # H × W × 3  uint8 RGB
 
 
+# 메타데이터 딕셔너리를 ImageMeta 객체로 변환
 def _parse_meta_entry(entry: dict, base_dir: Path) -> Optional[ImageMeta]:
     try:
         image_path = str(base_dir / entry["image_file"])
@@ -76,6 +77,7 @@ def _parse_meta_entry(entry: dict, base_dir: Path) -> Optional[ImageMeta]:
         return None
 
 
+# JSON 메타데이터 인덱스 파일을 로드하여 ImageMeta 목록 반환
 def load_metadata_index(metadata_json: str) -> List[ImageMeta]:
     """
     Load the image metadata index file.
@@ -93,6 +95,7 @@ def load_metadata_index(metadata_json: str) -> List[ImageMeta]:
     return metas
 
 
+# 메타데이터 목록에서 이미지를 읽어 LoadedImage로 순차 반환
 def iter_images(metas: List[ImageMeta]) -> Iterator[LoadedImage]:
     """
     Yield LoadedImage objects (metadata + numpy array) for each valid image file.
@@ -115,6 +118,7 @@ def iter_images(metas: List[ImageMeta]) -> Iterator[LoadedImage]:
             logger.error(f"[ImageLoader] Failed to load {p}: {e}")
 
 
+# 픽셀 좌표를 위경도 지리 좌표로 변환
 def pixel_to_geo(
     px: float, py: float,
     img_w: int, img_h: int,

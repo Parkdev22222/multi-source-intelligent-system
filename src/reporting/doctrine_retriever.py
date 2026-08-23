@@ -56,6 +56,7 @@ class DoctrineRetriever:
     # 초기화
     # ------------------------------------------------------------------
 
+    # FAISS 인덱스와 청크 메타데이터를 디스크에서 로드
     def _load(self) -> None:
         """FAISS 인덱스와 메타데이터를 로드한다. 실패 시 경고만 출력하고 계속."""
         index_path = self._db_dir / "doctrine.index"
@@ -117,6 +118,7 @@ class DoctrineRetriever:
     # 쿼리 생성
     # ------------------------------------------------------------------
 
+    # 탐지 클래스와 좌표를 교리 검색용 자연어 쿼리로 변환
     @staticmethod
     def _build_query(object_classes: list[str], region_lat: float, region_lon: float) -> str:
         """
@@ -138,6 +140,7 @@ class DoctrineRetriever:
     # 검색
     # ------------------------------------------------------------------
 
+    # 쿼리로 FAISS 인덱스에서 관련 교리 청크 검색
     def retrieve(
         self,
         query: str,
@@ -181,6 +184,7 @@ class DoctrineRetriever:
     # 컨텍스트 포맷
     # ------------------------------------------------------------------
 
+    # 검색 청크를 LLM 프롬프트 삽입용 문자열로 포맷
     @staticmethod
     def _format_context(passages: list[dict], max_chars_per_chunk: int = 600) -> str:
         """
@@ -207,6 +211,7 @@ class DoctrineRetriever:
     # 공개 API
     # ------------------------------------------------------------------
 
+    # 탐지 클래스·좌표 기반으로 관련 교리 컨텍스트 문자열 반환
     def get_context(
         self,
         object_classes: list[str],
@@ -232,6 +237,7 @@ class DoctrineRetriever:
             logger.warning(f"[DoctrineRAG] 검색 오류 ({exc}) — 컨텍스트 없이 진행.")
             return ""
 
+    # 벡터 DB 로드 완료 여부를 반환하는 프로퍼티
     @property
     def is_ready(self) -> bool:
         """벡터 DB가 정상 로드되어 검색 가능한 상태이면 True."""

@@ -30,6 +30,7 @@ STAGE_LABELS = {
 }
 
 
+# 현재 파이프라인 단계를 JSON 파일에 기록
 def write_status(stage: str, lat: float = None, lon: float = None,
                  session_id: str = None) -> None:
     """현재 파이프라인 단계를 파일에 기록한다."""
@@ -50,11 +51,13 @@ def write_status(stage: str, lat: float = None, lon: float = None,
         logger.debug("[PipelineStatus] 상태 기록 실패: %s", exc)
 
 
+# 파이프라인 상태를 idle로 초기화
 def clear_status() -> None:
     """파이프라인 완료 후 idle 상태로 초기화한다."""
     write_status(STAGE_IDLE)
 
 
+# 파일에서 마지막으로 기록된 파이프라인 상태 반환
 def read_status() -> dict:
     """마지막으로 기록된 파이프라인 상태를 반환한다."""
     try:

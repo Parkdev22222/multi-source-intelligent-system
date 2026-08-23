@@ -19,7 +19,7 @@ def make_hwpx(text: str) -> bytes:
     Returns:
         HWPX ZIP 바이너리
     """
-    from hwpx import HwpxDocument
+    from hwpx.document import HwpxDocument
 
     doc = HwpxDocument.new()
     lines = text.split("\n")
