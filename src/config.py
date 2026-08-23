@@ -118,7 +118,52 @@ TILE_MEDIUM_SCALE   = os.getenv("TILE_MEDIUM_SCALE",   "true").lower() == "true"
 TILE_MEDIUM_SIZE    = int(os.getenv("TILE_MEDIUM_SIZE",    str(1008 * 2)))   # 기본 2016px
 TILE_MEDIUM_OVERLAP = int(os.getenv("TILE_MEDIUM_OVERLAP", str(400  * 2)))   # 기본 800px
 
-# --- Military Object Classes (aerial/satellite imagery) ---
+# --- Domain / Object Vocabulary --------------------------------------------
+# MSIS supports multiple application domains sharing the same pipeline.
+#   DOMAIN=urban     → civil urban-development change monitoring (ICCE-Asia track)
+#   DOMAIN=disaster  → post-event building damage assessment (xBD-style)
+#   DOMAIN=military  → legacy IMINT vocabulary (original project default)
+DOMAIN = os.getenv("DOMAIN", "urban").strip().lower()
+
+# Civil / consumer urban monitoring vocabulary.
+# Chosen so that SAM3 open-vocabulary prompts line up with the object
+# categories annotated in LEVIR-CD / LEVIR-CC / WHU-CD / S2Looking.
+URBAN_OBJECT_CLASSES = [
+    "building",
+    "residential building",
+    "apartment block",
+    "house",
+    "warehouse",
+    "factory building",
+    "construction site",
+    "building under construction",
+    "bare land",
+    "parking lot",
+    "road",
+    "vehicle",
+    "tree",
+    "vegetation",
+    "water",
+    "solar panel",
+    "sports field",
+    "unknown object",
+]
+
+DISASTER_OBJECT_CLASSES = [
+    "building",
+    "damaged building",
+    "destroyed building",
+    "collapsed roof",
+    "debris",
+    "flooded area",
+    "burned area",
+    "road",
+    "vehicle",
+    "vegetation",
+    "water",
+    "unknown object",
+]
+
 MILITARY_OBJECT_CLASSES = [
     "military tank",
     "armored personnel carrier",
@@ -142,6 +187,24 @@ MILITARY_OBJECT_CLASSES = [
     "runway",
     "unknown object",
 ]
+
+_DOMAIN_VOCAB = {
+    "urban": URBAN_OBJECT_CLASSES,
+    "disaster": DISASTER_OBJECT_CLASSES,
+    "military": MILITARY_OBJECT_CLASSES,
+}
+
+# Canonical name used by new code.
+OBJECT_CLASSES = _DOMAIN_VOCAB.get(DOMAIN, URBAN_OBJECT_CLASSES)
+
+# Optional explicit override: DOMAIN_CLASSES="building,road,vehicle"
+_override = os.getenv("DOMAIN_CLASSES", "").strip()
+if _override:
+    OBJECT_CLASSES = [c.strip() for c in _override.split(",") if c.strip()]
+
+# Backwards compatibility: the detector still imports MILITARY_OBJECT_CLASSES.
+# Rebind it to the active domain vocabulary so no call site has to change.
+MILITARY_OBJECT_CLASSES = OBJECT_CLASSES
 
 # --- Coordinate Matching ---
 # Radius (in degrees) to consider two detections from the "same region"
