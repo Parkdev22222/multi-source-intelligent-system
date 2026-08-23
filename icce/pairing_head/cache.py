@@ -12,6 +12,11 @@ Layout on disk, one directory per (dataset, split):
         samples.jsonl        one JSON object per benchmark pair (no embeddings)
         embeddings.npz       {"<pair_id>|past": (N,D), "<pair_id>|cur": (M,D)} fp16
 
+Detection masks are kept as the pipeline's own RLE strings inside samples.jsonl
+(optional, --cache-masks). They cost little space and let the pixel-level
+metrics score real segmentation rather than rasterised bounding boxes, which
+matters when comparing against pixel-level supervised baselines.
+
 Self-supervised labels are baked in at cache time from the GT change mask:
     coverage(det) = |det_mask AND change_mask| / |det_mask|
 A detection with coverage >= `change_coverage_thr` sits inside an annotated
@@ -50,6 +55,7 @@ class CachedDet:
     geo_bbox: List[float]
     mask_area: Optional[int] = None
     coverage: float = 0.0          # fraction of this detection inside the GT change mask
+    mask_rle: Optional[str] = None  # SAM3 instance mask, for pixel-level scoring
 
     def to_det(self, embedding: Optional[np.ndarray] = None) -> Det:
         return Det(

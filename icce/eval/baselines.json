@@ -1,0 +1,56 @@
+{
+  "_note": [
+    "Published numbers for the comparison tables. Values are deliberately null:",
+    "fill each one by reading it off the cited paper (or its official repo) and",
+    "flip 'verified' to true. icce/eval/tables.py refuses to typeset an",
+    "unverified row, so nothing unchecked can reach the submitted PDF."
+  ],
+  "levir_cd": {
+    "_metric_keys": ["precision", "recall", "f1", "iou"],
+    "_protocol": "dataset-level confusion matrix over the 128-tile test split, change class",
+    "methods": [
+      {"name": "FC-Siam-Diff", "cite": "daudt2018fully", "venue": "ICIP 2018",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false},
+      {"name": "STANet", "cite": "chen2020spatial", "venue": "Remote Sensing 2020",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false},
+      {"name": "SNUNet", "cite": "fang2021snunet", "venue": "IEEE GRSL 2021",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false},
+      {"name": "BIT", "cite": "chen2021remote", "venue": "IEEE TGRS 2021",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false},
+      {"name": "ChangeFormer", "cite": "bandara2022transformer", "venue": "IGARSS 2022",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false},
+      {"name": "TinyCD", "cite": "codegoni2023tinycd", "venue": "Neural Comput. Appl. 2023",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false}
+    ]
+  },
+  "whu_cd": {
+    "_metric_keys": ["precision", "recall", "f1", "iou"],
+    "_protocol": "cropped 256px test split, change class",
+    "methods": [
+      {"name": "FC-Siam-Diff", "cite": "daudt2018fully", "venue": "ICIP 2018",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false},
+      {"name": "BIT", "cite": "chen2021remote", "venue": "IEEE TGRS 2021",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false},
+      {"name": "ChangeFormer", "cite": "bandara2022transformer", "venue": "IGARSS 2022",
+       "precision": null, "recall": null, "f1": null, "iou": null, "verified": false}
+    ]
+  },
+  "levir_cc": {
+    "_metric_keys": ["BLEU-1", "BLEU-2", "BLEU-3", "BLEU-4", "METEOR", "ROUGE-L", "CIDEr-D"],
+    "_protocol": "LEVIR-CC test split, 5 references per pair, coco-caption metrics",
+    "methods": [
+      {"name": "Capt-Rep-Diff", "cite": "hoxha2022change", "venue": "IEEE TGRS 2022",
+       "BLEU-1": null, "BLEU-2": null, "BLEU-3": null, "BLEU-4": null,
+       "METEOR": null, "ROUGE-L": null, "CIDEr-D": null, "verified": false},
+      {"name": "RSICCformer", "cite": "liu2022remote", "venue": "IEEE TGRS 2022",
+       "BLEU-1": null, "BLEU-2": null, "BLEU-3": null, "BLEU-4": null,
+       "METEOR": null, "ROUGE-L": null, "CIDEr-D": null, "verified": false},
+      {"name": "PSNet", "cite": "liu2023progressive", "venue": "IEEE GRSL 2023",
+       "BLEU-1": null, "BLEU-2": null, "BLEU-3": null, "BLEU-4": null,
+       "METEOR": null, "ROUGE-L": null, "CIDEr-D": null, "verified": false},
+      {"name": "Chg2Cap", "cite": "chang2024changes", "venue": "IEEE TGRS 2024",
+       "BLEU-1": null, "BLEU-2": null, "BLEU-3": null, "BLEU-4": null,
+       "METEOR": null, "ROUGE-L": null, "CIDEr-D": null, "verified": false}
+    ]
+  }
+}
