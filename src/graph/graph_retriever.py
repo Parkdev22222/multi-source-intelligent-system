@@ -26,6 +26,32 @@ logger = logging.getLogger(__name__)
 # How many days of history to surface in the context block
 _HISTORY_DAYS = 90
 
+# Section labels differ by application domain: an urban-monitoring report should
+# not be headed "INTELLIGENCE PATTERN COMMUNITIES". The graph itself is
+# unchanged -- only the wording of the injected context block.
+_DOMAIN_LABELS = {
+    "urban": {
+        "activity": "HISTORICAL DEVELOPMENT ACTIVITY (graph knowledge base):",
+        "dominant": "Dominant object classes",
+        "communities": "RECURRING CO-OCCURRENCE PATTERNS (graph communities):",
+    },
+    "disaster": {
+        "activity": "HISTORICAL DAMAGE ACTIVITY (graph knowledge base):",
+        "dominant": "Dominant object classes",
+        "communities": "RECURRING CO-OCCURRENCE PATTERNS (graph communities):",
+    },
+    "military": {
+        "activity": "HISTORICAL ASSET ACTIVITY (graph knowledge base):",
+        "dominant": "Dominant asset classes",
+        "communities": "INTELLIGENCE PATTERN COMMUNITIES (co-occurrence clusters):",
+    },
+}
+
+
+def _labels() -> dict:
+    from src.config import DOMAIN
+    return _DOMAIN_LABELS.get(DOMAIN, _DOMAIN_LABELS["urban"])
+
 
 def _fmt_dt(dt: Optional[datetime]) -> str:
     if dt is None:
@@ -184,7 +210,7 @@ class GraphRetriever:
 
         # Historical asset activity
         if assets:
-            lines.append("HISTORICAL ASSET ACTIVITY (graph knowledge base):")
+            lines.append(_labels()["activity"])
             for a in assets[:12]:   # cap at 12 to keep prompt concise
                 cls = a["object_class"]
                 new = a["new_count"]
@@ -221,12 +247,12 @@ class GraphRetriever:
                 dom_str = "  ".join(
                     f"{cls}:{v['total']}" for cls, v in dominant
                 )
-                lines += ["", f"  Dominant asset classes: {dom_str}"]
+                lines += ["", f'  {_labels()["dominant"]}: {dom_str}']
 
         # Community summaries
         global_results = self.global_search(lat_c, lon_c, radius_deg)
         if global_results:
-            lines += ["", "INTELLIGENCE PATTERN COMMUNITIES (co-occurrence clusters):"]
+            lines += ["", _labels()["communities"]]
             for cr in global_results:
                 overlap_note = (
                     f"  [↑ {cr['local_overlap']} local match(es)]"
