@@ -298,6 +298,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                    else (bool(gt_instances) if gt_mask is not None else None)),
                 captions=list(pair.captions),
                 parent_scene=scene.parent_scene,
+                image_a=str(pair.image_a), image_b=str(pair.image_b),
             ),
             embeds.get("past"), embeds.get("cur"),
         )

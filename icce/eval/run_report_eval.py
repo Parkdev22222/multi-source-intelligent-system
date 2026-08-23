@@ -45,6 +45,7 @@ from icce.report.graph_context import build_contexts
 from icce.report.llm import GenRequest, build_llm, generate_with_cache
 from icce.report.prompts import (
     GROUNDING_MODES,
+    IMAGE_CONDITIONED_MODES,
     max_tokens_for,
     system_prompt,
     template_caption,
@@ -151,6 +152,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     help="pairing head; omitted -> production heuristic")
     ap.add_argument("--llm", default="echo",
                     help="'echo', 'ollama:<model>' or a HF model id for vLLM")
+    ap.add_argument("--vlm", default=None,
+                    help="multimodal model for the vlm_direct baseline, "
+                         "e.g. Qwen/Qwen2.5-VL-7B-Instruct")
     ap.add_argument("--style", default="caption", choices=("caption", "report"))
     ap.add_argument("--modes", nargs="*", default=list(GROUNDING_MODES))
     ap.add_argument("--out", required=True, type=Path)
@@ -163,6 +167,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--gpu-mem", type=float, default=0.85)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--allow-leakage", action="store_true",
+                    help="debug only: continue past an integrity violation and "
+                         "stamp the results as unclean")
     args = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -179,6 +186,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     order = {s.pair_id: i for i, s in enumerate(samples)}
     past_of = lambda s: base + timedelta(hours=order[s.pair_id])
     cur_of = lambda s: past_of(s) + timedelta(days=30)
+
+    ckpt_extra: Optional[Dict] = None
+    if args.checkpoint and Path(args.checkpoint).is_file():
+        from icce.pairing_head.model import PairingHead
+        _, ckpt_extra = PairingHead.load(args.checkpoint)
+
+    from icce.eval.integrity import check_evaluation
+    integrity = check_evaluation(
+        eval_ids=[s.pair_id for s in samples],
+        eval_split=(samples[0].split if samples else "test"),
+        train_ids=(ckpt_extra or {}).get("train_pair_ids"),
+        checkpoint_extra=ckpt_extra,
+        style_example_split=("train" if args.style == "caption"
+                             and args.style_examples > 0 else None),
+    ).raise_if_dirty(allow=args.allow_leakage)
 
     from icce.pairing_head.infer import LearnedPairer
     pairer = LearnedPairer.from_checkpoint(
@@ -204,6 +226,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if mode == "template":
             gen = {ev.pair_id: (template_caption(ev) if args.style == "caption"
                                 else template_report(ev)) for ev in evidences}
+        elif mode in IMAGE_CONDITIONED_MODES:
+            if not args.vlm:
+                logger.warning("skipping %s: --vlm not set", mode)
+                continue
+            from icce.report.vlm import VlmCaptioner
+            by_id = {s_.pair_id: s_ for s_ in samples}
+            captioner = VlmCaptioner(args.vlm, max_model_len=args.max_model_len,
+                                     gpu_memory_utilization=args.gpu_mem)
+            gen = captioner.caption_batch(
+                [(ev.pair_id, by_id[ev.pair_id].image_a, by_id[ev.pair_id].image_b)
+                 for ev in evidences if ev.pair_id in by_id])
+            _dump_generations(gen, out / f"gen_{mode}_{args.style}.jsonl")
+            del captioner
         else:
             if llm is None:
                 llm = build_llm(args.llm, max_model_len=args.max_model_len,
@@ -236,7 +271,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "dataset": args.dataset, "style": args.style, "llm": args.llm,
         "n_pairs": len(evidences), "checkpoint": str(args.checkpoint),
         "graph_radius_deg": args.graph_radius, "rag_k": args.rag_k,
-        "style_examples": examples, "results": rows,
+        "style_examples": examples, "integrity": integrity.as_dict(),
+        "vlm": args.vlm, "results": rows,
     }, out / f"report_results_{args.style}.json")
 
     if args.style == "caption":
@@ -263,6 +299,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "ChgAcc": "change_accuracy"},
     ), out / f"table_factuality_{args.style}.tex")
     return 0
+
+
+def _dump_generations(gen: Dict[str, str], path: Path) -> None:
+    import json
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        for k, v in gen.items():
+            fh.write(json.dumps({"key": k, "text": v}, ensure_ascii=False) + "\n")
 
 
 def _r(v) -> str:

@@ -42,7 +42,8 @@ logger = logging.getLogger(__name__)
 
 
 def build_variants(checkpoint: Optional[Path], radius: float, device: str,
-                   thresholds: Dict[str, float]) -> List[Dict]:
+                   thresholds: Dict[str, float],
+                   checkpoint_no_xf: Optional[Path] = None) -> List[Dict]:
     mt = thresholds.get("match_threshold", 0.5)
     vt = thresholds.get("verify_threshold", 0.5)
 
@@ -74,6 +75,25 @@ def build_variants(checkpoint: Optional[Path], radius: float, device: str,
                                      match_threshold=mt, verify_threshold=vt,
                                      assignment="hungarian", device=device)},
         ]
+
+    # Ablating cross-frame evidence means *retraining* without it. Zeroing the
+    # block at inference does not measure the feature's contribution -- it
+    # feeds a model inputs it was never trained to see, and standardisation
+    # turns those zeros into a confident wrong signal rather than a neutral
+    # one. This row therefore needs its own checkpoint.
+    if checkpoint_no_xf is not None and Path(checkpoint_no_xf).is_file():
+        from icce.pairing_head.model import PairingHead
+        model_nx, extra_nx = PairingHead.load(checkpoint_no_xf, map_location=device)
+        model_nx.to(device)
+        variants.insert(-1, {
+            "name": "learned head, no cross-frame",
+            "pairer": LearnedPairer(
+                head=model_nx, match_radius_deg=radius,
+                match_threshold=extra_nx.get("match_threshold", 0.5),
+                verify_threshold=extra_nx.get("verify_threshold", 0.5),
+                assignment="hungarian", device=device),
+            "strip_cross_frame": True,
+        })
     return variants
 
 
@@ -103,9 +123,21 @@ def _pred_mask(result, sample, use_masks: bool) -> np.ndarray:
     return out
 
 
+def _strip_cross_frame(samples):
+    """Copy of the samples with the cross-frame block removed (ablation row)."""
+    import copy
+    out = copy.deepcopy(samples)
+    for s in out:
+        for d in list(s.past) + list(s.current):
+            d.xf = None
+    return out
+
+
 def evaluate_variant(variant: Dict, samples, emb, gt_masks: Dict[str, np.ndarray],
                      use_masks: bool) -> Dict:
     pairer = variant["pairer"]
+    if variant.get("strip_cross_frame"):
+        samples = _strip_cross_frame(samples)
     cm = ConfusionMatrix()
     ev = InstanceEvaluator(iou_thr=0.5, score_types=False)
     n_suppressed = 0
@@ -164,6 +196,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Change-detection evaluation")
     ap.add_argument("--cache", required=True, type=Path)
     ap.add_argument("--checkpoint", type=Path, default=None)
+    ap.add_argument("--checkpoint-no-xf", type=Path, default=None,
+                    help="head retrained without cross-frame evidence; enables "
+                         "the cross-frame ablation row")
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--split", default="test")
     ap.add_argument("--out", required=True, type=Path)
@@ -171,6 +206,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--bbox-pixels", action="store_true",
                     help="rasterise bounding boxes instead of SAM3 masks")
+    ap.add_argument("--allow-leakage", action="store_true",
+                    help="debug only: continue past an integrity violation and "
+                         "stamp the results as unclean")
     args = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -179,11 +217,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     logger.info("%d cached pairs from %s", len(samples), args.cache)
 
     thresholds: Dict[str, float] = {}
+    ckpt_extra: Optional[Dict] = None
     if args.checkpoint and Path(args.checkpoint).is_file():
         from icce.pairing_head.model import PairingHead
-        _, extra = PairingHead.load(args.checkpoint)
-        thresholds = {k: extra[k] for k in ("match_threshold", "verify_threshold") if k in extra}
+        _, ckpt_extra = PairingHead.load(args.checkpoint)
+        thresholds = {k: ckpt_extra[k] for k in ("match_threshold", "verify_threshold")
+                      if k in ckpt_extra}
         logger.info("thresholds from checkpoint: %s", thresholds)
+
+    from icce.eval.integrity import check_evaluation
+    integrity = check_evaluation(
+        eval_ids=[s.pair_id for s in samples], eval_split=args.split,
+        train_ids=(ckpt_extra or {}).get("train_pair_ids"),
+        checkpoint_extra=ckpt_extra,
+    ).raise_if_dirty(allow=args.allow_leakage)
 
     gt_masks = load_gt_masks(args.dataset, args.split, samples)
     use_masks = not args.bbox_pixels and any(d.mask_rle for s in samples for d in s.current)
@@ -192,7 +239,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                        "and are a lower bound")
 
     rows = []
-    for v in build_variants(args.checkpoint, args.match_radius, args.device, thresholds):
+    for v in build_variants(args.checkpoint, args.match_radius, args.device,
+                            thresholds, args.checkpoint_no_xf):
         r = evaluate_variant(v, samples, emb, gt_masks, use_masks)
         logger.info("%-28s pixelF1=%.4f IoU=%.4f instF1=%.4f (%.1fs)",
                     r["name"], r["f1"], r["iou"], r["inst_f1"], r["seconds"])
@@ -205,6 +253,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "dataset": args.dataset, "split": args.split, "n_pairs": len(samples),
         "pixel_scoring": "sam3_masks" if use_masks else "bbox_rasterisation",
         "match_radius_deg": args.match_radius, "thresholds": thresholds,
+        "integrity": integrity.as_dict(),
         "results": rows,
     }, out / "cd_results.json")
 

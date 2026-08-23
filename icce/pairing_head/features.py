@@ -277,9 +277,15 @@ def unary_features(
     `best_clip_other` carry exactly that evidence.
 
     The trailing cross-frame block comes from `Det.cross_frame`, computed at
-    cache time where the pixels are available. Detections cached before those
-    features existed carry None and fall back to zeros, which the standardiser
-    then maps to the training mean -- i.e. "no evidence", not "no change".
+    cache time where the pixels are available.
+
+    A detection with no cross-frame block falls back to zeros. Note that zero
+    is *not* a neutral value once standardisation is applied -- it maps to
+    -mean/std, which for these features reads as "strongly unchanged" rather
+    than "unknown". A cache built before these features existed must therefore
+    be rebuilt rather than evaluated against a head that was trained with them;
+    ablating the feature means retraining without it, not zeroing it at
+    inference. See `--checkpoint-no-xf` in icce.eval.run_cd_eval.
     """
     w, h = image_size
     img_area = float(max(1, w * h))

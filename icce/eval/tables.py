@@ -1,10 +1,19 @@
 """
 Result serialisation: JSON for the record, LaTeX for the paper.
 
-Published baseline numbers live in `baselines.json` with `verified: false` and
-no values. `latex_table` refuses to typeset an unverified row and emits a loud
-TODO comment instead, so a number that was never checked against its source
-paper cannot silently end up in the submission.
+Two guarantees this module enforces.
+
+**Nothing unverified is typeset.** Published numbers live in `baselines.json`
+with `verified: false` and no values. `latex_table` refuses to render an
+unverified row and emits a loud TODO instead, so a number that was never
+checked against its source paper cannot end up in the submission.
+
+**Nothing is compared across leagues without saying so.** Methods carry a
+`tier`. A model trained on LEVIR-CD's own training split and an open-vocabulary
+model that has never seen it are not competing on equal terms, and printing
+them in one undifferentiated block is misleading in whichever direction the
+numbers happen to fall. Tables group by tier and label each group, so the
+supervised block reads as a reference ceiling rather than as our opponent.
 """
 
 from __future__ import annotations
@@ -46,6 +55,15 @@ def save_json(payload: Dict, path: Path) -> Path:
     return path
 
 
+TIER_HEADINGS = {
+    "supervised": r"\multicolumn{%d}{l}{\emph{Trained on this dataset "
+                  r"(reference ceiling)}} \\",
+    "zero-shot": r"\multicolumn{%d}{l}{\emph{Zero-shot / open-vocabulary}} \\",
+    "ours": r"\multicolumn{%d}{l}{\emph{This work}} \\",
+}
+TIER_ORDER = ("supervised", "zero-shot", "ours")
+
+
 def latex_table(
     caption: str,
     label: str,
@@ -55,8 +73,9 @@ def latex_table(
     metric_map: Optional[Dict[str, str]] = None,
     scale: float = 100.0,
     highlight_last: bool = True,
+    group_by_tier: bool = True,
 ) -> str:
-    """Build a booktabs table: published baselines above, our rows below.
+    """Build a booktabs table, grouped by tier.
 
     `rows` are dicts with a 'name' plus the metric keys named in `columns`.
     `metric_map` renames a column to the key used in baselines.json.
@@ -74,20 +93,40 @@ def latex_table(
         "\\midrule",
     ]
 
+    n_cols = len(columns) + 1
+
     if baseline_group:
         group = load_baselines().get(baseline_group, {})
+        methods = group.get("methods", [])
         unverified: List[str] = []
-        for m in group.get("methods", []):
+
+        by_tier: Dict[str, List[Dict]] = {}
+        for m in methods:
             if not m.get("verified"):
-                unverified.append(m["name"])
+                unverified.append(f"{m['name']} [{m.get('tier', '?')}]")
                 continue
-            cells = [_fmt(m.get(metric_map.get(c, c)), scale) for c in columns]
-            lines.append(f"{m['name']}~\\cite{{{m['cite']}}} & " + " & ".join(cells) + " \\\\")
+            by_tier.setdefault(m.get("tier", "supervised"), []).append(m)
+
+        for tier in TIER_ORDER:
+            entries = by_tier.get(tier)
+            if not entries:
+                continue
+            if group_by_tier:
+                lines.append(TIER_HEADINGS[tier] % n_cols)
+            for m in entries:
+                cells = [_fmt(m.get(metric_map.get(c, c)), scale) for c in columns]
+                lines.append(f"{m['name']}~\\cite{{{m['cite']}}} & "
+                             + " & ".join(cells) + " \\\\")
+            lines.append("\\midrule")
+
         if unverified:
             msg = ", ".join(unverified)
             logger.warning("[%s] unverified baselines omitted: %s", baseline_group, msg)
             lines.append(f"%% TODO fill and verify in baselines.json: {msg}")
-        lines.append("\\midrule")
+            lines.append("\\midrule")
+
+    if group_by_tier and rows:
+        lines.append(TIER_HEADINGS["ours"] % (len(columns) + 1))
 
     for i, r in enumerate(rows):
         cells = [_fmt(r.get(metric_map.get(c, c)), scale) for c in columns]

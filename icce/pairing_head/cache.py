@@ -87,6 +87,8 @@ class CachedSample:
     gt_change_present: Optional[bool] = None
     captions: List[str] = field(default_factory=list)
     parent_scene: str = ""
+    image_a: Optional[str] = None    # t0 path, for image-conditioned baselines
+    image_b: Optional[str] = None    # t1 path
 
     def to_json(self) -> Dict:
         d = asdict(self)
@@ -106,6 +108,8 @@ class CachedSample:
             gt_change_present=d.get("gt_change_present"),
             captions=list(d.get("captions", [])),
             parent_scene=d.get("parent_scene", ""),
+            image_a=d.get("image_a"),
+            image_b=d.get("image_b"),
         )
 
 

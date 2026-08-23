@@ -110,6 +110,17 @@ def build_tensors(
     )
 
 
+def _drop_cross_frame(samples: Sequence[CachedSample]) -> None:
+    for s in samples:
+        for d in list(s.past) + list(s.current):
+            d.xf = None
+
+
+def _split_of(samples: Sequence[CachedSample]) -> str:
+    names = {s.split for s in samples}
+    return names.pop() if len(names) == 1 else "mixed"
+
+
 def _pos_weight(y: np.ndarray, valid: np.ndarray) -> float:
     m = valid > 0
     if not m.any():
@@ -296,12 +307,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--skip-threshold-search", action="store_true")
+    ap.add_argument("--no-cross-frame", action="store_true",
+                    help="train without cross-frame evidence, for the ablation row")
     args = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     t_start = time.time()
 
     tr_s, tr_e = load_cache(args.train_cache)
+    if args.no_cross_frame:
+        _drop_cross_frame(tr_s)
+        logger.info("cross-frame evidence dropped (ablation checkpoint)")
     train_t = build_tensors(tr_s, tr_e, args.match_radius, args.max_candidates)
     logger.info("train: %s", train_t.summary())
 
@@ -310,6 +326,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     va_e: Dict[str, np.ndarray] = {}
     if args.val_cache:
         va_s, va_e = load_cache(args.val_cache)
+        if args.no_cross_frame:
+            _drop_cross_frame(va_s)
         val_t = build_tensors(va_s, va_e, args.match_radius, args.max_candidates)
         logger.info("val:   %s", val_t.summary())
 
@@ -325,11 +343,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "train_summary": train_t.summary(),
         "best_epoch": info["best_epoch"],
         "seed": args.seed,
+        "cross_frame": not args.no_cross_frame,
         "match_threshold": 0.5,
         "verify_threshold": 0.5,
+        "train_split": _split_of(tr_s),
+        "train_pair_ids": [s.pair_id for s in tr_s],
     }
     if va_s and not args.skip_threshold_search:
         extra.update(select_thresholds(model, va_s, va_e, args.match_radius, args.device))
+        # Recorded so icce.eval.integrity can prove the thresholds were not
+        # tuned on whatever split is later evaluated.
+        extra["threshold_split"] = _split_of(va_s)
 
     model.cpu().save(args.out, extra)
     (args.out.with_suffix(".history.json")).write_text(

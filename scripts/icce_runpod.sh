@@ -22,16 +22,60 @@ CKPT_DIR="${CKPT_DIR:-data/checkpoints}"
 RESULT_DIR="${RESULT_DIR:-results}"
 LLM="${LLM:-LGAI-EXAONE/EXAONE-4.0-32B-Instruct}"
 LLM_SMALL="${LLM_SMALL:-LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct}"
+VLM="${VLM:-Qwen/Qwen2.5-VL-7B-Instruct}"
 DEVICE="${DEVICE:-cuda}"
 
 HEAD="${CKPT_DIR}/pairing_head.pt"
-STAGES="${STAGES:-${*:-cache train cd transfer caption report efficiency}}"
+HEAD_NOXF="${CKPT_DIR}/pairing_head_no_xf.pt"
+STAGES="${STAGES:-${*:-cache train cd transfer caption report external efficiency}}"
 
 mkdir -p "$CACHE_DIR" "$CKPT_DIR" "$RESULT_DIR"
 
 log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 have() { [ -e "$1" ]; }
 runs() { case " $STAGES " in *" $1 "*) return 0;; *) return 1;; esac; }
+
+# --- 0. PILOT -------------------------------------------------------------
+# Run this first, on day one. It processes a few dozen tiles instead of a few
+# hundred and produces the same tables, so you learn where you actually stand
+# against the published numbers before committing a week of GPU time. If the
+# pilot says pixel F1 is far below what the paper needs, that is a decision to
+# make on day 3, not day 9.
+if runs pilot; then
+  log "PILOT: small-sample run to get real numbers fast"
+  P_CACHE="${CACHE_DIR}/pilot"
+  for spec in "levir_cd train 60" "levir_cd val 20" "levir_cd test 24" \
+              "levir_cc test 100"; do
+    set -- $spec
+    ds=$1; sp=$2; lim=$3; out="${P_CACHE}/${ds}_${sp}"
+    have "${out}/samples.jsonl" && { log "pilot cache ${ds}/${sp} exists"; continue; }
+    extra=""; [ "$ds" = "levir_cc" ] && extra="--attach-cd-masks"
+    python -m icce.eval.cache_detections \
+      --dataset "$ds" --split "$sp" --limit "$lim" --out "$out" \
+      --device "$DEVICE" $extra
+  done
+
+  P_HEAD="${CKPT_DIR}/pilot_head.pt"
+  have "$P_HEAD" || python -m icce.pairing_head.train \
+    --train-cache "${P_CACHE}/levir_cd_train" \
+    --val-cache   "${P_CACHE}/levir_cd_val" \
+    --out "$P_HEAD" --device "$DEVICE" --epochs 40
+
+  python -m icce.eval.run_cd_eval \
+    --cache "${P_CACHE}/levir_cd_test" --checkpoint "$P_HEAD" \
+    --dataset levir_cd --split test \
+    --out "${RESULT_DIR}/pilot_levir_cd" --device "$DEVICE"
+
+  python -m icce.eval.run_report_eval \
+    --cache "${P_CACHE}/levir_cc_test" --checkpoint "$P_HEAD" \
+    --dataset levir_cc --llm "$LLM" --vlm "$VLM" --style caption \
+    --out "${RESULT_DIR}/pilot_levir_cc" --device "$DEVICE"
+
+  log "PILOT DONE -- read these before starting the full run:"
+  echo "  ${RESULT_DIR}/pilot_levir_cd/cd_results.json"
+  echo "  ${RESULT_DIR}/pilot_levir_cc/report_results_caption.json"
+  exit 0
+fi
 
 # --- 1. detection caches ---------------------------------------------------
 if runs cache; then
@@ -62,6 +106,18 @@ if runs train; then
       --val-cache   "${CACHE_DIR}/levir_cd_val" \
       --out "$HEAD" --device "$DEVICE" --epochs 60
   fi
+
+  # Ablating cross-frame evidence requires retraining without it; zeroing the
+  # feature at inference measures a broken model, not the feature.
+  if have "$HEAD_NOXF"; then
+    log "cross-frame ablation head exists, skipping"
+  else
+    log "training the cross-frame ablation head"
+    python -m icce.pairing_head.train \
+      --train-cache "${CACHE_DIR}/levir_cd_train" \
+      --val-cache   "${CACHE_DIR}/levir_cd_val" \
+      --out "$HEAD_NOXF" --device "$DEVICE" --epochs 60 --no-cross-frame
+  fi
 fi
 
 # --- 3. E1: change detection on LEVIR-CD ----------------------------------
@@ -69,6 +125,7 @@ if runs cd; then
   log "E1: change detection on LEVIR-CD test"
   python -m icce.eval.run_cd_eval \
     --cache "${CACHE_DIR}/levir_cd_test" --checkpoint "$HEAD" \
+    --checkpoint-no-xf "$HEAD_NOXF" \
     --dataset levir_cd --split test \
     --out "${RESULT_DIR}/levir_cd_test" --device "$DEVICE"
 fi
@@ -87,7 +144,7 @@ if runs caption; then
   log "E3/E4: LEVIR-CC captioning + factuality (${LLM})"
   python -m icce.eval.run_report_eval \
     --cache "${CACHE_DIR}/levir_cc_test" --checkpoint "$HEAD" \
-    --dataset levir_cc --llm "$LLM" --style caption \
+    --dataset levir_cc --llm "$LLM" --vlm "$VLM" --style caption \
     --out "${RESULT_DIR}/levir_cc_caption" --device "$DEVICE"
 
   log "E4b: LLM size ablation (${LLM_SMALL})"
@@ -111,6 +168,29 @@ if runs report; then
     --cache "${CACHE_DIR}/levir_cc_test" --checkpoint "$HEAD" \
     --dataset levir_cc --llm "$LLM" --style report \
     --out "${RESULT_DIR}/levir_cc_report" --device "$DEVICE"
+fi
+
+# --- 6b. external published outputs ---------------------------------------
+# Scores a published model's own released captions with Change-Fact-Score.
+# Without this, our factuality table has no outside reference point and a
+# reviewer can fairly say we invented a metric and only measured ourselves.
+# Populate icce/eval/baselines.json -> _external_outputs.slots[].path first.
+if runs external; then
+  python - <<'PYEOF'
+import json, subprocess, sys
+from pathlib import Path
+slots = json.loads(Path("icce/eval/baselines.json").read_text())["_external_outputs"]["slots"]
+todo = [s for s in slots if s.get("path")]
+if not todo:
+    print("no external prediction files configured; see baselines.json "
+          "-> _external_outputs.slots[].path")
+    sys.exit(0)
+for s in todo:
+    subprocess.run([sys.executable, "-m", "icce.eval.score_external",
+                    "--predictions", s["path"], "--name", s["name"],
+                    "--cache", "data/cache/levir_cc_test",
+                    "--out", "results/external"], check=True)
+PYEOF
 fi
 
 # --- 7. E6: deployment cost -----------------------------------------------

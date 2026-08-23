@@ -6,6 +6,9 @@ Five conditions, each seeing strictly more structure than the last:
   template      no LLM at all -- deterministic prose from the change inventory.
                 Establishes what the *structure alone* is worth, and bounds
                 hallucination at zero by construction.
+  vlm_direct    external baseline: a vision-language model shown both images
+                and nothing else. Not a rung on the ladder but the thing our
+                whole pipeline has to beat to be worth building.
   llm_raw       LLM + the unaggregated detection dump. This is what "just throw
                 the detections at the model" gets you.
   llm_struct    LLM + the aggregated change inventory (the current MSIS prompt,
@@ -31,7 +34,14 @@ from typing import Dict, List, Optional, Sequence
 
 from icce.report.evidence import ChangeEvidence, ObservedChange
 
-GROUNDING_MODES = ("template", "llm_raw", "llm_struct", "llm_flat_rag", "llm_graphrag")
+GROUNDING_MODES = ("template", "vlm_direct", "llm_raw", "llm_struct",
+                   "llm_flat_rag", "llm_graphrag")
+
+# vlm_direct is not a grounding level -- it is the external baseline. It sees
+# the two images and none of our pipeline, which is what a practitioner would
+# reach for first, and is the comparison our design has to justify itself
+# against. It is handled outside `user_prompt` because it is image-conditioned.
+IMAGE_CONDITIONED_MODES = ("vlm_direct",)
 OUTPUT_STYLES = ("caption", "report")
 
 MAX_DETAIL = 20
@@ -202,6 +212,8 @@ def user_prompt(
 ) -> str:
     if mode not in GROUNDING_MODES:
         raise ValueError(f"unknown grounding mode '{mode}', expected one of {GROUNDING_MODES}")
+    if mode in IMAGE_CONDITIONED_MODES:
+        raise ValueError(f"'{mode}' is image-conditioned; use icce.report.vlm instead")
 
     blocks: List[str] = []
 
