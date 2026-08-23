@@ -56,6 +56,7 @@ class CachedDet:
     mask_area: Optional[int] = None
     coverage: float = 0.0          # fraction of this detection inside the GT change mask
     mask_rle: Optional[str] = None  # SAM3 instance mask, for pixel-level scoring
+    xf: Optional[List[float]] = None  # cross-frame evidence, CROSS_FRAME_FEATURE_NAMES
 
     def to_det(self, embedding: Optional[np.ndarray] = None) -> Det:
         return Det(
@@ -69,6 +70,8 @@ class CachedDet:
             geo_bbox=tuple(self.geo_bbox),
             embedding=embedding,
             mask_area=self.mask_area,
+            cross_frame=(np.asarray(self.xf, dtype=np.float32)
+                         if self.xf is not None else None),
         )
 
 

@@ -128,6 +128,33 @@ class ClipEmbedder:
                 patch[~m[y1:y2, x1:x2]] = 0        # background suppressed
             crops.append(PILImage.fromarray(patch))
 
+        return self._encode(crops)
+
+    def embed_boxes(self, image: np.ndarray, bboxes) -> np.ndarray:
+        """Embed arbitrary footprints, with no detection and no mask.
+
+        Used for cross-frame evidence: we need CLIP for the region where a
+        detection *would* be in the other frame, precisely in the case where
+        the detector fired nothing there.
+        """
+        if len(bboxes) == 0:
+            return np.zeros((0, 512), np.float32)
+        if self._model is None:
+            self._load()
+        from PIL import Image as PILImage
+
+        h, w = image.shape[:2]
+        crops = []
+        for bbox in bboxes:
+            x1, y1, x2, y2 = [int(round(v)) for v in bbox]
+            x1, x2 = max(0, min(w - 1, x1)), max(1, min(w, x2))
+            y1, y2 = max(0, min(h - 1, y1)), max(1, min(h, y2))
+            crops.append(PILImage.fromarray(image[y1:y2, x1:x2].copy())
+                         if (x2 > x1 and y2 > y1) else PILImage.new("RGB", (8, 8)))
+        return self._encode(crops)
+
+    def _encode(self, crops) -> np.ndarray:
+        import torch
         with torch.no_grad():
             inputs = self._proc(images=crops, return_tensors="pt").to(self.device)
             feats = self._model.get_image_features(**inputs)
@@ -149,6 +176,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--cache-masks", action="store_true", default=True,
                     help="store SAM3 instance masks (RLE) for pixel-level scoring")
     ap.add_argument("--no-cache-masks", dest="cache_masks", action="store_false")
+    ap.add_argument("--no-cross-frame", action="store_true",
+                    help="skip cross-frame co-located evidence (ablation row)")
     ap.add_argument("--no-clip", action="store_true",
                     help="skip CLIP embeddings (geometry-only ablation)")
     ap.add_argument("--attach-cd-masks", action="store_true",
@@ -161,6 +190,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     from src.config import CLIP_MODEL_NAME, OBJECT_CLASSES
     from src.detection.image_loader import ImageMeta, LoadedImage
     from src.detection.sam3_detector import SAM3Detector
+    from icce.convert import cross_frame
     from icce.convert.mask_to_instances import connected_components
     from icce.convert.to_msis import build_scenes
     from icce.datasets.registry import GSD, load as load_dataset
@@ -199,6 +229,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         cached: Dict[str, List[CachedDet]] = {}
         embeds: Dict[str, np.ndarray] = {}
+        boxes: Dict[str, List[List[float]]] = {}
+        frames = {"past": img_a, "cur": img_b}
 
         for phase, img, capture in (("past", img_a, scene.past_time),
                                     ("cur", img_b, scene.current_time)):
@@ -232,8 +264,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     mask_rle=d.mask_rle if args.cache_masks else None,
                 ))
             cached[phase] = rows
+            boxes[phase] = [d.bbox_px for d in rows]
             if embedder is not None:
                 embeds[phase] = embedder.embed(img, dets, masks)
+
+        # Cross-frame co-located evidence: compare every detection's footprint
+        # against the *same pixels* in the opposite frame. This is what tells a
+        # genuinely new building apart from one the detector missed last month.
+        if not args.no_cross_frame:
+            for phase, other in (("past", "cur"), ("cur", "past")):
+                if not boxes[phase]:
+                    continue
+                other_embed = None
+                if embedder is not None:
+                    def other_embed(image, bbs, _emb=embedder):
+                        return _emb.embed_boxes(image, bbs)
+                xf = cross_frame.compute(
+                    frames[phase], frames[other], boxes[phase],
+                    own_embeddings=embeds.get(phase), other_embedder=other_embed,
+                )
+                for row, vec in zip(cached[phase], xf):
+                    row.xf = [float(v) for v in vec]
 
         gt_instances = ([list(c["bbox"]) for c in connected_components(gt_mask, args.min_gt_area)]
                         if gt_mask is not None else [])
@@ -261,6 +312,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     (Path(args.out) / "cache_info.json").write_text(json.dumps({
         "dataset": args.dataset, "split": args.split, "n_pairs": writer.n,
         "gsd_m": gsd, "clip": not args.no_clip,
+        "cross_frame": not args.no_cross_frame,
         "object_classes": OBJECT_CLASSES,
         "seconds_per_pair_mean": float(np.mean(timings)) if timings else None,
         "seconds_per_pair_p95": float(np.percentile(timings, 95)) if timings else None,

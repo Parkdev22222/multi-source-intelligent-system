@@ -59,7 +59,31 @@ UNARY_FEATURE_NAMES: Tuple[str, ...] = (
     "best_clip_other",    # best CLIP similarity against the other frame
     "n_overlap_other",    # log1p(#other-frame dets overlapping) / 3
     "border_dist",        # min distance to tile edge, 0..0.5
+    # --- cross-frame co-located evidence (see CROSS_FRAME_FEATURE_NAMES) ---
+    "xf_clip_sim",
+    "xf_pixel_diff",
+    "xf_pixel_corr",
+    "xf_edge_delta",
 )
+
+# Cross-frame features compare a detection's own pixels against *the same
+# geographic footprint in the other frame*, whether or not the detector fired
+# there. This is the signal that separates "genuinely new construction" from
+# "the detector missed it last month", and it is the dominant error mode of the
+# detect-then-pair design: an object the detector missed in frame A becomes a
+# false "new building" report in frame B.
+#
+# The production pipeline has a version of this (`_static_cross_check`) as a
+# fixed CLIP-similarity threshold. Here the same evidence is widened (pixel
+# difference, correlation, edge-density change) and handed to the learned
+# verifier instead of a hand-set cut-off.
+CROSS_FRAME_FEATURE_NAMES: Tuple[str, ...] = (
+    "xf_clip_sim",        # CLIP cosine, own crop vs same footprint in other frame
+    "xf_pixel_diff",      # mean |I_own - I_other| over the footprint, 0..1
+    "xf_pixel_corr",      # normalised cross-correlation of the two crops, 0..1
+    "xf_edge_delta",      # edge-density change; a new roof raises it sharply
+)
+N_CROSS_FRAME = len(CROSS_FRAME_FEATURE_NAMES)
 
 N_PAIR_FEATURES = len(PAIR_FEATURE_NAMES)
 N_UNARY_FEATURES = len(UNARY_FEATURE_NAMES)
@@ -83,6 +107,7 @@ class Det:
     geo_bbox: Tuple[float, float, float, float]    # lat_min, lon_min, lat_max, lon_max
     embedding: Optional[np.ndarray] = None         # L2-normalised CLIP vector
     mask_area: Optional[int] = None
+    cross_frame: Optional[np.ndarray] = None       # CROSS_FRAME_FEATURE_NAMES, or None
 
     @property
     def area_px(self) -> float:
@@ -250,6 +275,11 @@ def unary_features(
     `other` is the opposite frame: a building that has a near-identical
     counterpart in the other frame did *not* change, and `best_iou_other` /
     `best_clip_other` carry exactly that evidence.
+
+    The trailing cross-frame block comes from `Det.cross_frame`, computed at
+    cache time where the pixels are available. Detections cached before those
+    features existed carry None and fall back to zeros, which the standardiser
+    then maps to the training mean -- i.e. "no evidence", not "no change".
     """
     w, h = image_size
     img_area = float(max(1, w * h))
@@ -273,6 +303,10 @@ def unary_features(
         cy = (d.bbox_px[1] + d.bbox_px[3]) / 2.0 / max(1, h)
         fill = (d.mask_area / d.area_px) if d.mask_area else 1.0
 
+        xf = d.cross_frame
+        if xf is None or len(xf) != N_CROSS_FRAME:
+            xf = np.zeros(N_CROSS_FRAME, dtype=np.float32)
+
         rows[k] = (
             d.confidence,
             float(np.clip(math.log(d.area_px / img_area), -12.0, 0.0)),
@@ -283,5 +317,6 @@ def unary_features(
             best_clip,
             math.log1p(n_overlap) / 3.0,
             min(cx, cy, 1.0 - cx, 1.0 - cy),
+            *[float(v) for v in xf],
         )
     return rows
