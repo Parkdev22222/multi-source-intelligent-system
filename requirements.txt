@@ -47,3 +47,11 @@ python-hwpx>=2.9.0        # HWPX (한글과컴퓨터) 파일 생성
 
 # --- GraphRAG Knowledge Graph ---
 networkx>=3.0             # In-memory graph operations + Louvain community detection
+
+# --- ICCE-Asia 2026 experiment harness (icce/) ---
+# Only needed to run the benchmark experiments; the production pipeline
+# does not import any of these.
+scipy>=1.11.0             # Hungarian assignment + fast connected components
+                          # (both have pure-NumPy fallbacks, just slower)
+# nltk>=3.8               # optional: Porter stemmer for METEOR
+# pycocoevalcap>=1.2      # optional: reference caption metrics (needs Java)

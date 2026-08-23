@@ -47,6 +47,7 @@ def _make_det_result(lat=10.0, lon=20.0, conf=0.9, cls="military tank"):
         lat=lat, lon=lon,
         source_type="satellite",
         mask_rle=None,
+        mask_area_px=0.0,
     )
 
 
