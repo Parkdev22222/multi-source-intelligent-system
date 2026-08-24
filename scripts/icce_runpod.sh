@@ -24,7 +24,9 @@ export SAM3_STRICT="${SAM3_STRICT:-1}"
 CACHE_DIR="${CACHE_DIR:-data/cache}"
 CKPT_DIR="${CKPT_DIR:-data/checkpoints}"
 RESULT_DIR="${RESULT_DIR:-results}"
-LLM="${LLM:-LGAI-EXAONE/EXAONE-4.0-32B-Instruct}"
+# LGAI-EXAONE/EXAONE-4.0-32B-Instruct 404s on the Hub; the instruction-tuned
+# release is published under the bare name.
+LLM="${LLM:-LGAI-EXAONE/EXAONE-4.0-32B}"
 LLM_SMALL="${LLM_SMALL:-LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct}"
 VLM="${VLM:-Qwen/Qwen2.5-VL-7B-Instruct}"
 DEVICE="${DEVICE:-cuda}"
@@ -70,9 +72,21 @@ if runs pilot; then
     --dataset levir_cd --split test \
     --out "${RESULT_DIR}/pilot_levir_cd" --device "$DEVICE"
 
+  # EXAONE-4.0-32B is 64GB of weights, Qwen2.5-VL-7B another 16.6GB: on one
+  # 80GB card they cannot be resident together. The text conditions and the
+  # image-conditioned baseline therefore run as two passes. Both write into the
+  # same --out and generations are cached per mode, so the resulting table is
+  # identical to a single-pass run.
   python -m icce.eval.run_report_eval \
     --cache "${P_CACHE}/levir_cc_test" --checkpoint "$P_HEAD" \
-    --dataset levir_cc --llm "$LLM" --vlm "$VLM" --style caption \
+    --dataset levir_cc --llm "$LLM" --style caption \
+    --modes template llm_raw llm_struct llm_flat_rag llm_graphrag \
+    --out "${RESULT_DIR}/pilot_levir_cc" --device "$DEVICE"
+
+  python -m icce.eval.run_report_eval \
+    --cache "${P_CACHE}/levir_cc_test" --checkpoint "$P_HEAD" \
+    --dataset levir_cc --vlm "$VLM" --style caption \
+    --modes vlm_direct \
     --out "${RESULT_DIR}/pilot_levir_cc" --device "$DEVICE"
 
   log "PILOT DONE -- read these before starting the full run:"
