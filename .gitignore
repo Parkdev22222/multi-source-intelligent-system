@@ -21,3 +21,6 @@ data/benchmarks/
 data/cache/
 data/checkpoints/
 results/
+
+# Jupyter
+.ipynb_checkpoints/

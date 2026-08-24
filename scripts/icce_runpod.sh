@@ -16,6 +16,10 @@ export DOMAIN="${DOMAIN:-urban}"
 export MSIS_DATA_ROOT="${MSIS_DATA_ROOT:-data/benchmarks}"
 export PYTHONPATH="${PYTHONPATH:-.}"
 export TOKENIZERS_PARALLELISM=false
+# Benchmark runs must never fall back silently: a swallowed SAM3 failure turns
+# "zero detections" into a clean exit, and the paper's numbers then describe
+# the fallback detector. Override with SAM3_STRICT=0 only for debugging.
+export SAM3_STRICT="${SAM3_STRICT:-1}"
 
 CACHE_DIR="${CACHE_DIR:-data/cache}"
 CKPT_DIR="${CKPT_DIR:-data/checkpoints}"
