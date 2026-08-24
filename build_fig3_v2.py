@@ -83,8 +83,7 @@ for h, xx in zip(headers, xs):
 ax.plot([tx, tx+9.0], [ty+0.55, ty+0.55], color=DB, lw=0.5)
 
 rows = [("tank",     "(37.5765, 126.9680)", "new",         "0.87"),
-        ("APC",      "(37.5771, 126.9698)", "new",         "0.79"),
-        ("building", "(37.5750, 126.9660)", "matched",     "0.91")]
+        ("APC",      "(37.5771, 126.9698)", "new",         "0.79")]
 for i, row in enumerate(rows):
     yy = ty + 0.35 - i * 0.15
     for val, xx in zip(row, xs):
@@ -108,15 +107,15 @@ for j in range(grid_h+1):
 # 배경 (지도 느낌)
 ax.add_patch(Rectangle((gx, gy), grid_w*gs, grid_h*gs, facecolor="#f0fdf4", zorder=-1))
 
-# 객체 위치 (약간 세밀한 좌표) → 특정 격자 셀 안에 표시
-# 3개 객체를 같은 셀 근처에 배치
+# 객체 위치 (약간 세밀한 좌표) → 같은 격자 셀 안에 표시
+# 2개 자산(tank, APC)이 같은 셀에 떨어짐 → 같은 위치 노드 키로 양자화됨
 objects = [
-    (gx + 2.15*gs, gy + 2.65*gs, PAIR),   # tank
-    (gx + 2.35*gs, gy + 2.45*gs, PAIR),   # APC
-    (gx + 2.55*gs, gy + 2.75*gs, YELLOW), # building
+    (gx + 2.25*gs, gy + 2.60*gs, PAIR, "전차"),
+    (gx + 2.60*gs, gy + 2.35*gs, PAIR, "APC"),
 ]
-for cx, cy, col in objects:
-    ax.add_patch(Circle((cx, cy), 0.08, facecolor=col, edgecolor="white", lw=1, zorder=3))
+for cx, cy, col, lbl in objects:
+    ax.add_patch(Circle((cx, cy), 0.10, facecolor=col, edgecolor="white", lw=1.2, zorder=3))
+    ax.text(cx + 0.15, cy + 0.02, lbl, fontsize=7, color=TEXT, zorder=4)
 
 # 해당 격자 셀 강조
 ax.add_patch(Rectangle((gx + 2*gs, gy + 2*gs), gs, gs,
