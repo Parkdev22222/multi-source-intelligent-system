@@ -127,7 +127,7 @@ class MavenPipeline:
             meta = loaded.meta
 
             # 동일 image_path 레코드가 이미 있으면 재사용 — 파이프라인 재실행 시 중복 방지.
-            # 단, session_id·det_width/height·geo bounds 는 현재 실행 값으로 항상 갱신한다.
+            # 단, session_id·det_width/height·geo bounds·촬영시각·중심좌표는 현재 실행 값으로 항상 갱신한다.
             # geo bounds 가 없으면 pixel_to_geo 가 모든 탐지를 lat_center 로 폴백하므로
             # FOV 판단(past_not_included / current_not_included)이 불가해진다.
             from src.database.sensor_db import update_image_record_meta
@@ -143,6 +143,15 @@ class MavenPipeline:
                     lat_max=meta.lat_max,
                     lon_min=meta.lon_min,
                     lon_max=meta.lon_max,
+                    # 재적재분의 촬영시각·중심좌표·플랫폼도 함께 갱신한다.
+                    # 갱신하지 않으면 이전 실행의 값이 남아 대시보드 목록에
+                    # 옛 시각·옛 좌표로 표시된다.
+                    capture_time=meta.capture_time,
+                    lat_center=meta.lat_center,
+                    lon_center=meta.lon_center,
+                    resolution_m=meta.resolution_m,
+                    sensor_platform=meta.sensor_platform,
+                    touch_ingestion_time=True,
                 )
                 img_record = updated if updated is not None else existing_record
                 logger.info(

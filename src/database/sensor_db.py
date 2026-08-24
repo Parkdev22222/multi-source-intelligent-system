@@ -101,10 +101,21 @@ def update_image_record_meta(
     lat_max: Optional[float] = None,
     lon_min: Optional[float] = None,
     lon_max: Optional[float] = None,
+    capture_time: Optional[datetime] = None,
+    lat_center: Optional[float] = None,
+    lon_center: Optional[float] = None,
+    resolution_m: Optional[float] = None,
+    sensor_platform: Optional[str] = None,
+    touch_ingestion_time: bool = False,
 ) -> Optional[ImageRecord]:
     """
     Update mutable fields of an existing ImageRecord and return the updated
     detached object.  Only non-None arguments overwrite existing values.
+
+    동일 image_path 를 재적재할 때 capture_time / lat_center / lon_center 가
+    갱신되지 않으면 DB 목록(capture_time·ingestion_time 정렬)에서 새 적재분이
+    옛 위치에 그대로 남아 대시보드에 "최신"으로 보이지 않는다.
+    touch_ingestion_time=True 이면 ingestion_time 도 현재 시각으로 갱신한다.
     """
     engine = get_engine()
     with Session(engine) as sess:
@@ -122,6 +133,19 @@ def update_image_record_meta(
             rec.lat_max = lat_max
             rec.lon_min = lon_min
             rec.lon_max = lon_max
+        if capture_time is not None:
+            # SQLite 는 naive datetime 만 저장 가능 → tz 정보 제거
+            rec.capture_time = capture_time.replace(tzinfo=None)
+        if lat_center is not None:
+            rec.lat_center = lat_center
+        if lon_center is not None:
+            rec.lon_center = lon_center
+        if resolution_m is not None:
+            rec.resolution_m = resolution_m
+        if sensor_platform is not None:
+            rec.sensor_platform = sensor_platform
+        if touch_ingestion_time:
+            rec.ingestion_time = datetime.utcnow()
         sess.commit()
         sess.refresh(rec)
         sess.expunge(rec)
@@ -412,7 +436,14 @@ def get_latest_image_near(
 
 # 이미지 레코드와 탐지 수를 최신순으로 반환
 def get_all_images_with_count(limit: int = None):
-    """Return (ImageRecord, detection_count) tuples ordered by capture_time desc."""
+    """
+    Return (ImageRecord, detection_count) tuples ordered by ingestion_time desc.
+
+    capture_time 은 샘플 이미지의 EXIF/TIFF 태그나 파일 mtime 에서 오기 때문에
+    "언제 DB 에 적재됐는가"와 무관한 고정값일 수 있다. 그 값으로 정렬하면 방금
+    적재한 영상이 목록 중간에 묻혀 대시보드의 "DB 최신" 목록에 안 보인다.
+    실제 적재 순서를 보장하는 ingestion_time 을 1순위 키로 사용한다.
+    """
     engine = get_engine()
     from sqlalchemy import func
     with Session(engine) as session:
@@ -424,7 +455,10 @@ def get_all_images_with_count(limit: int = None):
                 & (DetectionRecord.source_type != "synthetic"),
             )
             .group_by(ImageRecord.id)
-            .order_by(ImageRecord.capture_time.desc())
+            .order_by(
+                ImageRecord.ingestion_time.desc(),
+                ImageRecord.capture_time.desc(),
+            )
         )
         if limit is not None:
             q = q.limit(limit)

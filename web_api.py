@@ -225,7 +225,8 @@ def _run_analyze_background(session_id: str, target_description: str):
     with _analyze_jobs_lock:
         _analyze_jobs[session_id] = f"done:{after_rpt_id or ''}"
 
-    _notify_db_updated(changed=["reports", "detections"])
+    # images 도 포함 — 영상 목록의 "N개 탐지" 배지가 분석 후 갱신돼야 한다.
+    _notify_db_updated(changed=["reports", "detections", "images"])
     _broadcast_sse(json.dumps({
         "type":       "analyze_complete",
         "session_id": session_id,
@@ -805,10 +806,12 @@ def _db_poll_worker():
             cur = _row_counts()
             changed = [k for k in ("images", "detections", "reports") if cur[k] != prev[k]]
             if changed:
-                # 파이프라인이 돌고 있을 때만 중간 알림 전송
-                # (파이프라인 완료 후 _auto_sim_worker 가 이미 전체 알림을 보내므로
-                #  running=False 일 때는 중복 전송하지 않음)
-                if _auto_state.get("running"):
+                # 첫 스캔(prev 초기값 -1)은 기준선만 잡고 알리지 않는다.
+                # 그 외에는 파이프라인 실행 여부와 무관하게 항상 알린다 —
+                # 단계별 워크플로우(수동 탐지·분석)처럼 running=False 인 경로에서
+                # DB 가 바뀌면 이전에는 알림이 누락돼 대시보드 목록이 낡은 채로
+                # 남았다. 클라이언트는 변경된 목록만 다시 불러오므로 비용이 작다.
+                if prev["images"] >= 0:
                     _notify_db_updated(
                         run_count=_auto_state.get("run_count", 0),
                         success=True,
@@ -1119,14 +1122,24 @@ def api_latest_image(
 
 @app.get("/api/images")
 # 전체 위성영상 목록 및 탐지 건수 반환
-def api_all_images(limit: int = Query(default=None)):
-    """DB에 저장된 모든 위성영상 메타데이터 + 탐지 건수 목록 (capture_time DESC)."""
+def api_all_images(response: Response, limit: int = Query(default=None)):
+    """
+    DB에 저장된 모든 위성영상 메타데이터 + 탐지 건수 목록 (ingestion_time DESC).
+
+    capture_time 은 샘플 파일의 태그/mtime 에서 오는 고정값일 수 있으므로
+    "DB 최신" 목록은 실제 적재 순서(ingestion_time)를 기준으로 정렬한다.
+    """
+    # 브라우저·프록시가 목록을 캐시하면 새 적재분이 화면에 안 뜬다.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"]        = "no-cache"
+
     rows = get_all_images_with_count(limit=limit)
     result = []
     for r, cnt in rows:
         result.append({
             "id":              r.id,
             "capture_time":    r.capture_time.isoformat() if r.capture_time else None,
+            "ingestion_time":  r.ingestion_time.isoformat() if r.ingestion_time else None,
             "source_type":     r.source_type,
             "sensor_platform": r.sensor_platform,
             "lat_center":      r.lat_center,

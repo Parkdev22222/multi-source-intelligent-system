@@ -1644,7 +1644,7 @@ function fmtTime(iso) {
 // DB에서 위성 영상 목록을 불러와 UI에 렌더링
 async function loadAllImages() {
   try {
-    const res = await fetch(`${API}/api/images`);
+    const res = await fetch(`${API}/api/images`, { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
     const list = document.getElementById('img-list');
@@ -1666,6 +1666,7 @@ async function loadAllImages() {
         <span class="db-item-badge">${img.detection_count}개 탐지</span>
         <div class="db-item-time">${fmtTime(img.capture_time)}</div>
         <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>
+        <div class="db-item-sub">적재 ${fmtTime(img.ingestion_time)}</div>
         ${sessTag}`;
       item.addEventListener('mouseenter', e => {
         showImagePopup(img, e);
@@ -1698,7 +1699,7 @@ async function loadAllImages() {
 // 탐지 결과가 있는 영상 목록을 불러와 UI에 표시
 async function loadAllDetections() {
   try {
-    const res = await fetch(`${API}/api/images`);
+    const res = await fetch(`${API}/api/images`, { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
     const list = document.getElementById('det-list');
@@ -1722,6 +1723,7 @@ async function loadAllDetections() {
         <span class="db-item-badge">${img.detection_count}개</span>
         <div class="db-item-time">${fmtTime(img.capture_time)}</div>
         <div class="db-item-sub">${img.source_type || '—'} | ${img.sensor_platform || '—'} | ${img.lat_center?.toFixed(3)}°N ${img.lon_center?.toFixed(3)}°E</div>
+        <div class="db-item-sub">적재 ${fmtTime(img.ingestion_time)}</div>
         ${sessTag}`;
       item.addEventListener('mouseenter', e => {
         showDetectionPopup(img.id, img, e);
@@ -1953,7 +1955,7 @@ document.getElementById('run-btn').addEventListener('click', async () => {
         status.style.color = 'var(--red)';
       }
       // DB 목록 즉시 갱신
-      popImgCache = {}; popDetCache = {};
+      popImgCache = {}; popDetCache = {}; popRenderedCache = {};
       await loadAllImages();
       await loadAllDetections();
       await loadAllReports();
@@ -2132,7 +2134,7 @@ async function loadAllReports() {
   const filterWrap = document.getElementById('rpt-filter-wrap');
   list.innerHTML = '<div class="dp-empty">로딩 중...</div>';
   try {
-    const res = await fetch(`${API}/api/reports`);
+    const res = await fetch(`${API}/api/reports`, { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
     const reports = data.reports || [];
@@ -4028,7 +4030,7 @@ async function pollSimStatus() {
       if (s.last_active) showSatDetail(s.last_active);
 
       // DB 목록 갱신
-      popImgCache = {}; popDetCache = {};
+      popImgCache = {}; popDetCache = {}; popRenderedCache = {};
       await loadAllImages();
       await loadAllDetections();
       await loadAllReports();
@@ -4482,7 +4484,7 @@ function setupSSE() {
 
         const tasks = [];
         if (changed.includes('images') || changed.includes('detections')) {
-          popImgCache = {}; popDetCache = {};
+          popImgCache = {}; popDetCache = {}; popRenderedCache = {};
         }
         if (changed.includes('images'))     tasks.push(loadAllImages());
         if (changed.includes('detections')) tasks.push(loadAllDetections());
@@ -4494,7 +4496,7 @@ function setupSSE() {
         renderAnalysisMarker(msg);
       } else if (msg.type === 'image_ingested') {
         // 단계별 워크플로우: 이미지 적재 완료 → 탐지 방식 선택 모달 열기
-        popImgCache = {}; popDetCache = {};
+        popImgCache = {}; popDetCache = {}; popRenderedCache = {};
         await loadAllImages();
         _dsOpen(
           msg.session_id,
@@ -4520,6 +4522,7 @@ function setupSSE() {
           }
           await loadAllReports();
           await loadAllDetections();
+          await loadAllImages();
         }
       } else if (msg.type === 'analyze_error') {
         if (msg.session_id === _dsSessionId) {
@@ -4555,7 +4558,7 @@ setInterval(pollSimStatus,    5_000);   // 5초마다 자동 시뮬레이션 상
 // SSE 연결이 끊긴 경우를 대비한 폴백 폴링 (60초)
 setInterval(async () => {
   if (!_sseInstance || _sseInstance.readyState === EventSource.CLOSED) {
-    popImgCache = {}; popDetCache = {};
+    popImgCache = {}; popDetCache = {}; popRenderedCache = {};
     await Promise.all([loadAllImages(), loadAllDetections(), loadAllReports()]);
   }
 }, 60_000);
