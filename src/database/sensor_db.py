@@ -31,6 +31,8 @@ def get_engine():
             ("image_records",     "lat_max FLOAT"),
             ("image_records",     "lon_min FLOAT"),
             ("image_records",     "lon_max FLOAT"),
+            ("image_records",     "pair_id VARCHAR(36)"),
+            ("image_records",     "temporal_role VARCHAR(16)"),
         ]
         with _engine.connect() as conn:
             for table, col_def in _migrations:
@@ -101,6 +103,8 @@ def update_image_record_meta(
     lat_max: Optional[float] = None,
     lon_min: Optional[float] = None,
     lon_max: Optional[float] = None,
+    pair_id: Optional[str] = None,
+    temporal_role: Optional[str] = None,
 ) -> Optional[ImageRecord]:
     """
     Update mutable fields of an existing ImageRecord and return the updated
@@ -122,6 +126,10 @@ def update_image_record_meta(
             rec.lat_max = lat_max
             rec.lon_min = lon_min
             rec.lon_max = lon_max
+        if pair_id is not None:
+            rec.pair_id = pair_id
+        if temporal_role is not None:
+            rec.temporal_role = temporal_role
         sess.commit()
         sess.refresh(rec)
         sess.expunge(rec)

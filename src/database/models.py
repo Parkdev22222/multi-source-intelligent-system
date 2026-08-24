@@ -60,6 +60,12 @@ class ImageRecord(Base):
     # Links image records back to the report generation session.
     session_id = Column(String(36), nullable=True)
 
+    # User-supplied temporal image pair metadata.  ``pair_id`` groups the
+    # before/after frames while ``temporal_role`` makes their order explicit
+    # instead of inferring it from file names or timestamps.
+    pair_id = Column(String(36), nullable=True, index=True)
+    temporal_role = Column(String(16), nullable=True)  # "past" | "current"
+
     detections = relationship("DetectionRecord", back_populates="image", cascade="all, delete-orphan")
 
 
