@@ -101,6 +101,56 @@ class VllmLLM(BaseLLM):
             pass
 
 
+class OpenAIServerLLM(BaseLLM):
+    """A standalone vLLM server over HTTP -- see icce/report/openai_client.py.
+
+    Keeps the generation stack out of this interpreter, so the detection side
+    can stay on the torch/numpy versions SAM3 needs.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        base_url: str = None,
+        temperature: float = 0.0,
+        concurrency: int = 32,
+        timeout: int = 600,
+        wait_ready: bool = True,
+        ready_timeout: int = 1800,
+    ) -> None:
+        from icce.report.openai_client import DEFAULT_BASE_URL, OpenAIChatClient
+
+        self.name = model
+        self.client = OpenAIChatClient(
+            model=model,
+            base_url=base_url or DEFAULT_BASE_URL,
+            temperature=temperature,
+            concurrency=concurrency,
+            timeout=timeout,
+        )
+        # The weights may still be loading when the first stage starts; block
+        # here rather than failing the whole sweep on a connection refused.
+        self.load_seconds = 0.0
+        if wait_ready:
+            t0 = time.time()
+            served = self.client.wait_until_ready(timeout=ready_timeout)
+            self.load_seconds = time.time() - t0
+            if served != model:
+                logger.warning("server serves %r but %r was requested; using the "
+                               "requested id (vLLM accepts --served-model-name "
+                               "aliases)", served, model)
+
+    def generate_batch(self, requests: Sequence[GenRequest]) -> List[str]:
+        if not requests:
+            return []
+        conversations = [
+            [{"role": "system", "content": r.system},
+             {"role": "user", "content": r.user}]
+            for r in requests
+        ]
+        return self.client.chat_many(conversations, [r.max_tokens for r in requests])
+
+
 class OllamaLLM(BaseLLM):
     """Serial fallback for a workstation without vLLM."""
 
@@ -153,9 +203,24 @@ class EchoLLM(BaseLLM):
 
 
 def build_llm(spec: str, **kw) -> BaseLLM:
-    """`spec` is 'echo', 'ollama:<model>' or a HuggingFace model id for vLLM."""
+    """Backend selector.
+
+    `spec` is one of
+        'echo'                        deterministic stand-in, no GPU
+        'server:<model>'              standalone vLLM server ($VLLM_BASE_URL)
+        'server:<model>@<base_url>'   ... at an explicit address
+        'ollama:<model>'              serial workstation fallback
+        '<hf-model-id>'               in-process vLLM (needs vllm installed here)
+    """
     if spec == "echo":
         return EchoLLM()
+    if spec.startswith("server:"):
+        from icce.report.openai_client import parse_spec
+        model, base_url = parse_spec(spec)
+        allowed = {"temperature", "concurrency", "timeout", "wait_ready",
+                   "ready_timeout"}
+        return OpenAIServerLLM(model, base_url=base_url,
+                               **{k: v for k, v in kw.items() if k in allowed})
     if spec.startswith("ollama:"):
         return OllamaLLM(spec.split(":", 1)[1], **{k: v for k, v in kw.items()
                                                    if k in ("base_url", "temperature")})

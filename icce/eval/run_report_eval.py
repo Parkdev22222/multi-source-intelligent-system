@@ -230,10 +230,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if not args.vlm:
                 logger.warning("skipping %s: --vlm not set", mode)
                 continue
-            from icce.report.vlm import VlmCaptioner
+            from icce.report.vlm import build_captioner
             by_id = {s_.pair_id: s_ for s_ in samples}
-            captioner = VlmCaptioner(args.vlm, max_model_len=args.max_model_len,
-                                     gpu_memory_utilization=args.gpu_mem)
+            # 'server:<model>' routes to a standalone vLLM server; anything
+            # else still loads the weights in this process.
+            captioner = build_captioner(args.vlm, max_model_len=args.max_model_len,
+                                        gpu_memory_utilization=args.gpu_mem)
             gen = captioner.caption_batch(
                 [(ev.pair_id, by_id[ev.pair_id].image_a, by_id[ev.pair_id].image_b)
                  for ev in evidences if ev.pair_id in by_id])
