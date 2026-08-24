@@ -113,16 +113,20 @@ class TrackedObject:
 
 # 마스크를 RLE 형식 JSON 문자열로 인코딩
 def _encode_rle(mask: np.ndarray) -> str:
-    flat = mask.flatten().astype(np.uint8).tolist()
-    rle: list = []
-    count = 1
-    for i in range(1, len(flat)):
-        if flat[i] == flat[i - 1]:
-            count += 1
-        else:
-            rle.append([flat[i - 1], count])
-            count = 1
-    rle.append([flat[-1], count])
+    """이진 마스크 -> {"shape", "rle":[[value,count],...]} JSON.
+
+    이전 구현은 1024x1024 마스크를 .tolist()로 100만 원소 파이썬 리스트로
+    바꾼 뒤 순수 파이썬 루프를 돌았다. 프로파일링에서 이미지 한 장(검출
+    245건)의 25.7초 중 15.2초(59%)가 여기서 소모됐다. 런의 경계만 numpy로
+    찾으면 출력은 그대로 두고 루프를 없앨 수 있다.
+    """
+    flat = np.ascontiguousarray(mask).reshape(-1).astype(np.uint8, copy=False)
+    if flat.size == 0:
+        return json.dumps({"shape": list(mask.shape), "rle": []})
+    # 값이 바뀌는 지점 = 각 런의 시작
+    starts = np.concatenate(([0], np.flatnonzero(flat[1:] != flat[:-1]) + 1))
+    counts = np.diff(np.concatenate((starts, [flat.size])))
+    rle = [[int(v), int(c)] for v, c in zip(flat[starts], counts)]
     return json.dumps({"shape": list(mask.shape), "rle": rle})
 
 
@@ -507,6 +511,22 @@ class SAM3Detector:
             return torch.autocast("cuda", dtype=torch.bfloat16)
         return contextlib.nullcontext()
 
+    # GPU가 실제로 압박받을 때만 캐시를 비운다.
+    # 클래스마다 무조건 gc.collect()+empty_cache()를 부르면 프로파일 기준
+    # 이미지 한 장 25.7초 중 3.1초를 여기서 쓴다. 인코딩을 공유하는 지금은
+    # 매 클래스 정리가 사줄 것이 거의 없으므로, 여유가 있으면 건너뛴다.
+    def _relieve_memory(self, threshold: float = 0.8) -> None:
+        if not torch.cuda.is_available():
+            return
+        try:
+            free, total = torch.cuda.mem_get_info()
+        except Exception:
+            free, total = 0, 1          # 알 수 없으면 보수적으로 정리
+        if total and (total - free) / total < threshold:
+            return
+        gc.collect()
+        torch.cuda.empty_cache()
+
     # 이미지 한 장을 한 번만 인코딩해 클래스별 프롬프트에 재사용한다.
     # 실패하면 None을 돌려주고, 호출부는 기존의 클래스별 인코딩으로 되돌아간다.
     def _encode_state(self, pil_image, label: str):
@@ -725,10 +745,8 @@ class SAM3Detector:
                 logger.info("[SAM3Detector] 스케일1(대형): 전체 이미지 탐지")
                 scale1_state = self._encode_state(pil_image, "스케일1")
                 for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
-                    # 인코딩 결과는 유지한 채 나머지 캐시만 해제한다.
-                    gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
+                    # 인코딩 결과는 유지한 채, 압박이 있을 때만 캐시 해제.
+                    self._relieve_memory()
                     try:
                         all_results.extend(
                             self._detect_class(
@@ -800,9 +818,7 @@ class SAM3Detector:
         else:
             full_state = self._encode_state(pil_image, "full-image")
             for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                self._relieve_memory()
                 try:
                     all_results.extend(
                         self._detect_class(
