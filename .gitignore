@@ -15,3 +15,9 @@ venv/
 dist/
 build/
 .DS_Store
+
+# ICCE-Asia benchmark data and run artefacts (large, re-fetchable)
+data/benchmarks/
+data/cache/
+data/checkpoints/
+results/
