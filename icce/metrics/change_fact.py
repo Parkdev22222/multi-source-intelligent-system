@@ -60,16 +60,30 @@ CLASS_LEXICON: Dict[str, Tuple[str, ...]] = {
 
 APPEAR_CUES = ("appear", "appeared", "appears", "built", "build", "constructed",
                "construct", "added", "add", "new", "newly", "emerged", "erected",
-               "sprang up", "sprung up", "installed",
-               "신축", "새로", "신규", "건설", "출현", "들어섰", "생겼", "추가")
+               "sprang up", "sprung up", "installed", "builds", "constructs",
+               "adds", "emerges", "erects", "installs",
+               # LEVIR-CC phrases this way 142 times in the test split alone.
+               # It used to be caught by accident, because the APPEAR cue
+               # "build" matched inside the noun "building"; with cue matching
+               # made sound, the phrase has to be listed explicitly.
+               "show up", "shows up", "showed up", "showing up",
+               "신축", "새로", "신규", "건설", "신설", "조성", "출현", "들어섰",
+               "생겼", "추가")
 
 DISAPPEAR_CUES = ("disappear", "disappeared", "disappears", "removed", "remove",
                   "demolished", "demolish", "razed", "cleared", "gone",
-                  "vanished", "destroyed", "torn down",
+                  "vanished", "destroyed", "torn down", "removes", "demolishes",
+                  "razes", "clears", "vanishes", "destroys", "tears down",
                   "철거", "소실", "사라", "제거", "멸실", "없어졌")
 
 MODIFY_CUES = ("widened", "widen", "expanded", "expand", "extended", "extend",
-               "replaced", "replace", "renovated", "rebuilt", "changed", "altered",
+               "replaced", "replace", "replaces", "renovated", "renovates",
+               "rebuilt", "rebuilds", "changed", "changes", "altered", "alters",
+               "widens", "expands", "extends",
+               # substitution phrasings LEVIR-CC uses instead of a verb
+               "turned into", "turns into", "turn into", "becomes", "became",
+               "transformed", "converted", "converts", "in place of",
+               "바뀌", "전환", "대신",
                "확장", "증축", "개축", "변경", "대체", "재건")
 
 NOCHANGE_CUES = ("nothing has changed", "no change", "the scene is the same",
@@ -85,6 +99,48 @@ _NUM_WORDS = {
 }
 
 _SENT_SPLIT = re.compile(r"[.!?;\n·]|(?<=다)\s")
+
+
+# --------------------------------------------------------------------------
+# cue matching
+# --------------------------------------------------------------------------
+# Substring matching is unsound here: "build" (an APPEAR cue) sits inside the
+# noun "building", so "the building was demolished" used to score as *both*
+# appeared and disappeared and collapse to "modified". Likewise "road" sits
+# inside "broad". Latin cues therefore need a letter boundary.
+#
+# Korean cannot use the same rule -- particles attach directly to the stem
+# ("건물이", "철거된"), so a boundary would reject every real hit. CJK cues stay
+# substring matches, which is correct for an agglutinative script.
+def _compile_cue(cue: str) -> "re.Pattern":
+    if re.search(r"[a-z]", cue):
+        return re.compile(rf"(?<![a-z]){re.escape(cue)}(?![a-z])")
+    return re.compile(re.escape(cue))
+
+
+def _compile_all(cues) -> Tuple["re.Pattern", ...]:
+    return tuple(_compile_cue(c) for c in cues)
+
+
+def _any_cue(sentence: str, patterns) -> bool:
+    return any(p.search(sentence) for p in patterns)
+
+
+# Quantifiers that state "more than one" without committing to a number. These
+# must be tested before the number words, or the article in "a few buildings"
+# is read as the count 1.
+VAGUE_QUANTIFIERS = ("several", "some", "many", "few", "numerous", "multiple",
+                     "various", "a couple", "lots of", "a number of",
+                     "여러", "몇", "다수", "일부", "여럿")
+
+
+_APPEAR_P     = _compile_all(APPEAR_CUES)
+_DISAPPEAR_P  = _compile_all(DISAPPEAR_CUES)
+_MODIFY_P     = _compile_all(MODIFY_CUES)
+_NOCHANGE_P   = _compile_all(NOCHANGE_CUES)
+_VAGUE_P      = _compile_all(VAGUE_QUANTIFIERS)
+_CLASS_P      = {cls: _compile_all(words) for cls, words in CLASS_LEXICON.items()}
+_NUMWORD_P    = tuple((_compile_cue(w), v) for w, v in _NUM_WORDS.items() if v is not None)
 
 
 @dataclass(frozen=True)
@@ -107,21 +163,19 @@ class ChangeClaim:
 # --------------------------------------------------------------------------
 def _find_classes(sentence: str) -> List[str]:
     hits: List[str] = []
-    for cls, words in CLASS_LEXICON.items():
-        for w in words:
-            if w in sentence:
-                hits.append(cls)
-                break
+    for cls, patterns in _CLASS_P.items():
+        if _any_cue(sentence, patterns):
+            hits.append(cls)
     return hits
 
 
 def _find_direction(sentence: str) -> Optional[str]:
     # order matters: an explicit no-change statement wins over cue words
-    if any(c in sentence for c in NOCHANGE_CUES):
+    if _any_cue(sentence, _NOCHANGE_P):
         return "none"
-    has_app = any(c in sentence for c in APPEAR_CUES)
-    has_dis = any(c in sentence for c in DISAPPEAR_CUES)
-    has_mod = any(c in sentence for c in MODIFY_CUES)
+    has_app = _any_cue(sentence, _APPEAR_P)
+    has_dis = _any_cue(sentence, _DISAPPEAR_P)
+    has_mod = _any_cue(sentence, _MODIFY_P)
     if has_app and not has_dis:
         return "appeared"
     if has_dis and not has_app:
@@ -134,16 +188,30 @@ def _find_direction(sentence: str) -> Optional[str]:
 
 
 def _find_count(sentence: str) -> Optional[int]:
-    m = re.search(r"\b(\d{1,4})\s*(?:개|동|채|대|곳)?\b", sentence)
-    if m:
-        try:
-            return int(m.group(1))
-        except ValueError:
-            pass
-    for w, v in _NUM_WORDS.items():
-        if v is not None and re.search(rf"\b{re.escape(w)}\b", sentence):
-            return v
-    return None
+    """Integer the sentence commits to, or None if it stays vague.
+
+    A vague quantifier wins over any number word: "a few buildings" commits to
+    no count, and reading the article as 1 silently corrupts CountMAE. The
+    number-word scan is positional (leftmost wins) rather than dictionary
+    order, so "three roads and two houses" reports 3, not 2.
+    """
+    # The trailing boundary used to be \b, which never matches between a digit
+    # and an attached Korean particle ("건물 2동이"), so Korean counts were
+    # silently dropped. (?!\d) is the boundary actually wanted here.
+    for m in re.finditer(r"(?<!\d)(\d{1,4})\s*(?:개|동|채|대|곳)?(?!\d)", sentence):
+        value = int(m.group(1))
+        # A bare four-digit number in this range is a year, not a quantity.
+        if len(m.group(1)) == 4 and 1900 <= value <= 2100 and m.group(0).strip() == m.group(1):
+            continue
+        return value
+    if _any_cue(sentence, _VAGUE_P):
+        return None
+    best: Optional[Tuple[int, int]] = None      # (position, value)
+    for pat, val in _NUMWORD_P:
+        hit = pat.search(sentence)
+        if hit and (best is None or hit.start() < best[0]):
+            best = (hit.start(), val)
+    return best[1] if best else None
 
 
 def extract_claims(text: str) -> Set[ChangeClaim]:
