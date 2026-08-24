@@ -144,14 +144,17 @@ ax.add_patch(FancyBboxPatch((kx, ky), key_box_w, 1.3, boxstyle="round,pad=0.08",
 ax.text(kx + key_box_w/2, ky + 1.05, "결정론적 노드 키 (같은 격자 → 같은 키)",
         ha="center", fontsize=9.5, fontweight="bold", color=GRAPH)
 ax.text(kx + 0.2, ky + 0.7,
-        "loc:37.58,126.97           ← 위치 노드",
-        fontsize=8.5, family="monospace", color=TEXT)
+        "loc:37.58,126.97", fontsize=8.5, family="monospace", color=TEXT)
+ax.text(kx + 3.0, ky + 0.7,
+        "← 위치 노드", fontsize=8.5, color=TEXT)
 ax.text(kx + 0.2, ky + 0.45,
-        "asset:tank:37.58,126.97    ← (전차 × 격자) 노드",
-        fontsize=8.5, family="monospace", color=TEXT)
+        "asset:tank:37.58,126.97", fontsize=8.5, family="monospace", color=TEXT)
+ax.text(kx + 3.0, ky + 0.45,
+        "← (전차 × 격자) 노드", fontsize=8.5, color=TEXT)
 ax.text(kx + 0.2, ky + 0.2,
-        "asset:APC:37.58,126.97     ← (APC × 격자) 노드",
-        fontsize=8.5, family="monospace", color=TEXT)
+        "asset:APC:37.58,126.97", fontsize=8.5, family="monospace", color=TEXT)
+ax.text(kx + 3.0, ky + 0.2,
+        "← (APC × 격자) 노드", fontsize=8.5, color=TEXT)
 
 arrow_down(6.5, 12.6, 11.4)
 
@@ -165,23 +168,23 @@ bx, by = 0.8, 9.5
 ax.text(bx + 2.0, by + 1.7, "Before (기존)", ha="center", fontsize=9.5,
         fontweight="bold", color=TEXT)
 # location 노드
-ax.add_patch(Circle((bx + 2.0, by + 1.2), 0.30, facecolor=NODE_L, edgecolor="white", lw=1.5))
-ax.text(bx + 2.0, by + 1.2, "L", ha="center", va="center",
-        fontsize=10, fontweight="bold", color="white")
+ax.add_patch(Circle((bx + 2.0, by + 1.2), 0.38, facecolor=NODE_L, edgecolor="white", lw=1.5))
+ax.text(bx + 2.0, by + 1.2, "위치", ha="center", va="center",
+        fontsize=9, fontweight="bold", color="white")
 # asset 노드 2개
-ax.add_patch(Circle((bx + 0.8, by + 0.35), 0.30, facecolor=NODE_A, edgecolor="white", lw=1.5))
-ax.text(bx + 0.8, by + 0.35, "T", ha="center", va="center", fontsize=10,
+ax.add_patch(Circle((bx + 0.8, by + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
+ax.text(bx + 0.8, by + 0.35, "전차", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(bx + 0.8, by - 0.15, "tank\ncount=2", ha="center", fontsize=7.5, color=MUTED)
+ax.text(bx + 0.8, by - 0.2, "count=2", ha="center", fontsize=7.5, color=MUTED)
 
-ax.add_patch(Circle((bx + 3.2, by + 0.35), 0.30, facecolor=NODE_A, edgecolor="white", lw=1.5))
-ax.text(bx + 3.2, by + 0.35, "A", ha="center", va="center", fontsize=10,
+ax.add_patch(Circle((bx + 3.2, by + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
+ax.text(bx + 3.2, by + 0.35, "APC", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(bx + 3.2, by - 0.15, "APC\ncount=1", ha="center", fontsize=7.5, color=MUTED)
+ax.text(bx + 3.2, by - 0.2, "count=1", ha="center", fontsize=7.5, color=MUTED)
 
 # 엣지
-ax.plot([bx + 0.8, bx + 2.0], [by + 0.65, by + 1.0], color=MUTED, lw=1.2)
-ax.plot([bx + 3.2, bx + 2.0], [by + 0.65, by + 1.0], color=MUTED, lw=1.2)
+ax.plot([bx + 0.8, bx + 2.0], [by + 0.73, by + 0.82], color=MUTED, lw=1.2)
+ax.plot([bx + 3.2, bx + 2.0], [by + 0.73, by + 0.82], color=MUTED, lw=1.2)
 
 # 중앙 화살표 (upsert 처리)
 mx = 5.0
@@ -196,34 +199,34 @@ ax_x, ay = 7.5, 9.5
 ax.text(ax_x + 2.0, ay + 1.7, "After (누적 갱신)", ha="center",
         fontsize=9.5, fontweight="bold", color=TEXT)
 # location 노드
-ax.add_patch(Circle((ax_x + 2.0, ay + 1.2), 0.30, facecolor=NODE_L, edgecolor="white", lw=1.5))
-ax.text(ax_x + 2.0, ay + 1.2, "L", ha="center", va="center",
-        fontsize=10, fontweight="bold", color="white")
+ax.add_patch(Circle((ax_x + 2.0, ay + 1.2), 0.38, facecolor=NODE_L, edgecolor="white", lw=1.5))
+ax.text(ax_x + 2.0, ay + 1.2, "위치", ha="center", va="center",
+        fontsize=9, fontweight="bold", color="white")
 # asset 노드
-ax.add_patch(Circle((ax_x + 0.8, ay + 0.35), 0.30, facecolor=NODE_A, edgecolor="white", lw=1.5))
-ax.text(ax_x + 0.8, ay + 0.35, "T", ha="center", va="center", fontsize=10,
+ax.add_patch(Circle((ax_x + 0.8, ay + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
+ax.text(ax_x + 0.8, ay + 0.35, "전차", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(ax_x + 0.8, ay - 0.15, "tank\ncount=3", ha="center", fontsize=7.5,
+ax.text(ax_x + 0.8, ay - 0.2, "count=3", ha="center", fontsize=7.5,
         color=GREEN, fontweight="bold")
 
-ax.add_patch(Circle((ax_x + 3.2, ay + 0.35), 0.30, facecolor=NODE_A, edgecolor="white", lw=1.5))
-ax.text(ax_x + 3.2, ay + 0.35, "A", ha="center", va="center", fontsize=10,
+ax.add_patch(Circle((ax_x + 3.2, ay + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
+ax.text(ax_x + 3.2, ay + 0.35, "APC", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(ax_x + 3.2, ay - 0.15, "APC\ncount=2", ha="center", fontsize=7.5,
+ax.text(ax_x + 3.2, ay - 0.2, "count=2", ha="center", fontsize=7.5,
         color=GREEN, fontweight="bold")
 
 # 엣지 - 굵어짐 (공출현 강화)
-ax.plot([ax_x + 0.8, ax_x + 2.0], [ay + 0.65, ay + 1.0], color=GRAPH, lw=2.0)
-ax.plot([ax_x + 3.2, ax_x + 2.0], [ay + 0.65, ay + 1.0], color=GRAPH, lw=2.0)
+ax.plot([ax_x + 0.8, ax_x + 2.0], [ay + 0.73, ay + 0.82], color=GRAPH, lw=2.0)
+ax.plot([ax_x + 3.2, ax_x + 2.0], [ay + 0.73, ay + 0.82], color=GRAPH, lw=2.0)
 # co_occurred_with 엣지 (asset 간)
-ax.plot([ax_x + 1.1, ax_x + 2.9], [ay + 0.35, ay + 0.35],
+ax.plot([ax_x + 1.18, ax_x + 2.82], [ay + 0.35, ay + 0.35],
         color=GRAPH, lw=2.5, linestyle="--")
-ax.text(ax_x + 2.0, ay + 0.1, "co_occurred_with", ha="center",
-        fontsize=7, color=GRAPH, style="italic")
+ax.text(ax_x + 2.0, ay + 0.1, "공출현 관계", ha="center",
+        fontsize=7.5, color=GRAPH, style="italic")
 
 # 하단 설명
 ax.text(6.5, 9.35,
-        "L = Location(격자 위치), T = Tank, A = APC · 실선=found_at 관계, 점선=공출현 관계",
+        "노드 색상: 주황=위치, 보라=자산  ·  실선=관측 관계(자산-위치),  점선=공출현 관계(자산-자산)",
         ha="center", fontsize=8, color=MUTED, style="italic")
 
 arrow_down(6.5, 9.2, 7.5)
@@ -324,9 +327,9 @@ ax.add_patch(FancyBboxPatch((8.4, 1.05), 4.2, 1.2, boxstyle="round,pad=0.05",
 ax.text(10.5, 1.95, "~500 토큰 압축 컨텍스트", ha="center", fontsize=10.5,
         fontweight="bold", color=BLUE)
 ax.text(10.5, 1.6, "\"기갑 복합체 8회 반복 관측,", ha="center",
-        fontsize=8, color=TEXT, style="italic", family="monospace")
+        fontsize=8, color=TEXT, style="italic")
 ax.text(10.5, 1.4, " 지난 30일간 3회 재배치...\"", ha="center",
-        fontsize=8, color=TEXT, style="italic", family="monospace")
+        fontsize=8, color=TEXT, style="italic")
 ax.text(10.5, 1.15, "→ LLM 프롬프트에 prepend", ha="center",
         fontsize=8, color=BLUE)
 
