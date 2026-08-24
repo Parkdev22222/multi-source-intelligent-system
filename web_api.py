@@ -41,7 +41,7 @@ def _get_country_name(lat: float, lon: float) -> Optional[str]:
     except Exception:
         return None
 
-from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -70,6 +70,7 @@ from src.database.sensor_db import (
     get_all_images_with_count,
     replace_detections_for_image,
     delete_detection_by_id,
+    update_image_record_meta,
 )
 from src.satellite.simulator import get_positions
 from src.utils.hwpx_writer import make_hwpx
@@ -1202,11 +1203,84 @@ def api_images_by_session(session_id: str):
                 "capture_time": r.capture_time.isoformat() if r.capture_time else None,
                 "source_type":  r.source_type,
                 "session_id":   r.session_id,
+                "pair_id":      r.pair_id,
+                "temporal_role": r.temporal_role,
             }
             for r in records
         ],
         "count": len(records),
     }
+
+
+_PAIR_UPLOAD_DIR = _images_dir / "uploads" / "pairs"
+_ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
+_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
+
+async def _save_pair_upload(upload: UploadFile, pair_dir: Path, role: str) -> str:
+    """Validate and persist one temporal-pair upload, returning its DB-relative path."""
+    suffix = Path(upload.filename or "").suffix.lower()
+    if suffix not in _ALLOWED_IMAGE_SUFFIXES:
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 이미지 형식: {suffix or '없음'}")
+    payload = await upload.read(_MAX_UPLOAD_BYTES + 1)
+    if not payload or len(payload) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="이미지는 각각 100MB 이하여야 합니다.")
+    # Pillow verification rejects renamed/non-image files before they enter the pipeline.
+    from PIL import Image as PilImage
+    try:
+        with PilImage.open(io.BytesIO(payload)) as image:
+            image.verify()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"손상되었거나 올바르지 않은 이미지입니다: {role}") from exc
+    pair_dir.mkdir(parents=True, exist_ok=True)
+    destination = pair_dir / f"{role}{suffix}"
+    destination.write_bytes(payload)
+    return destination.relative_to(_images_dir).as_posix()
+
+
+@app.post("/api/image-pairs/ingest")
+async def api_ingest_image_pair(
+    past_image: UploadFile = File(...),
+    current_image: UploadFile = File(...),
+    name: str = Form(default="사용자 이미지 비교"),
+    target_description: str = Form(default=""),
+):
+    """Store an explicitly ordered previous/current pair and ingest both frames.
+
+    The two image rows receive a shared ``pair_id`` and explicit temporal roles,
+    so subsequent detection, temporal pairing, and report generation use the
+    existing session workflow without relying on map-selected coordinates.
+    """
+    pair_id = str(_uuid.uuid4())
+    pair_dir = _PAIR_UPLOAD_DIR / pair_id
+    try:
+        past_path = await _save_pair_upload(past_image, pair_dir, "past")
+        current_path = await _save_pair_upload(current_image, pair_dir, "current")
+        from simulator_runner import run_ingest_pair
+        result = run_ingest_pair(past_path, current_path, name=name.strip() or "사용자 이미지 비교")
+        if not result.get("success") or len(result.get("image_ids", [])) != 2:
+            raise RuntimeError(result.get("stderr_tail") or "이미지 적재 결과가 올바르지 않습니다.")
+        image_ids = result["image_ids"]
+        for image_id, role in zip(image_ids, ("past", "current")):
+            update_image_record_meta(image_id, pair_id=pair_id, temporal_role=role)
+        _notify_image_ingested(result["session_id"], image_ids, lat=0.0, lon=0.0)
+        _notify_db_updated(changed=["images"])
+        return {
+            "success": True,
+            "pair_id": pair_id,
+            "session_id": result["session_id"],
+            "image_ids": image_ids,
+            "target_description": target_description,
+        }
+    except HTTPException:
+        import shutil
+        shutil.rmtree(pair_dir, ignore_errors=True)
+        raise
+    except Exception as exc:
+        logger.error("[PairUpload] ingest failed: %s", exc, exc_info=True)
+        import shutil
+        shutil.rmtree(pair_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # ══════════════════════════════════════════════════════════════════════════

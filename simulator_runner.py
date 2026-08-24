@@ -694,6 +694,56 @@ def run_ingest_at(
     }
 
 
+def run_ingest_pair(
+    past_image: str,
+    current_image: str,
+    *,
+    lat: float = 0.0,
+    lon: float = 0.0,
+    name: str = "사용자 이미지 쌍",
+) -> dict:
+    """Ingest an explicitly selected before/after image pair.
+
+    Paths are relative to ``data/images``.  Unlike mission ingestion this
+    function never chooses or crops an image automatically; the caller's
+    ordering is preserved with deterministic six-hour-apart capture times.
+    """
+    t0 = time.time()
+    now = datetime.now(tz=timezone.utc)
+    sat_stub = {"lat": lat, "lon": lon, "name": name, "id": "USER_PAIR"}
+    images = [past_image, current_image]
+    meta = _build_metadata(
+        sat_stub,
+        images,
+        explicit_times=[now - timedelta(hours=6), now],
+    )
+    METADATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    METADATA_PATH.write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    proc = subprocess.run(
+        [sys.executable, str(BASE_DIR / "main.py"), "--metadata", str(METADATA_PATH), "--ingest-only"],
+        capture_output=True, text=True, timeout=600, cwd=str(BASE_DIR),
+    )
+    session_id = None
+    image_ids = []
+    for line in (proc.stdout or "").splitlines():
+        if line.startswith("INGEST_RESULT:"):
+            parsed = json.loads(line[len("INGEST_RESULT:"):])
+            session_id = parsed.get("session_id")
+            image_ids = parsed.get("image_ids", [])
+            break
+    return {
+        "success": proc.returncode == 0,
+        "elapsed_s": round(time.time() - t0, 2),
+        "session_id": session_id,
+        "image_ids": image_ids,
+        "images": images,
+        "active": sat_stub,
+        "stderr_tail": (proc.stderr or "")[-500:],
+    }
+
+
 # ── 독립 실행 ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     logging.basicConfig(
