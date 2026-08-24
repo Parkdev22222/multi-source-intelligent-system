@@ -80,6 +80,12 @@ REALESRGAN_X2_PATH = os.getenv(
 # Model card: https://huggingface.co/facebook/sam3
 SAM3_MODEL_NAME = os.getenv("SAM3_MODEL_NAME", "facebook/sam3")
 SAM3_DEVICE = os.getenv("SAM3_DEVICE", "cuda")  # "cuda" or "cpu"
+
+# SAM3 로드/추론 실패를 조용히 삼키지 않고 즉시 예외로 올린다.
+# 기본값(false)은 운영 파이프라인의 기존 동작(빈 결과로 폴백)을 유지한다.
+# 벤치마크·논문 실험에서는 반드시 켤 것: 폴백은 탐지 0건을 정상 종료로 만들어,
+# 실험 수치가 SAM3 성능이 아니라 폴백 성능으로 조용히 기록되게 한다.
+SAM3_STRICT = os.getenv("SAM3_STRICT", "false").lower() in ("1", "true", "yes")
 # 로컬 가중치 파일 경로. 설정 시 SAM3_MODEL_NAME(HuggingFace ID) 대신 이 경로로 모델을 로드한다.
 # 환경변수 SAM3_CHECKPOINT 로 런타임 오버라이드 가능.
 SAM3_CHECKPOINT = os.getenv(

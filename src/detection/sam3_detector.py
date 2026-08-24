@@ -22,6 +22,7 @@ SAM3 Installation:
 import gc
 import json
 import logging
+import contextlib
 import tempfile
 import uuid
 from dataclasses import dataclass, field
@@ -42,6 +43,7 @@ from src.config import (
     SAM3_DEVICE,
     SAM3_MASK_SCORE_THRESHOLD,
     SAM3_MODEL_NAME,
+    SAM3_STRICT,
     TILE_ENABLED,
     TILE_SIZE,
     TILE_OVERLAP,
@@ -412,6 +414,14 @@ class SAM3Detector:
             self._processor = Sam3Processor(self._model)
             logger.info("[SAM3Detector] sam3 image model loaded.")
         except (ImportError, OSError, Exception) as exc:
+            if SAM3_STRICT:
+                raise RuntimeError(
+                    f"[SAM3Detector] sam3 image model failed to load "
+                    f"(checkpoint={SAM3_CHECKPOINT}): {exc}. "
+                    "SAM3_STRICT=1 refuses to fall back, because a silent "
+                    "fallback records benchmark numbers for the fallback "
+                    "detector instead of SAM3."
+                ) from exc
             logger.warning(
                 f"[SAM3Detector] Could not load sam3 image model ({exc}). "
                 "Using fallback grid-detector. "
@@ -432,6 +442,11 @@ class SAM3Detector:
             self._video_predictor = build_sam3_video_predictor(checkpoint_path=SAM3_CHECKPOINT)
             logger.info("[SAM3Detector] sam3 video predictor loaded.")
         except (ImportError, OSError, Exception) as exc:
+            if SAM3_STRICT:
+                raise RuntimeError(
+                    f"[SAM3Detector] sam3 video predictor failed to load "
+                    f"(checkpoint={SAM3_CHECKPOINT}): {exc}. SAM3_STRICT=1."
+                ) from exc
             logger.warning(
                 f"[SAM3Detector] Could not load sam3 video predictor ({exc}). "
                 "Tracking will fall back to image-model re-detection."
@@ -447,6 +462,12 @@ class SAM3Detector:
         self, image: np.ndarray, image_id: str, meta: ImageMeta
     ) -> List[DetectionResult]:
         """SAM3 모델 미설치 시 빈 결과를 반환한다."""
+        if SAM3_STRICT:
+            raise RuntimeError(
+                "[SAM3Detector] SAM3 model unavailable and SAM3_STRICT=1: "
+                "refusing to return an empty detection set that would be "
+                "scored as if it were a real result."
+            )
         logger.warning(
             "[SAM3Detector] SAM3 모델 없음 — 탐지 결과 없음. "
             "SAM3 설치: git clone https://github.com/facebookresearch/sam3.git && pip install -e ."
@@ -477,6 +498,33 @@ class SAM3Detector:
     # SAM3 image model: text-prompted detection (class별 1회 forward pass)
     # ------------------------------------------------------------------
 
+
+    # SAM3 upstream(examples/, scripts/)은 모든 추론을 bfloat16 autocast 안에서
+    # 실행한다. 없이 돌리면 backbone 내부 활성값(BFloat16)과 float32 가중치가
+    # 충돌해 RuntimeError가 나고, 호출부가 이를 삼켜 탐지 0건이 된다.
+    def _infer_ctx(self):
+        if torch.cuda.is_available() and str(self._device).startswith("cuda"):
+            return torch.autocast("cuda", dtype=torch.bfloat16)
+        return contextlib.nullcontext()
+
+    # 이미지 한 장을 한 번만 인코딩해 클래스별 프롬프트에 재사용한다.
+    # 실패하면 None을 돌려주고, 호출부는 기존의 클래스별 인코딩으로 되돌아간다.
+    def _encode_state(self, pil_image, label: str):
+        try:
+            with torch.no_grad(), self._infer_ctx():
+                return self._processor.set_image(pil_image)
+        except Exception as exc:
+            if SAM3_STRICT:
+                raise RuntimeError(
+                    f"[SAM3Detector] {label} set_image failed: {exc}. "
+                    "SAM3_STRICT=1."
+                ) from exc
+            logger.warning(
+                f"[SAM3Detector] {label} set_image failed ({exc}); "
+                "falling back to per-class encoding."
+            )
+            return None
+
     # SAM3 텍스트 프롬프트로 단일 클래스 객체 탐지
     def _detect_class(
         self,
@@ -488,6 +536,7 @@ class SAM3Detector:
         now: datetime,
         image_id: str,
         meta: ImageMeta,
+        state=None,
     ) -> List[DetectionResult]:
         """
         SAM3 텍스트 프롬프트로 class_name 에 해당하는 객체를 탐지.
@@ -496,27 +545,42 @@ class SAM3Detector:
             inference_state = processor.set_image(pil_image)
             output = processor.set_text_prompt(state=inference_state, prompt=class_name)
             masks, boxes, scores = output["masks"], output["boxes"], output["scores"]
+
+        `state`가 주어지면 이미지 인코딩을 건너뛴다. set_text_prompt는
+        state["backbone_out"]을 재사용하도록 설계돼 있으므로, 타일 한 장을
+        한 번만 인코딩하고 클래스 수만큼 프롬프트만 갈아끼우면 된다.
+        클래스마다 set_image를 다시 부르면 이미지 인코더를 18번 돌리게 된다.
         """
-        with torch.no_grad():
-            inference_state = self._processor.set_image(pil_image)
+        owns_state = state is None
+        with torch.no_grad(), self._infer_ctx():
+            if owns_state:
+                state = self._processor.set_image(pil_image)
             output = self._processor.set_text_prompt(
-                state=inference_state,
+                state=state,
                 prompt=class_name,
             )
-        # inference_state는 GPU 텐서를 보유하므로 즉시 해제
-        del inference_state
+        # 우리가 만든 state만 해제한다 (GPU 텐서를 보유)
+        if owns_state:
+            del state
 
         masks_out  = output.get("masks",  [])   # list[np.ndarray] | ndarray (N, H, W)
         boxes_out  = output.get("boxes",  [])   # (N, 4)  xyxy float
         scores_out = output.get("scores", [])   # (N,)    float
 
-        # numpy 배열로 통일
-        if hasattr(masks_out, "cpu"):
-            masks_out = masks_out.cpu().numpy()
-        if hasattr(boxes_out, "cpu"):
-            boxes_out = boxes_out.cpu().numpy()
-        if hasattr(scores_out, "cpu"):
-            scores_out = scores_out.cpu().numpy()
+        # numpy 배열로 통일.
+        # autocast(bfloat16) 아래에서는 출력이 bf16으로 나오는데 numpy에는
+        # bfloat16이 없어 .numpy()가 "unsupported ScalarType" 으로 죽는다.
+        # bool(마스크)은 보존하고 부동소수만 float32로 내린다.
+        def _to_numpy(t):
+            if not hasattr(t, "cpu"):
+                return t
+            if t.dtype.is_floating_point:
+                t = t.float()
+            return t.cpu().numpy()
+
+        masks_out  = _to_numpy(masks_out)
+        boxes_out  = _to_numpy(boxes_out)
+        scores_out = _to_numpy(scores_out)
 
         masks_out  = np.asarray(masks_out)
         boxes_out  = np.asarray(boxes_out)
@@ -590,11 +654,15 @@ class SAM3Detector:
         tile_img = pil_image.crop((tile_x1, tile_y1,
                                    tile_x1 + tile_w, tile_y1 + tile_h))
         results: List[DetectionResult] = []
+        # 타일을 한 번만 인코딩하고 클래스별로 텍스트 프롬프트만 교체한다.
+        tile_state = self._encode_state(tile_img, f"tile({tile_x1},{tile_y1})")
+
         for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
             try:
                 dets = self._detect_class(
                     tile_img, class_name, class_index,
                     tile_w, tile_h, now, image_id, meta,
+                    state=tile_state,
                 )
                 # 타일 내 좌표 → 원본 이미지 좌표로 역변환
                 for d in dets:
@@ -609,10 +677,18 @@ class SAM3Detector:
                     d.lat, d.lon = pixel_to_geo(cx, cy, orig_w, orig_h, meta)
                 results.extend(dets)
             except Exception as exc:
+                if SAM3_STRICT:
+                    raise RuntimeError(
+                        f"[SAM3Detector] tile({tile_x1},{tile_y1}) class "
+                        f"'{class_name}' failed: {exc}. SAM3_STRICT=1 refuses "
+                        "to continue: swallowing this per class is exactly how "
+                        "a whole run silently produced zero detections."
+                    ) from exc
                 logger.warning(
                     f"[SAM3Detector] tile({tile_x1},{tile_y1}) "
                     f"class '{class_name}': {exc}"
                 )
+        del tile_state
         return results
 
     # SAM3로 이미지에서 군사 객체를 탐지하고 결과 반환
@@ -647,8 +723,9 @@ class SAM3Detector:
             # ── [스케일 1] 전체 이미지 탐지 — 대형 객체 ─────────────────────
             if TILE_MULTISCALE:
                 logger.info("[SAM3Detector] 스케일1(대형): 전체 이미지 탐지")
+                scale1_state = self._encode_state(pil_image, "스케일1")
                 for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
-                    # 클래스마다 캐시 해제 — 전체 이미지 forward는 VRAM 소모가 크다
+                    # 인코딩 결과는 유지한 채 나머지 캐시만 해제한다.
                     gc.collect()
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
@@ -657,6 +734,7 @@ class SAM3Detector:
                             self._detect_class(
                                 pil_image, class_name, class_index,
                                 orig_w, orig_h, now, image_id, meta,
+                                state=scale1_state,
                             )
                         )
                     except torch.cuda.OutOfMemoryError:
@@ -671,6 +749,7 @@ class SAM3Detector:
                             f"[SAM3Detector] 스케일1 class '{class_name}': {exc}"
                         )
                 # 스케일1 완료 후 GPU 캐시 해제 — 다음 스케일 실행 전 VRAM 확보
+                del scale1_state
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -719,6 +798,7 @@ class SAM3Detector:
                     torch.cuda.empty_cache()
             logger.debug("[SAM3Detector] 스케일3 완료: GPU 캐시 해제")
         else:
+            full_state = self._encode_state(pil_image, "full-image")
             for class_index, class_name in enumerate(MILITARY_OBJECT_CLASSES):
                 gc.collect()
                 if torch.cuda.is_available():
@@ -728,6 +808,7 @@ class SAM3Detector:
                         self._detect_class(
                             pil_image, class_name, class_index,
                             orig_w, orig_h, now, image_id, meta,
+                            state=full_state,
                         )
                     )
                 except torch.cuda.OutOfMemoryError:
@@ -804,126 +885,128 @@ class SAM3Detector:
 
         tracked: List[TrackedObject] = []
 
-        try:
-            # video predictor 는 파일 경로를 받으므로 현재 프레임을 임시 저장
-            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                tmp_path = tmp.name
-            pil_image.save(tmp_path, format="JPEG", quality=95)
+        # SAM3 upstream과 동일하게 추론 전체를 bfloat16 autocast로 감싼다.
+        with self._infer_ctx():
+          try:
+              # video predictor 는 파일 경로를 받으므로 현재 프레임을 임시 저장
+              with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                  tmp_path = tmp.name
+              pil_image.save(tmp_path, format="JPEG", quality=95)
 
-            # 세션 시작
-            response = self._video_predictor.handle_request(
-                request=dict(type="start_session", resource_path=tmp_path)
-            )
-            session_id = response["session_id"]
+              # 세션 시작
+              response = self._video_predictor.handle_request(
+                  request=dict(type="start_session", resource_path=tmp_path)
+              )
+              session_id = response["session_id"]
 
-            # 과거 객체 클래스별로 텍스트 프롬프트 추가
-            # 같은 클래스가 여러 개 있을 수 있으므로 클래스별로 묶어서 처리
-            class_to_past: dict = {}
-            for d in past_detections:
-                class_to_past.setdefault(d.object_class, []).append(d)
+              # 과거 객체 클래스별로 텍스트 프롬프트 추가
+              # 같은 클래스가 여러 개 있을 수 있으므로 클래스별로 묶어서 처리
+              class_to_past: dict = {}
+              for d in past_detections:
+                  class_to_past.setdefault(d.object_class, []).append(d)
 
-            for class_name, dets in class_to_past.items():
-                try:
-                    response = self._video_predictor.handle_request(
-                        request=dict(
-                            type="add_prompt",
-                            session_id=session_id,
-                            frame_index=0,
-                            text=class_name,
-                        )
-                    )
-                    output = response.get("outputs", {})
-                    new_boxes  = output.get("boxes",  [])
-                    new_scores = output.get("scores", [])
-                    new_masks  = output.get("masks",  [])
+              for class_name, dets in class_to_past.items():
+                  try:
+                      response = self._video_predictor.handle_request(
+                          request=dict(
+                              type="add_prompt",
+                              session_id=session_id,
+                              frame_index=0,
+                              text=class_name,
+                          )
+                      )
+                      output = response.get("outputs", {})
+                      new_boxes  = output.get("boxes",  [])
+                      new_scores = output.get("scores", [])
+                      new_masks  = output.get("masks",  [])
 
-                    if hasattr(new_boxes, "cpu"):
-                        new_boxes = new_boxes.cpu().numpy()
-                    if hasattr(new_scores, "cpu"):
-                        new_scores = new_scores.cpu().numpy()
+                      if hasattr(new_boxes, "cpu"):
+                          new_boxes = new_boxes.cpu().numpy()
+                      if hasattr(new_scores, "cpu"):
+                          new_scores = new_scores.cpu().numpy()
 
-                    new_boxes  = np.asarray(new_boxes)
-                    new_scores = np.asarray(new_scores).flatten()
+                      new_boxes  = np.asarray(new_boxes)
+                      new_scores = np.asarray(new_scores).flatten()
 
-                    # 각 과거 객체 → IoU가 가장 높은 현재 탐지 결과와 매칭
-                    for past_det in dets:
-                        past_box = (
-                            past_det.bbox_x1, past_det.bbox_y1,
-                            past_det.bbox_x2, past_det.bbox_y2,
-                        )
-                        best_iou, best_idx = 0.0, -1
-                        for j in range(len(new_scores)):
-                            if float(new_scores[j]) < DETECTION_CONFIDENCE_THRESHOLD:
-                                continue
-                            nb = new_boxes[j]
-                            iou = _iou(past_box, (nb[0], nb[1], nb[2], nb[3]))
-                            if iou > best_iou:
-                                best_iou, best_idx = iou, j
+                      # 각 과거 객체 → IoU가 가장 높은 현재 탐지 결과와 매칭
+                      for past_det in dets:
+                          past_box = (
+                              past_det.bbox_x1, past_det.bbox_y1,
+                              past_det.bbox_x2, past_det.bbox_y2,
+                          )
+                          best_iou, best_idx = 0.0, -1
+                          for j in range(len(new_scores)):
+                              if float(new_scores[j]) < DETECTION_CONFIDENCE_THRESHOLD:
+                                  continue
+                              nb = new_boxes[j]
+                              iou = _iou(past_box, (nb[0], nb[1], nb[2], nb[3]))
+                              if iou > best_iou:
+                                  best_iou, best_idx = iou, j
 
-                        if best_idx < 0 or best_iou < 0.1:
-                            logger.debug(
-                                f"[SAM3Tracker] {past_det.id[:8]} "
-                                f"({class_name}) → disappeared (best_iou={best_iou:.3f})"
-                            )
-                            continue
+                          if best_idx < 0 or best_iou < 0.1:
+                              logger.debug(
+                                  f"[SAM3Tracker] {past_det.id[:8]} "
+                                  f"({class_name}) → disappeared (best_iou={best_iou:.3f})"
+                              )
+                              continue
 
-                        score = float(new_scores[best_idx])
-                        nb = new_boxes[best_idx]
+                          score = float(new_scores[best_idx])
+                          nb = new_boxes[best_idx]
 
-                        # 마스크가 있으면 tight bbox 재계산
-                        if (hasattr(new_masks, "__len__") and len(new_masks) > best_idx
-                                and new_masks[best_idx] is not None):
-                            raw_mask = np.squeeze(np.asarray(new_masks[best_idx])).astype(bool)
-                            if raw_mask.shape != (orig_h, orig_w):
-                                from PIL import Image as PILImage
-                                pm = PILImage.fromarray(raw_mask.astype(np.uint8) * 255, "L")
-                                pm = pm.resize((orig_w, orig_h), PILImage.NEAREST)
-                                raw_mask = np.array(pm) > 127
-                            mask_np = _tighten_mask(raw_mask)
-                            if mask_np.any():
-                                try:
-                                    x1, y1, x2, y2 = _mask_to_bbox(mask_np)
-                                except (IndexError, ValueError):
-                                    x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
-                            else:
-                                x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
-                        else:
-                            x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
+                          # 마스크가 있으면 tight bbox 재계산
+                          if (hasattr(new_masks, "__len__") and len(new_masks) > best_idx
+                                  and new_masks[best_idx] is not None):
+                              raw_mask = np.squeeze(np.asarray(new_masks[best_idx])).astype(bool)
+                              if raw_mask.shape != (orig_h, orig_w):
+                                  from PIL import Image as PILImage
+                                  pm = PILImage.fromarray(raw_mask.astype(np.uint8) * 255, "L")
+                                  pm = pm.resize((orig_w, orig_h), PILImage.NEAREST)
+                                  raw_mask = np.array(pm) > 127
+                              mask_np = _tighten_mask(raw_mask)
+                              if mask_np.any():
+                                  try:
+                                      x1, y1, x2, y2 = _mask_to_bbox(mask_np)
+                                  except (IndexError, ValueError):
+                                      x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
+                              else:
+                                  x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
+                          else:
+                              x1, y1, x2, y2 = nb[0], nb[1], nb[2], nb[3]
 
-                        tracked.append(TrackedObject(
-                            past_detection_id=past_det.id,
-                            past_object_class=class_name,
-                            bbox_x1=float(x1), bbox_y1=float(y1),
-                            bbox_x2=float(x2), bbox_y2=float(y2),
-                            score=score,
-                        ))
-                        logger.debug(
-                            f"[SAM3Tracker] {past_det.id[:8]} ({class_name}) "
-                            f"tracked  score={score:.3f}  iou={best_iou:.3f}"
-                        )
+                          tracked.append(TrackedObject(
+                              past_detection_id=past_det.id,
+                              past_object_class=class_name,
+                              bbox_x1=float(x1), bbox_y1=float(y1),
+                              bbox_x2=float(x2), bbox_y2=float(y2),
+                              score=score,
+                          ))
+                          logger.debug(
+                              f"[SAM3Tracker] {past_det.id[:8]} ({class_name}) "
+                              f"tracked  score={score:.3f}  iou={best_iou:.3f}"
+                          )
 
-                except Exception as exc:
-                    logger.warning(
-                        f"[SAM3Tracker] Error tracking class '{class_name}': {exc}"
-                    )
+                  except Exception as exc:
+                      logger.warning(
+                          f"[SAM3Tracker] Error tracking class '{class_name}': {exc}"
+                      )
 
-            # 세션 정리
-            try:
-                self._video_predictor.handle_request(
-                    request=dict(type="end_session", session_id=session_id)
-                )
-            except Exception:
-                pass
+              # 세션 정리
+              try:
+                  self._video_predictor.handle_request(
+                      request=dict(type="end_session", session_id=session_id)
+                  )
+              except Exception:
+                  pass
 
-        except Exception as exc:
-            logger.warning(f"[SAM3Tracker] Session error: {exc}. Falling back.")
-            return self._fallback_track(past_detections)
-        finally:
-            import os
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
+          except Exception as exc:
+              logger.warning(f"[SAM3Tracker] Session error: {exc}. Falling back.")
+              return self._fallback_track(past_detections)
+          finally:
+              import os
+              try:
+                  os.unlink(tmp_path)
+              except Exception:
+                  pass
 
         logger.info(
             f"[SAM3Tracker] {len(tracked)}/{len(past_detections)} "
