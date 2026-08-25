@@ -133,18 +133,80 @@ def load(
     return subsample(pairs, limit)
 
 
+def _attach_from_manifest(
+    pairs: List[ChangePair],
+    data_root: Optional[Path] = None,
+) -> int:
+    """Attach masks recovered by `icce.datasets.link_cc_cd` (pixel-content join).
+
+    The manifest records mask paths relative to the directory the linker ran
+    in, so a recorded path that does not resolve falls back to the canonical
+    location under the LEVIR-CC root.
+    """
+    base = root(data_root)
+    manifest = base / "masks" / "cc_cd_map.json"
+    if not manifest.is_file():
+        return 0
+
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("%s: unreadable CC->CD manifest (%s)", NAME, exc)
+        return 0
+    entries = payload.get("pairs", {})
+    # The manifest stores row/col as *pixel* offsets into the parent tile
+    # (0, 256, 512, 768); downstream wants crop indices (0, 1, 2, 3).
+    crop_px = int(payload.get("crop_px") or 1) or 1
+
+    hits = 0
+    for pair in pairs:
+        entry = entries.get(pair.pair_id)
+        if not entry:
+            continue
+        candidates = [Path(entry["mask"])] if entry.get("mask") else []
+        candidates.append(base / "masks" / pair.split / f"{pair.pair_id}.png")
+        mask = next((p for p in candidates if p.is_file()), None)
+        if mask is None:
+            continue
+        pair.mask = mask
+        pair.meta["cd_tile"] = entry.get("cd_tile")
+        pair.meta["cd_split"] = entry.get("cd_split")
+        # (row, col) of this crop inside its parent tile. Crop ids in the public
+        # release carry no position, so without these every crop looks like its
+        # own scene and the knowledge graph never accumulates a neighbourhood.
+        row, col = entry.get("row"), entry.get("col")
+        pair.meta["cd_row"] = None if row is None else int(row) // crop_px
+        pair.meta["cd_col"] = None if col is None else int(col) // crop_px
+        hits += 1
+
+    if hits:
+        logger.info("%s: %d/%d masks from the CC->CD manifest", NAME, hits, len(pairs))
+    return hits
+
+
 def attach_cd_masks(
     pairs: List[ChangePair],
     levir_cd_root: Optional[Path] = None,
 ) -> int:
     """Best-effort: attach LEVIR-CD binary masks to LEVIR-CC pairs.
 
-    LEVIR-CC crops are named `<levir_cd_stem>_<row>_<col>.png` in most mirrors;
-    when the stems line up we can score pixel-level CD *and* caption quality on
-    the very same samples, which is what the factuality metric needs.
-    Returns the number of pairs that received a mask.
+    Two joins, in order of reliability:
+
+    1. The manifest written by `icce.datasets.link_cc_cd`, which matches every
+       crop to its parent tile on pixel content. This is the one that works.
+    2. Filename stems, for mirrors that name crops after the LEVIR-CD tile.
+       The public release does not (`test_000107` vs `test_42`), so this
+       recovers nothing there and is kept only as a fallback.
+
+    Pairs also receive `meta['cd_tile']`/`meta['cd_split']` from the manifest,
+    which is what lets an integrity check spot a LEVIR-CC test crop cut from a
+    LEVIR-CD *train* tile. Returns the number of pairs that received a mask.
     """
     from . import levir_cd as cd
+
+    hits = _attach_from_manifest(pairs)
+    if hits:
+        return hits
 
     base = cd.root(levir_cd_root)
     index = {}

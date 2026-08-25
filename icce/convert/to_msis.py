@@ -87,19 +87,19 @@ def build_scenes(
         return []
 
     size = _image_size(pairs[0].image_a)
-    grids = assign_geo([p.pair_id for p in pairs], size, gsd_m)
+    crop_index = _crop_index(pairs)
+    grids = assign_geo([p.pair_id for p in pairs], size, gsd_m, crop_index)
+
+    def _pos(p: ChangePair) -> Tuple[str, int, int]:
+        parent, row, col = crop_index.get(p.pair_id) or parse_crop_id(p.pair_id)
+        return parent, row or 0, col or 0
 
     # order within a parent scene drives the synthetic acquisition sequence
-    ordered = sorted(
-        pairs,
-        key=lambda p: (parse_crop_id(p.pair_id)[0],
-                       parse_crop_id(p.pair_id)[1] or 0,
-                       parse_crop_id(p.pair_id)[2] or 0),
-    )
+    ordered = sorted(pairs, key=_pos)
 
     scenes: List[BenchmarkScene] = []
     for i, p in enumerate(ordered):
-        parent = parse_crop_id(p.pair_id)[0]
+        parent = _pos(p)[0]
         past = T0 + timedelta(hours=i)
         current = past + timedelta(days=revisit_days)
         scenes.append(
@@ -119,6 +119,25 @@ def build_scenes(
             )
         )
     return scenes
+
+
+def _crop_index(
+    pairs: Sequence[ChangePair],
+) -> Dict[str, Tuple[str, Optional[int], Optional[int]]]:
+    """`pair_id -> (parent_scene, row, col)` for pairs that carry a position.
+
+    LEVIR-CC crop ids (`test_000042`) encode neither parent nor position, so
+    `parse_crop_id` makes every crop its own scene and the per-scene knowledge
+    graph is handed one observation and no history. `levir_cc.attach_cd_masks`
+    recovers the real position from the CC->CD manifest and leaves it in
+    `meta`; this reads it back out.
+    """
+    index: Dict[str, Tuple[str, Optional[int], Optional[int]]] = {}
+    for p in pairs:
+        parent = p.meta.get("cd_tile")
+        if parent:
+            index[p.pair_id] = (parent, p.meta.get("cd_row"), p.meta.get("cd_col"))
+    return index
 
 
 def _relative(path: Path, base: Path) -> str:

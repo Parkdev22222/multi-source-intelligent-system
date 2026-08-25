@@ -33,8 +33,9 @@ pip install -q \
   huggingface_hub hf_transfer pytest
 
 log "SAM3 runtime deps missing from its own pyproject.toml"
-# sam3 imports these but does not declare them.
-pip install -q einops pycocotools
+# sam3 imports these but does not declare them (iopath), or declares them only
+# in pyproject.toml, which --no-deps below deliberately ignores (ftfy, timm).
+pip install -q einops pycocotools iopath "ftfy==6.1.1" "timm>=1.0.17"
 
 log "SAM3 (editable, source stays on the network volume)"
 if [ -d /workspace/sam3 ]; then

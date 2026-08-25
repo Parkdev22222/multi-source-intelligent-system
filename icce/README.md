@@ -23,8 +23,8 @@ what makes the work a fit for IEEE CTSoc / IEIE rather than a defence venue.
 |---|---|---|
 | C1 | End-to-end pipeline coupling open-vocabulary instance change detection with a persistent spatio-temporal knowledge graph for report generation | System description + E1–E6 |
 | C2 | A 20k-parameter learned pairing head with cross-frame co-located evidence, supervised for free from CD masks, replaces the hand-tuned CLIP+geo heuristic | E1, E2, E5 |
-| C3 | Graph grounding measurably reduces report hallucination, over and above flat RAG **and over a VLM shown the images directly** | E3, E4 |
-| C4 | The added accuracy costs sub-millisecond latency in a pipeline dominated by segmentation and generation | E6 |
+| C3 | Reports grounded in the pipeline's instance evidence are far more factual than a VLM shown the images directly; graph grounding adds to that only at neighbourhood level, where it halves the counting error of flat retrieval | E4 (VLM), E7 (graph, preliminary) |
+| C4 | The added accuracy costs 1.5 ms/tile -- 0.01% of a pipeline dominated by segmentation | E6 |
 
 ### Who we are actually competing with
 
@@ -39,6 +39,14 @@ group by tier rather than printing one undifferentiated block:
 - **`zero-shot`** — no training on this dataset. This is our league: AnyChange
   for detection, and a VLM shown both images for captioning.
 - **`ours`** — this work, plus its ablations.
+
+**Where `ours` actually sits on LEVIR-CD, stated plainly.** The detector (SAM3)
+has never seen LEVIR-CD, but the 20k-parameter pairing head is trained on
+LEVIR-CD's own training split, from mask-derived labels. By the definition
+above that is not `zero-shot`, and the paper must not print it inside that
+group. It is a third position -- an open-vocabulary detector with a small head
+supervised for free from the benchmark's masks -- and E2 (WHU-CD, head trained
+on LEVIR-CD only) is the experiment that carries the genuinely zero-shot claim.
 
 **What we do not claim.** We do not claim SOTA pixel-level change detection,
 and we do not claim to beat models trained on LEVIR-CC captions at n-gram
@@ -63,9 +71,10 @@ Change-Fact-Score is built to catch exactly that.
 | E1 | How good is our change detection? | LEVIR-CD test (128) | P/R/F1/IoU pixel, P/R/F1 instance | `table_levir_cd_pixel.tex`, `..._instance.tex` |
 | E2 | Does it transfer without retraining? | WHU-CD test | same | `table_whu_cd_pixel.tex` |
 | E3 | Is the generated text competitive with change-captioning models? | LEVIR-CC test | BLEU-1/4, METEOR, ROUGE-L, CIDEr-D | `table_levir_cc_caption.tex` |
-| E4 | Does graph grounding reduce hallucination? | LEVIR-CC test | CFS-P/R/F1, HalRate, ChgAcc, CountMAE | `table_factuality_caption.tex` |
+| E4 | Does graph grounding reduce hallucination? | LEVIR-CC test | CFS-P/R/F1, ChgAcc, CountMAE (HalRate = 1 - CFS-P, prose only) | `table_factuality_caption.tex` |
 | E5 | Does better pairing produce better reports? | LEVIR-CC test | CFS with pairing swapped, grounding fixed | `table_factuality_report.tex` |
 | E6 | Can this be deployed? | LEVIR-CC test | ms/tile, peak GPU MB per stage | `table_efficiency.tex` |
+| E7 | Does graph grounding help where retrieval is lossy? | LEVIR-CC, whole neighbourhoods | CFS-P/R/F1, scene CountMAE | `scene_results.json` |
 
 ### The grounding ladder (E4)
 
@@ -73,7 +82,7 @@ Each condition sees strictly more structure than the last, over an identical
 evidence object, so a gain is attributable to grounding and nothing else:
 
 ```
-template       no LLM, deterministic prose        -> zero hallucination by construction
+template       no LLM, deterministic prose        -> the detector's own error floor
 vlm_direct     EXTERNAL BASELINE: a VLM shown both images and none of our pipeline
 llm_raw        + LLM, unaggregated detection dump
 llm_struct     + aggregated change inventory      -> isolates aggregation
@@ -84,6 +93,64 @@ llm_graphrag   + entity history and community summaries (ours)
 `llm_flat_rag` is the row that matters most to a reviewer: without it, a
 GraphRAG gain could just be "retrieval helps". `vlm_direct` is the row that
 matters most to a reader deciding whether to adopt any of this.
+
+`template` is not a zero-hallucination row, and the paper must not call it one.
+It invents no *sentences*, but it states whatever the detector found, so every
+detection error becomes an unsupported claim: measured HalRate is 30.9, not 0.
+That is the point of the row. It fixes the error floor that our own detector
+imposes, so the LLM conditions are read as *what generation adds on top of it*.
+
+**Measured, 128 crops of 8 neighbourhoods (EXAONE-4.0-32B, Qwen2.5-VL-7B):**
+
+| condition | CFS-P | CFS-R | CFS-F1 | ChgAcc | BLEU-4 |
+|---|---|---|---|---|---|
+| template | 69.12 | 40.52 | **51.09** | 85.16 | 25.85 |
+| vlm_direct | 48.97 | 30.60 | 37.67 | **50.00** | 3.87 |
+| llm_raw | 62.84 | 40.09 | 48.95 | 80.47 | 24.22 |
+| llm_struct | 67.63 | 40.52 | 50.67 | 85.16 | 25.54 |
+| llm_flat_rag | 67.63 | 40.52 | 50.67 | 85.16 | 26.56 |
+| llm_graphrag | 67.63 | 40.52 | 50.67 | 85.16 | 27.66 |
+
+Two things in this table have to be reported, not buried.
+
+**`vlm_direct` decides 50.00 -- chance -- on whether anything changed at all**,
+while writing fluent prose about it. That is the result the pipeline exists to
+justify, and the one CFS was built to expose. BLEU sees part of it (3.87); only
+ChgAcc shows how complete the failure is.
+
+**The top three rows are identical to four decimals, and that is a property of
+the design, not a bug.** All three receive the same change inventory for the
+crop being described, and CFS scores only claims about that crop; retrieved
+history concerns *other* crops, so it can move wording but never a claim. Of
+128 generations, 77 differed between conditions and 0 differed in extracted
+claims. A crop-level ladder therefore cannot measure C3's graph term, and
+saying so is the honest reading -- the alternative is to present three copies
+of one number as an ablation.
+
+### Neighbourhood-level grounding (E7)
+
+E7 (`icce.eval.run_scene_eval`) asks the same question where the answer can
+differ: one report per neighbourhood, over all 16 crops of a LEVIR-CD tile. The
+conditions stop being nested and become three *representations* of the same 16
+observations -- full concatenation, top-k retrieval, graph aggregate. The
+module docstring states this departure; a paper using the table must too.
+
+**Measured, 8 neighbourhoods, mean 104.9 GT instances each:**
+
+| condition | CFS-F1 | scene CountMAE |
+|---|---|---|
+| template | **41.18** | **20.25** |
+| llm_struct | 35.14 | 81.50 |
+| llm_flat_rag | 26.23 | 71.38 |
+| llm_graphrag | 32.43 | 41.00 |
+
+Graph aggregation halves flat retrieval's counting error (41.0 vs 71.4) and
+beats raw concatenation by more (81.5), which is the predicted effect: top-k
+truncation drops crops, and a count cannot be recovered from crops that were
+never retrieved. But **no LLM condition beats the deterministic template on
+either axis**, so this supports "graph structure preserves counts better than
+retrieval", not "generation improves factuality". With n=8 and GT spanning
+12-216 instances it is a preliminary result and must be labelled one.
 
 ### Cross-frame co-located evidence
 
@@ -110,6 +177,29 @@ then scores them against claims extracted the same way from the five human
 references (majority vote, >= 2 annotators) and against the GT mask's instance
 count. No LLM sits inside the metric, so the model being evaluated cannot game
 it. See `icce/metrics/change_fact.py`.
+
+**HalRate is not an independent number.** It is defined as `1 - CFS-P`
+(`change_fact.py:383`), so printing both in one table gives a reviewer two
+columns carrying one measurement and invites the charge that the metric set was
+padded. Report CFS-P/R/F1 in the table and quote HalRate only in prose, where
+"one claim in three is unsupported" is easier to read than a precision.
+
+### Deployment cost (E6)
+
+Measured on one A100 80GB, 64 pairs, EXAONE-4.0-32B served by vLLM:
+
+| stage | ms/tile | peak GPU MB |
+|---|---|---|
+| SAM3 detection + CLIP (2 frames) | 13392.05 | -- |
+| pairing: heuristic (production) | 4.63 | 0.08 |
+| pairing: learned head (ours, 19,781 params) | 6.08 | 9.39 |
+| knowledge graph: index + retrieve | 74.73 | 8.29 |
+| report LLM (batched) | 453.01 | 8.29 |
+
+Segmentation is 96% of the ~13.9 s/tile budget. The learned head costs **1.45
+ms more than the heuristic it replaces** -- 0.01% of the pipeline -- which is
+what makes C2's accuracy gain free in practice. Quote 1.45 ms, not
+"sub-millisecond": the difference is checkable straight off this table.
 
 ---
 

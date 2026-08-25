@@ -118,11 +118,17 @@ def assign_geo(
     pair_ids: Sequence[str],
     image_size: Tuple[int, int],
     gsd_m: float,
+    crop_index: Optional[Dict[str, Tuple[str, Optional[int], Optional[int]]]] = None,
 ) -> Dict[str, GeoGrid]:
     """Build a GeoGrid per pair, preserving parent-scene adjacency.
 
     `image_size` is (width_px, height_px) of the tile.
+
+    `crop_index` overrides the id-parsed `(parent, row, col)` for datasets whose
+    crop ids do not encode their position -- LEVIR-CC being the one that
+    matters, where the position comes from the CC->CD manifest instead.
     """
+    crop_index = crop_index or {}
     width_px, height_px = image_size
     span_lat = (height_px * gsd_m) / _M_PER_DEG_LAT
 
@@ -130,7 +136,7 @@ def assign_geo(
     grids: Dict[str, GeoGrid] = {}
 
     for pid in pair_ids:
-        parent, row, col = parse_crop_id(pid)
+        parent, row, col = crop_index.get(pid) or parse_crop_id(pid)
         if parent not in scene_index:
             scene_index[parent] = len(scene_index)
         base_lat, base_lon = _scene_origin(scene_index[parent])
@@ -139,7 +145,8 @@ def assign_geo(
         # Crops without an (row, col) suffix each get their own slot in the
         # scene, laid out left to right so they still form a neighbourhood.
         if row is None or col is None:
-            slot = sum(1 for k in grids if parse_crop_id(k)[0] == parent)
+            slot = sum(1 for k in grids
+                       if (crop_index.get(k) or parse_crop_id(k))[0] == parent)
             row, col = divmod(slot, 8)
 
         lat_max = base_lat - row * span_lat

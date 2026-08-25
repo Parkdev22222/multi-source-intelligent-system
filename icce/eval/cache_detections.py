@@ -182,6 +182,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     help="skip CLIP embeddings (geometry-only ablation)")
     ap.add_argument("--attach-cd-masks", action="store_true",
                     help="LEVIR-CC only: borrow LEVIR-CD masks for the same tiles")
+    ap.add_argument("--limit-scenes", type=int, default=None,
+                    help="keep only crops from the first N parent scenes. A "
+                         "budget-limited run must use this rather than --limit: "
+                         "--limit spreads its sample across the split, which "
+                         "leaves roughly one crop per scene and hands the "
+                         "per-scene knowledge graph no history to retrieve.")
     ap.add_argument("--device", default="cuda")
     args = ap.parse_args(argv)
 
@@ -204,6 +210,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     gsd = GSD.get(args.dataset.replace("-", "_"), 0.5)
     scenes = build_scenes(pairs, gsd, Path("."))
+
+    if args.limit_scenes:
+        # Largest scenes first, not first-by-name: crops the CC->CD join could
+        # not place are their own single-crop scene and sort ahead of the real
+        # tiles, so taking the head of the list would select exactly the scenes
+        # that carry no history.
+        from collections import Counter
+        sizes = Counter(s.parent_scene for s in scenes)
+        keep = {name for name, _ in sizes.most_common(args.limit_scenes)}
+        scenes = [s for s in scenes if s.parent_scene in keep]
+        pairs = [p for p in pairs if p.pair_id in {s.pair_id for s in scenes}]
+        logger.info("kept %d crops from %d parent scenes (%.1f crops/scene)",
+                    len(scenes), len(keep), len(scenes) / max(len(keep), 1))
+
     by_id = {p.pair_id: p for p in pairs}
     logger.info("%s/%s: %d pairs, gsd=%.3f m", args.dataset, args.split, len(scenes), gsd)
 
