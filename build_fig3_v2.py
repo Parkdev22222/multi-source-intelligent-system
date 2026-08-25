@@ -174,12 +174,12 @@ ax.text(bx + 2.0, by + 1.2, "위치", ha="center", va="center",
 ax.add_patch(Circle((bx + 0.8, by + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
 ax.text(bx + 0.8, by + 0.35, "전차", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(bx + 0.8, by - 0.2, "count=2", ha="center", fontsize=7.5, color=MUTED)
+ax.text(bx + 0.8, by - 0.2, "관측 횟수 2회", ha="center", fontsize=7.5, color=MUTED)
 
 ax.add_patch(Circle((bx + 3.2, by + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
 ax.text(bx + 3.2, by + 0.35, "APC", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(bx + 3.2, by - 0.2, "count=1", ha="center", fontsize=7.5, color=MUTED)
+ax.text(bx + 3.2, by - 0.2, "관측 횟수 1회", ha="center", fontsize=7.5, color=MUTED)
 
 # 엣지
 ax.plot([bx + 0.8, bx + 2.0], [by + 0.73, by + 0.82], color=MUTED, lw=1.2)
@@ -190,7 +190,7 @@ mx = 5.0
 ax.add_patch(FancyArrowPatch((mx, by + 0.8), (mx + 1.5, by + 0.8),
                               arrowstyle="->,head_length=12,head_width=9",
                               color=GRAPH, lw=2.5))
-ax.text(mx + 0.75, by + 1.25, "upsert\n(AI 호출 없음,\n카운터만 +1)",
+ax.text(mx + 0.75, by + 1.25, "upsert\n(AI 호출 없음,\n관측 횟수 +1)",
         ha="center", fontsize=8.5, color=GRAPH, fontweight="bold")
 
 # 우: After (카운터 증가)
@@ -205,13 +205,13 @@ ax.text(ax_x + 2.0, ay + 1.2, "위치", ha="center", va="center",
 ax.add_patch(Circle((ax_x + 0.8, ay + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
 ax.text(ax_x + 0.8, ay + 0.35, "전차", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(ax_x + 0.8, ay - 0.2, "count=3", ha="center", fontsize=7.5,
+ax.text(ax_x + 0.8, ay - 0.2, "관측 횟수 3회", ha="center", fontsize=7.5,
         color=GREEN, fontweight="bold")
 
 ax.add_patch(Circle((ax_x + 3.2, ay + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
 ax.text(ax_x + 3.2, ay + 0.35, "APC", ha="center", va="center", fontsize=9,
         fontweight="bold", color="white")
-ax.text(ax_x + 3.2, ay - 0.2, "count=2", ha="center", fontsize=7.5,
+ax.text(ax_x + 3.2, ay - 0.2, "관측 횟수 2회", ha="center", fontsize=7.5,
         color=GREEN, fontweight="bold")
 
 # 엣지 - 굵어짐 (공출현 강화)
@@ -224,9 +224,12 @@ ax.text(ax_x + 2.0, ay + 0.1, "공출현 관계", ha="center",
         fontsize=7.5, color=GRAPH, style="italic")
 
 # 하단 설명
-ax.text(6.5, 9.35,
+ax.text(6.5, 9.42,
         "노드 색상: 주황=위치, 보라=자산  ·  실선=관측 관계(자산-위치),  점선=공출현 관계(자산-자산)",
         ha="center", fontsize=8, color=MUTED, style="italic")
+ax.text(6.5, 9.24,
+        "※ '관측 횟수'는 그 격자에 자산이 몇 대 있는지가 아니라, 여러 시점 비교에서 그 (자산, 격자) 조합이 관측된 누적 횟수임",
+        ha="center", fontsize=7.5, color=MUTED, style="italic")
 
 arrow_down(6.5, 9.2, 7.5)
 
