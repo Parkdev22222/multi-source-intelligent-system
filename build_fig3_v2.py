@@ -160,78 +160,68 @@ arrow_down(6.5, 12.6, 11.4)
 # ═══════════════════════════════════════════════════════════════
 # [3단계] 노드·엣지 자동 누적 (AI 호출 없음)
 # ═══════════════════════════════════════════════════════════════
-stage_bg(9.2, 2.2, "3단계", "노드·엣지 자동 누적 upsert (AI 호출 없이 카운터 +1)")
+stage_bg(8.8, 2.6, "3단계",
+         "새 영상 쌍으로 비교를 반복할수록 같은 (자산, 격자) 조합의 관측 횟수가 +1씩 쌓임 (AI 호출 없이 upsert만)")
 
-# 좌: Before (기존 그래프 상태 - 카운터 낮음)
-bx, by = 0.8, 9.5
-ax.text(bx + 2.0, by + 1.7, "Before (기존)", ha="center", fontsize=9.5,
-        fontweight="bold", color=TEXT)
-# location 노드
-ax.add_patch(Circle((bx + 2.0, by + 1.2), 0.38, facecolor=NODE_L, edgecolor="white", lw=1.5))
-ax.text(bx + 2.0, by + 1.2, "위치", ha="center", va="center",
-        fontsize=9, fontweight="bold", color="white")
-# asset 노드 2개
-ax.add_patch(Circle((bx + 0.8, by + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
-ax.text(bx + 0.8, by + 0.35, "전차", ha="center", va="center", fontsize=9,
+# 시간축 라벨
+ax.text(0.55, 11.0, "시간 →", fontsize=8.5, color=MUTED,
+        style="italic", fontweight="bold")
+
+# 3개 회차 카드 (좌→우, 시간순)
+rounds = [
+    (0.6, 4.1,  "1회차",       "과거 2025.01.15 ↔ 현재 2025.02.15"),
+    (4.5, 8.0,  "2회차",       "과거 2025.02.15 ↔ 현재 2025.04.10"),
+    (8.4, 11.9, "3회차 (지금)", "과거 2025.04.10 ↔ 현재 2025.08.20"),
+]
+for x1, x2, round_name, date_range in rounds:
+    is_now = "지금" in round_name
+    fc = "#faf5ff" if is_now else "white"
+    ec = GRAPH if is_now else STAGE_BD
+    lw = 1.8 if is_now else 1.0
+    ax.add_patch(FancyBboxPatch((x1, 10.15), x2-x1, 0.82,
+                                 boxstyle="round,pad=0.04",
+                                 facecolor=fc, edgecolor=ec, lw=lw))
+    ax.text((x1+x2)/2, 10.74, round_name, ha="center", fontsize=9.5,
+            fontweight="bold", color=GRAPH if is_now else TEXT)
+    ax.text((x1+x2)/2, 10.5, date_range, ha="center", fontsize=7.8,
+            color=TEXT)
+    ax.text((x1+x2)/2, 10.28, "→ 전차 @ 같은 격자 발견",
+            ha="center", fontsize=7.5, color=MUTED, style="italic")
+
+# 각 카드 → 중앙 노드로 하강 화살표 + "+1" 라벨
+node_x, node_y = 6.5, 9.35
+for x1, x2, *_ in rounds:
+    cx = (x1+x2)/2
+    ax.add_patch(FancyArrowPatch((cx, 10.12),
+                                  (node_x + (cx-node_x)*0.15, node_y+0.35),
+                                  arrowstyle="->,head_length=7,head_width=5",
+                                  color=GRAPH, lw=1.4))
+    ax.text(cx + 0.15, 9.85, "+1", fontsize=8.5, color=GRAPH,
+            fontweight="bold")
+
+# 중앙 노드 (같은 노드가 매 회차마다 갱신됨)
+ax.add_patch(Circle((node_x, node_y), 0.35, facecolor=NODE_A,
+                    edgecolor="white", lw=2))
+ax.text(node_x, node_y, "전차", ha="center", va="center", fontsize=10,
         fontweight="bold", color="white")
-ax.text(bx + 0.8, by - 0.2, "관측 횟수 2회", ha="center", fontsize=7.5, color=MUTED)
+# 노드 왼쪽 설명
+ax.text(node_x - 0.55, node_y,
+        "같은 (자산 × 격자)\n조합의 단일 노드",
+        ha="right", va="center", fontsize=7.8, color=MUTED, style="italic")
+# 노드 오른쪽 관측 횟수 강조 뱃지
+ax.add_patch(FancyBboxPatch((node_x+0.55, node_y-0.22), 1.9, 0.44,
+                             boxstyle="round,pad=0.04",
+                             facecolor="#dcfce7", edgecolor=GREEN, lw=1.2))
+ax.text(node_x+1.5, node_y, "관측 횟수 3회", ha="center", va="center",
+        fontsize=10, fontweight="bold", color=GREEN)
 
-ax.add_patch(Circle((bx + 3.2, by + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
-ax.text(bx + 3.2, by + 0.35, "APC", ha="center", va="center", fontsize=9,
-        fontweight="bold", color="white")
-ax.text(bx + 3.2, by - 0.2, "관측 횟수 1회", ha="center", fontsize=7.5, color=MUTED)
+# 하단 note
+ax.text(6.5, 8.98,
+        "※ 같은 영상을 반복 처리하는 게 아님 · 새 영상이 들어올 때마다 새 회차 비교가 실행되고, "
+        "같은 조합이면 관측 횟수만 +1 (다른 자산과 함께 관측되면 공출현 엣지도 +1)",
+        ha="center", fontsize=7.3, color=MUTED, style="italic")
 
-# 엣지
-ax.plot([bx + 0.8, bx + 2.0], [by + 0.73, by + 0.82], color=MUTED, lw=1.2)
-ax.plot([bx + 3.2, bx + 2.0], [by + 0.73, by + 0.82], color=MUTED, lw=1.2)
-
-# 중앙 화살표 (upsert 처리)
-mx = 5.0
-ax.add_patch(FancyArrowPatch((mx, by + 0.8), (mx + 1.5, by + 0.8),
-                              arrowstyle="->,head_length=12,head_width=9",
-                              color=GRAPH, lw=2.5))
-ax.text(mx + 0.75, by + 1.25, "upsert\n(AI 호출 없음,\n관측 횟수 +1)",
-        ha="center", fontsize=8.5, color=GRAPH, fontweight="bold")
-
-# 우: After (카운터 증가)
-ax_x, ay = 7.5, 9.5
-ax.text(ax_x + 2.0, ay + 1.7, "After (누적 갱신)", ha="center",
-        fontsize=9.5, fontweight="bold", color=TEXT)
-# location 노드
-ax.add_patch(Circle((ax_x + 2.0, ay + 1.2), 0.38, facecolor=NODE_L, edgecolor="white", lw=1.5))
-ax.text(ax_x + 2.0, ay + 1.2, "위치", ha="center", va="center",
-        fontsize=9, fontweight="bold", color="white")
-# asset 노드
-ax.add_patch(Circle((ax_x + 0.8, ay + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
-ax.text(ax_x + 0.8, ay + 0.35, "전차", ha="center", va="center", fontsize=9,
-        fontweight="bold", color="white")
-ax.text(ax_x + 0.8, ay - 0.2, "관측 횟수 3회", ha="center", fontsize=7.5,
-        color=GREEN, fontweight="bold")
-
-ax.add_patch(Circle((ax_x + 3.2, ay + 0.35), 0.38, facecolor=NODE_A, edgecolor="white", lw=1.5))
-ax.text(ax_x + 3.2, ay + 0.35, "APC", ha="center", va="center", fontsize=9,
-        fontweight="bold", color="white")
-ax.text(ax_x + 3.2, ay - 0.2, "관측 횟수 2회", ha="center", fontsize=7.5,
-        color=GREEN, fontweight="bold")
-
-# 엣지 - 굵어짐 (공출현 강화)
-ax.plot([ax_x + 0.8, ax_x + 2.0], [ay + 0.73, ay + 0.82], color=GRAPH, lw=2.0)
-ax.plot([ax_x + 3.2, ax_x + 2.0], [ay + 0.73, ay + 0.82], color=GRAPH, lw=2.0)
-# co_occurred_with 엣지 (asset 간)
-ax.plot([ax_x + 1.18, ax_x + 2.82], [ay + 0.35, ay + 0.35],
-        color=GRAPH, lw=2.5, linestyle="--")
-ax.text(ax_x + 2.0, ay + 0.1, "공출현 관계", ha="center",
-        fontsize=7.5, color=GRAPH, style="italic")
-
-# 하단 설명
-ax.text(6.5, 9.42,
-        "노드 색상: 주황=위치, 보라=자산  ·  실선=관측 관계(자산-위치),  점선=공출현 관계(자산-자산)",
-        ha="center", fontsize=8, color=MUTED, style="italic")
-ax.text(6.5, 9.24,
-        "※ '관측 횟수'는 그 격자에 자산이 몇 대 있는지가 아니라, 여러 시점 비교에서 그 (자산, 격자) 조합이 관측된 누적 횟수임",
-        ha="center", fontsize=7.5, color=MUTED, style="italic")
-
-arrow_down(6.5, 9.2, 7.5)
+arrow_down(6.5, 8.8, 7.5)
 
 # ═══════════════════════════════════════════════════════════════
 # [4단계] Louvain 군집화 (자산 doctrine 패턴 자동 발견)
