@@ -76,6 +76,39 @@ Change-Fact-Score is built to catch exactly that.
 | E6 | Can this be deployed? | LEVIR-CC test | ms/tile, peak GPU MB per stage | `table_efficiency.tex` |
 | E7 | Does graph grounding help where retrieval is lossy? | LEVIR-CC, whole neighbourhoods | CFS-P/R/F1, scene CountMAE | `scene_results.json` |
 
+### Change detection (E1)
+
+**Measured, full LEVIR-CD test split (128 tiles), head trained on all 445
+training tiles. Integrity clean: pair ids and parent scenes disjoint from
+train, thresholds selected on `val`.**
+
+| method | P | R | F1 | IoU | inst-F1 |
+|---|---|---|---|---|---|
+| AnyChange, zero-shot | 13.70 | 83.00 | 23.40 | -- | -- |
+| AnyChange-H, 3-point query *(human in the loop)* | 28.50 | 81.10 | 42.20 | -- | -- |
+| geo-only | 14.34 | 64.73 | 23.47 | 13.30 | 35.62 |
+| heuristic (production) | 16.08 | 62.67 | 25.59 | 14.67 | 35.72 |
+| learned head, no verifier | 12.49 | 76.66 | 21.48 | 12.03 | 31.25 |
+| learned head, no cross-frame | 47.26 | 51.52 | 49.30 | 32.71 | 50.56 |
+| **learned head (ours)** | **56.22** | **51.97** | **54.01** | **36.99** | **54.28** |
+
+The row worth pointing at is not ours, it is the cluster: geo-only 23.47,
+heuristic 25.59 and AnyChange 23.40 all sit within two points of each other, at
+precision 13-16 with high recall. Methods that do not learn to pair land in the
+same place regardless of how good their segmentation is, and the 20k-parameter
+head is what leaves that cluster -- 2.3x AnyChange's F1, and above even its
+three-point human-assisted setting.
+
+Both ablations are load-bearing. Without the verifier the system is worse than
+geo-only (21.48): the head proposes matches and something has to reject them.
+Cross-frame evidence, retrained without rather than zeroed, is worth +4.71
+pixel F1.
+
+We do not beat the supervised ceiling (86-91 F1) and do not claim to. See the
+tier note above for where `ours` actually sits: the detector never saw
+LEVIR-CD, the pairing head trained on its training split, and E2 is what
+carries the zero-shot claim.
+
 ### The grounding ladder (E4)
 
 Each condition sees strictly more structure than the last, over an identical
@@ -161,12 +194,14 @@ was already there lives in the past frame's *pixels*.
 
 `icce/convert/cross_frame.py` crops each detection's footprint from both frames
 and measures CLIP cosine, pixel difference, cross-correlation and signed
-edge-density change, and hands all four to the learned verifier. On synthetic
-scenes it is worth **+3.1 instance F1** on its own, without CLIP.
+edge-density change, and hands all four to the learned verifier.
 
 Ablating it means **retraining without it** (`--no-cross-frame`), not zeroing
 it at inference: zero is not a neutral input after standardisation, so zeroing
-measures a broken model rather than the feature's contribution.
+measures a broken model rather than the feature's contribution. Retrained on
+the full LEVIR-CD training split it is worth **+4.71 pixel F1 and +3.72
+instance F1** (see E1 below), which supersedes the +3.1 previously measured on
+synthetic scenes.
 
 ### Change-Fact-Score
 

@@ -1,0 +1,31 @@
+\begin{table}[t]
+\centering
+\caption{Pixel-level change detection on LEVIR-CD. Baselines are fully supervised; ours is open-vocabulary with a 20k-parameter pairing head.}
+\label{tab:levir_cd_pixel}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Method & P & R & F1 & IoU \\
+\midrule
+\multicolumn{5}{l}{\emph{Trained on this dataset (reference ceiling)}} \\
+FC-Siam-Diff~\cite{daudt2018fully} & 89.53 & 83.31 & 86.31 & 75.92 \\
+STANet~\cite{chen2020spatial} & 83.81 & 91.00 & 87.26 & 77.40 \\
+SNUNet~\cite{fang2021snunet} & 89.18 & 87.17 & 88.16 & 78.83 \\
+BIT~\cite{chen2021remote} & 89.24 & 89.37 & 89.31 & 80.68 \\
+ChangeFormer~\cite{bandara2022transformer} & 92.05 & 88.80 & 90.40 & 82.48 \\
+TinyCD~\cite{codegoni2023tinycd} & -- & -- & 91.05 & 83.57 \\
+\midrule
+\multicolumn{5}{l}{\emph{Zero-shot / open-vocabulary}} \\
+AnyChange (SAM zero-shot)~\cite{zheng2024segment} & 13.70 & 83.00 & 23.40 & -- \\
+AnyChange-H + 3-point query~\cite{zheng2024segment} & 28.50 & 81.10 & 42.20 & -- \\
+\midrule
+\multicolumn{5}{l}{\emph{This work}} \\
+geo-only & 14.34 & 64.73 & 23.47 & 13.30 \\
+heuristic (production) & 16.08 & 62.67 & 25.59 & 14.67 \\
+learned head + greedy & 56.35 & 51.84 & 54.00 & 36.99 \\
+learned head, no verifier & 12.49 & 76.66 & 21.48 & 12.03 \\
+learned head, no cross-frame & 47.26 & 51.52 & 49.30 & 32.71 \\
+\textbf{learned head (ours)} & \textbf{56.22} & \textbf{51.97} & \textbf{54.01} & \textbf{36.99} \\
+\bottomrule
+\end{tabular}
+\end{table}

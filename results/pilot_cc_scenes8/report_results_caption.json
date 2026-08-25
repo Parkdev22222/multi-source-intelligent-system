@@ -1,0 +1,262 @@
+{
+  "dataset": "levir_cc",
+  "split": "test",
+  "style": "caption",
+  "cache": "data/cache/pilot/levir_cc_scenes8",
+  "n_pairs": 128,
+  "note": "merged: text conditions from EXAONE-4.0-32B, vlm_direct from Qwen2.5-VL-7B (two passes, one GPU)",
+  "results": [
+    {
+      "name": "template",
+      "mode": "template",
+      "style": "caption",
+      "n_generated": 128,
+      "BLEU-1": 0.5373711340206185,
+      "BLEU-2": 0.41709274423296716,
+      "BLEU-3": 0.3221216179438012,
+      "BLEU-4": 0.2584849981415274,
+      "METEOR": 0.49581563334750256,
+      "ROUGE-L": 0.4464012678670819,
+      "CIDEr-D": 0.29558860960905603,
+      "n_samples": 128,
+      "_backend": "msis-native",
+      "cfs_precision": 0.6911764705882353,
+      "cfs_recall": 0.4051724137931034,
+      "cfs_f1": 0.5108695652173914,
+      "hallucination_rate": 0.3088235294117647,
+      "change_accuracy": 0.8515625,
+      "count_mae": 2.0294117647058822,
+      "n_pred_claims": 136,
+      "n_gt_claims": 232,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.3680555555555556,
+          "support": 144
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.05128205128205128,
+          "support": 39
+        },
+        "none": {
+          "recall": 0.8478260869565217,
+          "support": 46
+        }
+      },
+      "mean_length_words": 11.796875
+    },
+    {
+      "name": "vlm_direct",
+      "mode": "vlm_direct",
+      "style": "caption",
+      "n_generated": 128,
+      "BLEU-1": 0.35532331809274986,
+      "BLEU-2": 0.1779254305782829,
+      "BLEU-3": 0.08642639630367387,
+      "BLEU-4": 0.038735480437161164,
+      "METEOR": 0.21226280303511064,
+      "ROUGE-L": 0.25656115466200186,
+      "CIDEr-D": 0.1387148696242059,
+      "n_samples": 128,
+      "_backend": "msis-native",
+      "cfs_precision": 0.4896551724137931,
+      "cfs_recall": 0.30603448275862066,
+      "cfs_f1": 0.376657824933687,
+      "hallucination_rate": 0.5103448275862069,
+      "change_accuracy": 0.5,
+      "count_mae": 2.9047619047619047,
+      "n_pred_claims": 145,
+      "n_gt_claims": 232,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.4722222222222222,
+          "support": 144
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.0,
+          "support": 39
+        },
+        "none": {
+          "recall": 0.06521739130434782,
+          "support": 46
+        }
+      },
+      "mean_length_words": 11.953125
+    },
+    {
+      "name": "llm_raw",
+      "mode": "llm_raw",
+      "style": "caption",
+      "n_generated": 128,
+      "BLEU-1": 0.5075960679177838,
+      "BLEU-2": 0.3649294993752246,
+      "BLEU-3": 0.28874241316447824,
+      "BLEU-4": 0.24216335583295898,
+      "METEOR": 0.3406798167981745,
+      "ROUGE-L": 0.3942197836112247,
+      "CIDEr-D": 0.47435275630815954,
+      "n_samples": 128,
+      "_backend": "msis-native",
+      "cfs_precision": 0.6283783783783784,
+      "cfs_recall": 0.40086206896551724,
+      "cfs_f1": 0.4894736842105263,
+      "hallucination_rate": 0.3716216216216216,
+      "change_accuracy": 0.8046875,
+      "count_mae": 1.391304347826087,
+      "n_pred_claims": 148,
+      "n_gt_claims": 232,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.4305555555555556,
+          "support": 144
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.02564102564102564,
+          "support": 39
+        },
+        "none": {
+          "recall": 0.6521739130434783,
+          "support": 46
+        }
+      },
+      "mean_length_words": 8.71875
+    },
+    {
+      "name": "llm_struct",
+      "mode": "llm_struct",
+      "style": "caption",
+      "n_generated": 128,
+      "BLEU-1": 0.4813374805598756,
+      "BLEU-2": 0.3560577803951666,
+      "BLEU-3": 0.29090057327998764,
+      "BLEU-4": 0.25543943683046993,
+      "METEOR": 0.45820145575153687,
+      "ROUGE-L": 0.4722177879060596,
+      "CIDEr-D": 0.654401957189136,
+      "n_samples": 128,
+      "_backend": "msis-native",
+      "cfs_precision": 0.6762589928057554,
+      "cfs_recall": 0.4051724137931034,
+      "cfs_f1": 0.5067385444743935,
+      "hallucination_rate": 0.3237410071942446,
+      "change_accuracy": 0.8515625,
+      "count_mae": 2.980769230769231,
+      "n_pred_claims": 139,
+      "n_gt_claims": 232,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.3680555555555556,
+          "support": 144
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.05128205128205128,
+          "support": 39
+        },
+        "none": {
+          "recall": 0.8478260869565217,
+          "support": 46
+        }
+      },
+      "mean_length_words": 9.671875
+    },
+    {
+      "name": "llm_flat_rag",
+      "mode": "llm_flat_rag",
+      "style": "caption",
+      "n_generated": 128,
+      "BLEU-1": 0.4956521739130435,
+      "BLEU-2": 0.3729096455748529,
+      "BLEU-3": 0.3040759542323428,
+      "BLEU-4": 0.26562792591024637,
+      "METEOR": 0.45250035457949755,
+      "ROUGE-L": 0.4712040010133224,
+      "CIDEr-D": 0.6599238007470631,
+      "n_samples": 128,
+      "_backend": "msis-native",
+      "cfs_precision": 0.6762589928057554,
+      "cfs_recall": 0.4051724137931034,
+      "cfs_f1": 0.5067385444743935,
+      "hallucination_rate": 0.3237410071942446,
+      "change_accuracy": 0.8515625,
+      "count_mae": 2.982142857142857,
+      "n_pred_claims": 139,
+      "n_gt_claims": 232,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.3680555555555556,
+          "support": 144
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.05128205128205128,
+          "support": 39
+        },
+        "none": {
+          "recall": 0.8478260869565217,
+          "support": 46
+        }
+      },
+      "mean_length_words": 9.5390625
+    },
+    {
+      "name": "llm_graphrag",
+      "mode": "llm_graphrag",
+      "style": "caption",
+      "n_generated": 128,
+      "BLEU-1": 0.5073891625615764,
+      "BLEU-2": 0.38231573128671825,
+      "BLEU-3": 0.31514626308542215,
+      "BLEU-4": 0.276613746109492,
+      "METEOR": 0.45204294868838313,
+      "ROUGE-L": 0.47363646613468247,
+      "CIDEr-D": 0.658755850474821,
+      "n_samples": 128,
+      "_backend": "msis-native",
+      "cfs_precision": 0.6762589928057554,
+      "cfs_recall": 0.4051724137931034,
+      "cfs_f1": 0.5067385444743935,
+      "hallucination_rate": 0.3237410071942446,
+      "change_accuracy": 0.8515625,
+      "count_mae": 3.288135593220339,
+      "n_pred_claims": 139,
+      "n_gt_claims": 232,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.3680555555555556,
+          "support": 144
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.05128205128205128,
+          "support": 39
+        },
+        "none": {
+          "recall": 0.8478260869565217,
+          "support": 46
+        }
+      },
+      "mean_length_words": 9.25
+    }
+  ]
+}

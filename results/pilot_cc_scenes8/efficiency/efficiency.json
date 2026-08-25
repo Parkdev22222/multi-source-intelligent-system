@@ -1,0 +1,45 @@
+{
+  "n_pairs": 64,
+  "device": "cuda",
+  "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B",
+  "pairing_head_parameters": 19781,
+  "stages": [
+    {
+      "stage": "SAM3 detection + CLIP (2 frames)",
+      "per_item_ms": 13392.05127954483,
+      "p95_ms": 21002.669966220852,
+      "peak_gpu_mb": null,
+      "note": "measured during the caching pass"
+    },
+    {
+      "stage": "pairing: heuristic (production)",
+      "total_s": 0.2960452940315008,
+      "per_item_ms": 4.6257077192422,
+      "peak_gpu_mb": 0.083984375,
+      "n_items": 64
+    },
+    {
+      "stage": "pairing: learned head (ours)",
+      "total_s": 0.3888621786609292,
+      "per_item_ms": 6.075971541577019,
+      "peak_gpu_mb": 9.392578125,
+      "n_items": 64
+    },
+    {
+      "stage": "knowledge graph: index + retrieve",
+      "total_s": 4.782711966661736,
+      "per_item_ms": 74.72987447908963,
+      "peak_gpu_mb": 8.29296875,
+      "n_items": 64
+    },
+    {
+      "stage": "report LLM (server:LGAI-EXAONE/EXAONE-4.0-32B, batched)",
+      "total_s": 28.992333200760186,
+      "per_item_ms": 453.0052062618779,
+      "peak_gpu_mb": 8.29296875,
+      "n_items": 64,
+      "mean_output_words": 104.3125,
+      "model_load_s": 0.0306241512298584
+    }
+  ]
+}

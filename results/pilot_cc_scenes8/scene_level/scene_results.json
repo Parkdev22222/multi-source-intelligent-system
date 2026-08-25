@@ -1,0 +1,156 @@
+{
+  "cache": "data/cache/pilot/levir_cc_scenes8",
+  "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8003/v1",
+  "rag_k": 5,
+  "n_scenes": 8,
+  "crops_per_scene": {
+    "test_1": 16,
+    "test_10": 16,
+    "test_102": 16,
+    "test_11": 16,
+    "test_115": 16,
+    "test_118": 16,
+    "test_119": 16,
+    "test_12": 16
+  },
+  "gt_instances_per_scene": {
+    "test_1": 12,
+    "test_10": 125,
+    "test_102": 30,
+    "test_11": 17,
+    "test_115": 191,
+    "test_118": 216,
+    "test_119": 123,
+    "test_12": 125
+  },
+  "results": [
+    {
+      "name": "template",
+      "mode": "template",
+      "n_scenes": 8,
+      "cfs_precision": 0.5384615384615384,
+      "cfs_recall": 0.3333333333333333,
+      "cfs_f1": 0.41176470588235287,
+      "hallucination_rate": 0.46153846153846156,
+      "change_accuracy": 1.0,
+      "count_mae": 16.25,
+      "n_samples": 8,
+      "n_pred_claims": 26,
+      "n_gt_claims": 42,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.3181818181818182,
+          "support": 22
+        },
+        "disappeared": {
+          "recall": 0.3333333333333333,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.35294117647058826,
+          "support": 17
+        }
+      },
+      "scene_count_mae": 20.25,
+      "n_scenes_without_a_count": 0,
+      "mean_length_words": 21.5,
+      "seconds": 0.005747318267822266
+    },
+    {
+      "name": "llm_struct",
+      "mode": "llm_struct",
+      "n_scenes": 8,
+      "cfs_precision": 0.40625,
+      "cfs_recall": 0.30952380952380953,
+      "cfs_f1": 0.3513513513513513,
+      "hallucination_rate": 0.59375,
+      "change_accuracy": 1.0,
+      "count_mae": 60.875,
+      "n_samples": 8,
+      "n_pred_claims": 32,
+      "n_gt_claims": 42,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.3181818181818182,
+          "support": 22
+        },
+        "disappeared": {
+          "recall": 0.3333333333333333,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.29411764705882354,
+          "support": 17
+        }
+      },
+      "scene_count_mae": 81.5,
+      "n_scenes_without_a_count": 0,
+      "mean_length_words": 47.875,
+      "seconds": 8.109332799911499
+    },
+    {
+      "name": "llm_flat_rag",
+      "mode": "llm_flat_rag",
+      "n_scenes": 8,
+      "cfs_precision": 0.42105263157894735,
+      "cfs_recall": 0.19047619047619047,
+      "cfs_f1": 0.26229508196721313,
+      "hallucination_rate": 0.5789473684210527,
+      "change_accuracy": 1.0,
+      "count_mae": 74.5,
+      "n_samples": 8,
+      "n_pred_claims": 19,
+      "n_gt_claims": 42,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.18181818181818182,
+          "support": 22
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.23529411764705882,
+          "support": 17
+        }
+      },
+      "scene_count_mae": 71.375,
+      "n_scenes_without_a_count": 0,
+      "mean_length_words": 49.875,
+      "seconds": 4.81846284866333
+    },
+    {
+      "name": "llm_graphrag",
+      "mode": "llm_graphrag",
+      "n_scenes": 8,
+      "cfs_precision": 0.375,
+      "cfs_recall": 0.2857142857142857,
+      "cfs_f1": 0.3243243243243243,
+      "hallucination_rate": 0.625,
+      "change_accuracy": 1.0,
+      "count_mae": 47.625,
+      "n_samples": 8,
+      "n_pred_claims": 32,
+      "n_gt_claims": 42,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.18181818181818182,
+          "support": 22
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.47058823529411764,
+          "support": 17
+        }
+      },
+      "scene_count_mae": 41.0,
+      "n_scenes_without_a_count": 0,
+      "mean_length_words": 51.125,
+      "seconds": 6.496474266052246
+    }
+  ]
+}

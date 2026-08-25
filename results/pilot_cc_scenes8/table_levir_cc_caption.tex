@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering
+\caption{Caption quality on LEVIR-CC (128 crops, 8 neighbourhoods).}
+\label{tab:levir_cc_caption}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccc}
+\toprule
+Method & BLEU-1 & BLEU-4 & METEOR & ROUGE-L & CIDEr-D \\
+\midrule
+%% TODO fill and verify in baselines.json: Capt-Rep-Diff [supervised], RSICCformer [supervised], PSNet [supervised], Chg2Cap [supervised]
+\midrule
+\multicolumn{6}{l}{\emph{This work}} \\
+template & 53.74 & 25.85 & 49.58 & 44.64 & 29.56 \\
+vlm_direct & 35.53 & 3.87 & 21.23 & 25.66 & 13.87 \\
+llm_raw & 50.76 & 24.22 & 34.07 & 39.42 & 47.44 \\
+llm_struct & 48.13 & 25.54 & 45.82 & 47.22 & 65.44 \\
+llm_flat_rag & 49.57 & 26.56 & 45.25 & 47.12 & 65.99 \\
+\textbf{llm_graphrag} & \textbf{50.74} & \textbf{27.66} & \textbf{45.20} & \textbf{47.36} & \textbf{65.88} \\
+\bottomrule
+\end{tabular}
+\end{table}

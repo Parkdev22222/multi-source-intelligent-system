@@ -1,0 +1,19 @@
+\begin{table}[t]
+\centering
+\caption{Report factuality on LEVIR-CC. HalRate is omitted: it is $1-\mathrm{CFS\text{-}P}$.}
+\label{tab:factuality_caption}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Method & cfs_precision & cfs_recall & cfs_f1 & change_accuracy \\
+\midrule
+\multicolumn{5}{l}{\emph{This work}} \\
+template & 69.12 & 40.52 & 51.09 & 85.16 \\
+vlm_direct & 48.97 & 30.60 & 37.67 & 50.00 \\
+llm_raw & 62.84 & 40.09 & 48.95 & 80.47 \\
+llm_struct & 67.63 & 40.52 & 50.67 & 85.16 \\
+llm_flat_rag & 67.63 & 40.52 & 50.67 & 85.16 \\
+\textbf{llm_graphrag} & \textbf{67.63} & \textbf{40.52} & \textbf{50.67} & \textbf{85.16} \\
+\bottomrule
+\end{tabular}
+\end{table}

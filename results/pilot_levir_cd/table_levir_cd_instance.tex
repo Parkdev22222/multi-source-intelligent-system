@@ -1,0 +1,18 @@
+\begin{table}[t]
+\centering
+\caption{Instance-level change detection on LEVIR-CD (IoU $\geq$ 0.5).}
+\label{tab:levir_cd_instance}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccc}
+\toprule
+Method & P & R & F1 \\
+\midrule
+\multicolumn{4}{l}{\emph{This work}} \\
+geo-only & 33.06 & 35.19 & 34.09 \\
+heuristic (production) & 34.56 & 34.03 & 34.29 \\
+learned head + greedy & 81.56 & 35.48 & 49.45 \\
+learned head, no verifier & 24.63 & 38.51 & 30.05 \\
+\textbf{learned head (ours)} & \textbf{81.29} & \textbf{35.48} & \textbf{49.40} \\
+\bottomrule
+\end{tabular}
+\end{table}
