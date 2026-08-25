@@ -19,7 +19,18 @@ build/
 # ICCE-Asia benchmark data and run artefacts (large, re-fetchable)
 data/benchmarks/
 data/cache/
-data/checkpoints/
+
+# Checkpoints are ignored except the pairing heads themselves: at ~20k
+# parameters they are 100 KB, and they are the weights the reported tables were
+# computed with, so a rerun can be checked against them rather than trusted.
+# Order matters: `checkpoints/` above excludes the directory, so git never
+# descends into it and a file-level negation alone would be dead. Re-include the
+# directory first, re-exclude its contents, then name the exceptions -- which
+# also have to out-rank the global `*.pt`.
+!data/checkpoints/
+data/checkpoints/**
+!data/checkpoints/*.pt
+!data/checkpoints/*.history.json
 
 # Run outputs: keep the numbers, drop what can be regenerated from them.
 # Metrics, LaTeX tables and the raw generations are the paper's evidence and

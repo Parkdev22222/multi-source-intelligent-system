@@ -277,7 +277,23 @@ Stages are independently resumable:
 ```bash
 STAGES="cache train" bash scripts/icce_runpod.sh
 STAGES="caption"     bash scripts/icce_runpod.sh
+
+STAGES="cache train cd" bash scripts/icce_runpod.sh   # E1 exactly as reported
 ```
+
+Resumption keys on `cache_info.json`, which is written after the embeddings.
+A split whose `samples.jsonl` exists without it is a killed run and is redone,
+because `load_cache` accepts a cache with no `embeddings.npz` on a warning and
+then hands zeroed CLIP features to everything downstream. A dataset that was
+never downloaded (WHU-CD needs a manual fetch) is skipped with a message rather
+than aborting the pipeline.
+
+Caching the full LEVIR-CD split is the long pole: 445 + 64 + 128 tiles at
+~33 s each is about 5.5 h on one A100, after which training both heads and
+scoring E1 takes ten minutes. `CC_SCENES` (default 8) sets how many whole
+LEVIR-CC neighbourhoods are cached; the split is selected by scene rather than
+by `--limit` because a spread sample leaves roughly one crop per tile and
+starves the per-scene graph that E4 and E7 measure.
 
 ### GPU-free sanity check
 

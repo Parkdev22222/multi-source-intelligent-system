@@ -33,6 +33,8 @@ DEVICE="${DEVICE:-cuda}"
 
 HEAD="${CKPT_DIR}/pairing_head.pt"
 HEAD_NOXF="${CKPT_DIR}/pairing_head_no_xf.pt"
+# Whole LEVIR-CC neighbourhoods to cache. 8 scenes = 128 crops ~= 20 min.
+CC_SCENES="${CC_SCENES:-8}"
 STAGES="${STAGES:-${*:-cache train cd transfer caption report external efficiency}}"
 
 mkdir -p "$CACHE_DIR" "$CKPT_DIR" "$RESULT_DIR"
@@ -50,15 +52,22 @@ runs() { case " $STAGES " in *" $1 "*) return 0;; *) return 1;; esac; }
 if runs pilot; then
   log "PILOT: small-sample run to get real numbers fast"
   P_CACHE="${CACHE_DIR}/pilot"
+  # The LEVIR-CC limit is ignored -- that split is selected by whole scenes.
   for spec in "levir_cd train 60" "levir_cd val 20" "levir_cd test 24" \
-              "levir_cc test 100"; do
+              "levir_cc test -"; do
     set -- $spec
     ds=$1; sp=$2; lim=$3; out="${P_CACHE}/${ds}_${sp}"
-    have "${out}/samples.jsonl" && { log "pilot cache ${ds}/${sp} exists"; continue; }
-    extra=""; [ "$ds" = "levir_cc" ] && extra="--attach-cd-masks"
-    python -m icce.eval.cache_detections \
-      --dataset "$ds" --split "$sp" --limit "$lim" --out "$out" \
-      --device "$DEVICE" $extra
+    have "${out}/cache_info.json" && { log "pilot cache ${ds}/${sp} complete"; continue; }
+    have "${out}/samples.jsonl" && { log "pilot cache ${ds}/${sp} partial, redoing"; rm -rf "$out"; }
+    # LEVIR-CC is selected by scene, not by --limit: see the cache stage below.
+    if [ "$ds" = "levir_cc" ]; then
+      python -m icce.eval.cache_detections \
+        --dataset "$ds" --split "$sp" --out "$out" --device "$DEVICE" \
+        --attach-cd-masks --limit-scenes "$CC_SCENES"
+    else
+      python -m icce.eval.cache_detections \
+        --dataset "$ds" --split "$sp" --limit "$lim" --out "$out" --device "$DEVICE"
+    fi
   done
 
   P_HEAD="${CKPT_DIR}/pilot_head.pt"
@@ -101,13 +110,32 @@ if runs cache; then
               "levir_cc test" "whu_cd test"; do
     set -- $spec
     ds=$1; sp=$2; out="${CACHE_DIR}/${ds}_${sp}"
+    # Completion marker is cache_info.json, written last. samples.jsonl appears
+    # with the first pair, so treating it as "done" resumes into a truncated
+    # cache -- and one with no embeddings.npz, which load_cache accepts with
+    # only a warning and then serves zeroed CLIP features to every downstream
+    # experiment.
+    if have "${out}/cache_info.json"; then
+      log "cache ${ds}/${sp} complete, skipping"
+      continue
+    fi
     if have "${out}/samples.jsonl"; then
-      log "cache ${ds}/${sp} exists, skipping"
+      log "cache ${ds}/${sp} is a partial run, redoing it"
+      rm -rf "$out"
+    fi
+    # A dataset that was never downloaded should cost its own stage, not the
+    # whole pipeline: WHU-CD needs a manual fetch and set -e would abort here.
+    if ! python -c "from icce.datasets.registry import load; load('$ds', split='$sp', limit=1)" \
+         >/dev/null 2>&1; then
+      log "SKIP ${ds}/${sp}: dataset not available (see icce/README.md -> Datasets)"
       continue
     fi
     log "caching SAM3 detections: ${ds}/${sp}"
     extra=""
-    [ "$ds" = "levir_cc" ] && extra="--attach-cd-masks"
+    # Unbounded, LEVIR-CC test is 1929 crops (~5 h). Whole scenes rather than a
+    # spread sample: --limit leaves ~1 crop per tile, which starves the
+    # per-scene knowledge graph of the history E4/E7 are about.
+    [ "$ds" = "levir_cc" ] && extra="--attach-cd-masks --limit-scenes ${CC_SCENES}"
     python -m icce.eval.cache_detections \
       --dataset "$ds" --split "$sp" --out "$out" --device "$DEVICE" $extra
   done
