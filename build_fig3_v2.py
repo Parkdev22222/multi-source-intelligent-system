@@ -70,26 +70,51 @@ def arrow_right(x1, y, x2, color="#334155", lw=2):
 # ═══════════════════════════════════════════════════════════════
 # [1단계] 페어링 결과 입력
 # ═══════════════════════════════════════════════════════════════
-stage_bg(15.5, 1.4, "1단계", "페어링 결과 입력 (Pairing DB로부터 배치 조회)")
+stage_bg(15.0, 1.9, "1단계",
+         "Pairing DB로부터 최근 회차 비교의 결과 배치를 조회 (한 회차 = 두 시점 영상 1쌍의 변화 탐지 결과)")
 
-# 표 형태로 페어링 레코드 3~4개 표시
-tx, ty = 2.0, 15.7
-ax.add_patch(Rectangle((tx, ty), 9.0, 0.9, facecolor="white", edgecolor=DB, lw=1))
+# 부제: 3단계 타임라인과의 연결 명시
+ax.text(6.5, 16.32,
+        "예: 3회차 비교(2025.04.10 ↔ 08.20)에서 나온 페어링 레코드 배치",
+        ha="center", fontsize=8.3, color=GRAPH, style="italic",
+        fontweight="bold")
+
+# 표
+tx, ty = 0.9, 15.05
+tw, th = 11.2, 1.10
+ax.add_patch(Rectangle((tx, ty), tw, th, facecolor="white",
+                       edgecolor=DB, lw=1))
+
 # 헤더
-headers = ["객체 클래스", "위경도", "상태", "신뢰도"]
-xs = [0.6, 3.0, 5.5, 7.5]
+headers = ["회차", "클래스", "상태", "과거 좌표", "현재 좌표", "신뢰도"]
+xs = [0.15, 0.95, 2.20, 3.85, 6.85, 9.95]
 for h, xx in zip(headers, xs):
-    ax.text(tx + xx, ty + 0.68, h, fontsize=8.5, fontweight="bold", color=TEXT)
-ax.plot([tx, tx+9.0], [ty+0.55, ty+0.55], color=DB, lw=0.5)
+    ax.text(tx + xx, ty + th - 0.18, h, fontsize=8.5,
+            fontweight="bold", color=TEXT)
+ax.plot([tx, tx+tw], [ty + th - 0.30, ty + th - 0.30], color=DB, lw=0.5)
 
-rows = [("tank",     "(37.5765, 126.9680)", "new",         "0.87"),
-        ("APC",      "(37.5771, 126.9698)", "new",         "0.79")]
+# 실제 데이터 행 (matched / new / disappeared 각 1건)
+rows = [
+    ("3회차", "tank",     "matched",     "(37.5765,126.9680)", "(37.5765,126.9680)", "0.91"),
+    ("3회차", "APC",      "new",         "—",                   "(37.5771,126.9698)", "0.79"),
+    ("3회차", "building", "disappeared", "(37.5750,126.9660)", "—",                   "0.87"),
+]
+status_colors = {"matched": GREEN, "new": BLUE, "disappeared": RED}
 for i, row in enumerate(rows):
-    yy = ty + 0.35 - i * 0.15
-    for val, xx in zip(row, xs):
-        ax.text(tx + xx, yy, val, fontsize=7.5, color=TEXT, family="monospace")
+    yy = ty + 0.60 - i * 0.20
+    for j, (val, xx) in enumerate(zip(row, xs)):
+        if j == 2:  # 상태 열 강조
+            ax.text(tx + xx, yy, val, fontsize=7.5,
+                    color=status_colors.get(val, TEXT),
+                    fontweight="bold")
+        elif j in (3, 4):  # 좌표 열은 monospace
+            ax.text(tx + xx, yy, val, fontsize=7.2,
+                    color=TEXT if val != "—" else MUTED,
+                    family="monospace")
+        else:
+            ax.text(tx + xx, yy, val, fontsize=7.5, color=TEXT)
 
-arrow_down(6.5, 15.4, 14.5)
+arrow_down(6.5, 15.0, 14.5)
 
 # ═══════════════════════════════════════════════════════════════
 # [2단계] 격자 양자화
