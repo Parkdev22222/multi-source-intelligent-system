@@ -82,10 +82,16 @@ if runs pilot; then
     --out "${RESULT_DIR}/pilot_levir_cd" --device "$DEVICE"
 
   # EXAONE-4.0-32B is 64GB of weights, Qwen2.5-VL-7B another 16.6GB: on one
-  # 80GB card they cannot be resident together. The text conditions and the
-  # image-conditioned baseline therefore run as two passes. Both write into the
-  # same --out and generations are cached per mode, so the resulting table is
-  # identical to a single-pass run.
+  # 80GB card they cannot be resident together, so the text conditions and the
+  # image-conditioned baseline run as two passes.
+  #
+  # They must not share an --out. run_report_eval writes `results` from the
+  # modes of *that* invocation and overwrites the JSON, so a second pass into
+  # the same directory replaces the first pass's rows rather than adding to
+  # them -- and vlm_direct regenerates rather than reusing its cached
+  # generations, so ordering does not save it either. Separate directories,
+  # then merge_passes, which checks the two passes describe the same crops
+  # before joining them and records per row which pass it came from.
   python -m icce.eval.run_report_eval \
     --cache "${P_CACHE}/levir_cc_test" --checkpoint "$P_HEAD" \
     --dataset levir_cc --llm "$LLM" --style caption \
@@ -96,7 +102,12 @@ if runs pilot; then
     --cache "${P_CACHE}/levir_cc_test" --checkpoint "$P_HEAD" \
     --dataset levir_cc --vlm "$VLM" --style caption \
     --modes vlm_direct \
-    --out "${RESULT_DIR}/pilot_levir_cc" --device "$DEVICE"
+    --out "${RESULT_DIR}/pilot_levir_cc_vlm" --device "$DEVICE"
+
+  python -m icce.eval.merge_passes \
+    --into "${RESULT_DIR}/pilot_levir_cc" \
+    --from "${RESULT_DIR}/pilot_levir_cc_vlm" \
+    --modes vlm_direct --style caption
 
   log "PILOT DONE -- read these before starting the full run:"
   echo "  ${RESULT_DIR}/pilot_levir_cd/cd_results.json"
@@ -187,11 +198,27 @@ fi
 
 # --- 5. E3/E4: captions and factuality on LEVIR-CC ------------------------
 if runs caption; then
-  log "E3/E4: LEVIR-CC captioning + factuality (${LLM})"
+  # Two passes for the same reason as the pilot: 60 GB of EXAONE and 16.6 GB of
+  # Qwen do not co-exist on an 80 GB card. Asking one invocation for both is
+  # how you find that out at hour six of a full run.
+  log "E3/E4: LEVIR-CC captioning + factuality, text conditions (${LLM})"
   python -m icce.eval.run_report_eval \
     --cache "${CACHE_DIR}/levir_cc_test" --checkpoint "$HEAD" \
-    --dataset levir_cc --llm "$LLM" --vlm "$VLM" --style caption \
+    --dataset levir_cc --llm "$LLM" --style caption \
+    --modes template llm_raw llm_struct llm_flat_rag llm_graphrag \
     --out "${RESULT_DIR}/levir_cc_caption" --device "$DEVICE"
+
+  log "E3/E4: the image-conditioned external baseline (${VLM})"
+  python -m icce.eval.run_report_eval \
+    --cache "${CACHE_DIR}/levir_cc_test" --checkpoint "$HEAD" \
+    --dataset levir_cc --vlm "$VLM" --style caption \
+    --modes vlm_direct \
+    --out "${RESULT_DIR}/levir_cc_caption_vlm" --device "$DEVICE"
+
+  python -m icce.eval.merge_passes \
+    --into "${RESULT_DIR}/levir_cc_caption" \
+    --from "${RESULT_DIR}/levir_cc_caption_vlm" \
+    --modes vlm_direct --style caption
 
   log "E4b: LLM size ablation (${LLM_SMALL})"
   python -m icce.eval.run_report_eval \
@@ -199,7 +226,10 @@ if runs caption; then
     --dataset levir_cc --llm "$LLM_SMALL" --style caption \
     --out "${RESULT_DIR}/levir_cc_caption_small" --device "$DEVICE"
 
-  log "E4c: pairing ablation held against the same grounding (heuristic pairing)"
+  # This is E5 as the README defines it: grounding pinned, pairing swapped.
+  # The learned arm is the llm_graphrag row of the run above, which uses $HEAD;
+  # this run omits --checkpoint so the production heuristic pairs instead.
+  log "E5: pairing ablation held against the same grounding (heuristic pairing)"
   python -m icce.eval.run_report_eval \
     --cache "${CACHE_DIR}/levir_cc_test" \
     --dataset levir_cc --llm "$LLM" --style caption \
@@ -209,7 +239,10 @@ fi
 
 # --- 6. full interpretation reports ---------------------------------------
 if runs report; then
-  log "E5: full urban interpretation reports"
+  # Not E5 -- this is the report-style rendering of the same pipeline, kept
+  # because the service emits reports rather than captions. E5 is the pairing
+  # swap in the caption stage above.
+  log "full urban interpretation reports (report style)"
   python -m icce.eval.run_report_eval \
     --cache "${CACHE_DIR}/levir_cc_test" --checkpoint "$HEAD" \
     --dataset levir_cc --llm "$LLM" --style report \

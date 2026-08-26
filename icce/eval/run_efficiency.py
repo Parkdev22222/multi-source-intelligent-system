@@ -204,12 +204,34 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                "pairing_head_parameters": head_params, "stages": stages},
               out / "efficiency.json")
 
+    # The cost that matters is the head *against the heuristic it replaces*, not
+    # against zero, and it is quoted rather than characterised: "sub-
+    # millisecond" was wrong here (the measured delta is above 1 ms) and a
+    # reader can check a number straight off the rows below. Derived from the
+    # measurement so it cannot drift from the table again.
+    def _ms(needle):
+        for s in stages:
+            if needle in s["stage"]:
+                return s.get("per_item_ms")
+        return None
+
+    heur_ms, head_ms = _ms("heuristic"), _ms("learned head")
+    if heur_ms is not None and head_ms is not None:
+        delta = head_ms - heur_ms
+        total = sum(s["per_item_ms"] for s in stages if s.get("per_item_ms"))
+        share = 100.0 * delta / total if total else None
+        cost = (f"adds {head_params if head_params else '--'} parameters and "
+                f"{delta:.2f}~ms/tile over the hand-tuned heuristic it replaces"
+                + (f" --- {share:.2f}\\% of the pipeline" if share is not None else ""))
+    else:
+        cost = (f"has {head_params if head_params else '--'} parameters; the "
+                "heuristic it replaces was not measured in this run")
+
     lines = [
         "\\begin{table}[t]", "\\centering",
         "\\caption{Per-tile processing cost on a single NVIDIA A100 80GB. "
-        "The learned pairing head adds "
-        f"{head_params if head_params else '--'} parameters and a sub-millisecond "
-        "step to a pipeline dominated by segmentation and language generation.}",
+        f"The learned pairing head {cost}. Segmentation and language "
+        "generation dominate the budget.}",
         "\\label{tab:efficiency}",
         "\\begin{tabular}{lrr}", "\\toprule",
         "Stage & Latency (ms/tile) & Peak GPU (MB) \\\\", "\\midrule",

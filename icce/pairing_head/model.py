@@ -7,7 +7,7 @@ The learned pairing head: three small MLPs over the features in `features.py`.
             -- this is what suppresses SAM3's open-vocabulary false positives,
                which dominate the pixel-F1 loss of the zero-shot baseline.
 
-Total parameter count is ~30k, i.e. the head trains in minutes on cached
+Total parameter count is 19,781, i.e. the head trains in minutes on cached
 features and adds negligible latency next to SAM3 and the report LLM. That
 matters for the deployment argument in the paper: the accuracy gain does not
 cost the consumer service anything meaningful.

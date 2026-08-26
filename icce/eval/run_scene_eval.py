@@ -8,7 +8,9 @@ The crop-level ladder (`run_report_eval`) cannot separate `llm_struct`,
 bug: all three receive the *same* change inventory for the crop being
 described, and CFS scores only claims about that crop. Retrieved history
 concerns other crops, so it can move phrasing but never a claim. Measured on
-128 crops: 77/128 generations differed, 128/128 claim sets were identical.
+128 crops with the 445-tile head: 99/128 generations differed, 128/128 claim
+sets were identical. The earlier 77/128 was the same measurement taken with
+the 60-tile pilot head; correcting the head moved the wording, not the null.
 
 At scene level the comparison becomes real. A LEVIR-CD tile is cut into 16
 disjoint 256px crops; one report must describe the whole neighbourhood, so the
@@ -346,6 +348,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     payload = {
         "cache": str(args.cache),
+        # Without this the table cannot say which pairing produced its rows.
+        # The first reported E7 was run before pairing_head.pt existed and
+        # nothing in the file recorded that; the numbers moved when it was
+        # corrected, and there was no way to tell from the artefact alone.
+        "checkpoint": str(args.checkpoint) if args.checkpoint else None,
         "llm": args.llm,
         "rag_k": args.rag_k,
         "n_scenes": len(scenes),
