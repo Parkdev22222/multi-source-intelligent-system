@@ -1,0 +1,120 @@
+% ---------------------------------------------------------------------------
+% Every number that appears in prose, in one place, each tagged with the run it
+% was read from. Nothing here is typed from memory; each value comes out of the
+% JSON the harness wrote.
+%
+% All values are now FINAL: every experiment has been run at the scale the
+% paper reports. The pilot-scale block at the bottom is kept only for the
+% sentence that compares the two, and is labelled as such.
+% ---------------------------------------------------------------------------
+
+% --- E1: LEVIR-CD test, 128 tiles -- results/levir_cd_test/ ----------------
+\newcommand{\EOnePixelFOne}{54.01}
+\newcommand{\EOneIoU}{36.99}
+\newcommand{\EOneInstFOne}{54.28}
+\newcommand{\EOneHeuristicFOne}{25.59}
+\newcommand{\EOneGeoFOne}{23.47}
+\newcommand{\EOneNoVerifierFOne}{21.48}
+\newcommand{\EOneCrossFrameGain}{4.71}
+\newcommand{\EOneCrossFrameInstGain}{3.72}
+\newcommand{\EOneGTDensity}{54.5}
+
+% --- E2: WHU-CD test, 690 pairs -- results/whu_cd_test/ --------------------
+\newcommand{\ETwoPixelFOne}{57.92}
+\newcommand{\ETwoIoU}{40.77}
+\newcommand{\ETwoInstFOne}{52.11}
+\newcommand{\ETwoHeuristicFOne}{28.86}
+\newcommand{\ETwoHeuristicInstFOne}{9.06}
+\newcommand{\ETwoGeoFOne}{30.16}
+\newcommand{\ETwoNoVerifierFOne}{19.78}
+\newcommand{\ETwoCountMAE}{1.3}
+\newcommand{\ETwoHeuristicCountMAE}{14.8}
+\newcommand{\ETwoNPred}{1{,}431}
+\newcommand{\ETwoHeuristicNPred}{11{,}204}
+\newcommand{\ETwoNGT}{987}
+\newcommand{\ETwoGTDensity}{1.4}
+
+% --- Published zero-shot peer (AnyChange, LEVIR-CD) -- baselines.json ------
+\newcommand{\AnyChangeFOne}{23.40}
+\newcommand{\AnyChangeHFOne}{42.20}
+
+% --- E3/E4: grounding ladder, 1929 crops -- results/levir_cc_caption/ ------
+% vlm_direct merged in from results/levir_cc_caption_vlm (Qwen pass).
+\newcommand{\EFourNCrops}{1929}
+\newcommand{\EFourTemplateFOne}{48.20}
+\newcommand{\EFourTemplateHal}{38.45}
+\newcommand{\EFourRawFOne}{45.28}
+\newcommand{\EFourStructFOne}{48.37}
+\newcommand{\EFourFlatRagFOne}{48.51}
+\newcommand{\EFourGraphRAGFOne}{48.32}
+\newcommand{\EFourAggGain}{3.1}       % llm_raw -> llm_struct
+\newcommand{\EFourLadderSpread}{0.2}  % struct / flat_rag / graphrag spread
+\newcommand{\EFourStructChgAcc}{76.5}
+% The external baseline.
+\newcommand{\EFourVLMFOne}{28.49}
+\newcommand{\EFourVLMChgAcc}{45.78}
+\newcommand{\EFourVLMHal}{65.03}
+\newcommand{\EFourVLMBleu}{4.51}
+\newcommand{\EFourVLMGap}{19.83}      % llm_graphrag - vlm_direct, CFS-F1
+% How much of the retrieval/graph difference reaches a claim.
+\newcommand{\EFourTextDiffer}{1{,}313}
+\newcommand{\EFourTextDifferPct}{68.1}
+\newcommand{\EFourClaimsDiffer}{26}
+\newcommand{\EFourClaimsDifferPct}{1.3}
+
+% --- E5: pairing swapped, grounding fixed at llm_graphrag ------------------
+% learned arm: results/levir_cc_caption (llm_graphrag row)
+% heuristic arm: results/levir_cc_caption_heuristic_pairing
+\newcommand{\EFiveLearnedFOne}{48.32}
+\newcommand{\EFiveHeuristicFOne}{35.35}
+\newcommand{\EFiveGain}{12.97}
+\newcommand{\EFiveLearnedHal}{38.28}
+\newcommand{\EFiveHeuristicHal}{65.99}
+\newcommand{\EFiveLearnedChgAcc}{76.52}
+\newcommand{\EFiveHeuristicChgAcc}{65.01}
+
+% --- E6: deployment cost -- results/efficiency/ ---------------------------
+% 512 pairs of the full LEVIR-CC cache. Two runs over that cache agree to
+% 0.08 ms on the delta (0.62 at n=64, 0.70 at n=512); the 1.45 ms reported
+% earlier came from the pilot cache, whose crops carry different detection
+% counts -- a different measurement, not a noisier one.
+\newcommand{\ESixHeadDelta}{0.70}
+\newcommand{\ESixHeadMs}{9.69}
+\newcommand{\ESixHeuristicMs}{8.98}
+\newcommand{\ESixDetectMs}{6{,}099}
+\newcommand{\ESixDetectShare}{91}
+\newcommand{\ESixPipelineShare}{0.01}
+
+% --- E7: neighbourhood level, 218 scenes -- results/levir_cc_scene/ --------
+% Learned head; the checkpoint is recorded in the JSON.
+\newcommand{\ESevenNScenes}{218}
+\newcommand{\ESevenNMultiCrop}{129}
+\newcommand{\ESevenMeanCrops}{8.8}
+\newcommand{\ESevenMeanGT}{37.7}
+\newcommand{\ESevenTemplateFOne}{40.99}
+\newcommand{\ESevenStructFOne}{21.02}
+\newcommand{\ESevenFlatFOne}{18.54}
+\newcommand{\ESevenGraphFOne}{27.55}
+\newcommand{\ESevenTemplateCountMAE}{26.15}
+\newcommand{\ESevenStructCountMAE}{458.46}
+\newcommand{\ESevenFlatCountMAE}{167.87}
+\newcommand{\ESevenGraphCountMAE}{18.50}
+
+% --- Pilot-scale values, kept only for the comparison sentence ------------
+% 128 crops of the 8 largest scenes -- a favourable slice, which is why the
+% full-scale numbers are lower. Do not typeset these as results.
+\newcommand{\PilotEFourGraphRAGFOne}{54.64}
+\newcommand{\PilotEFiveGain}{21.02}
+\newcommand{\PilotESevenNScenes}{8}
+\newcommand{\PilotESevenGraphFOne}{32.43}
+\newcommand{\PilotESevenStructFOne}{35.14}
+
+% --- Model / system constants ---------------------------------------------
+\newcommand{\HeadParams}{19{,}781}
+\newcommand{\HeadParamsRound}{20k}
+\newcommand{\NPairFeatures}{16}
+\newcommand{\NUnaryFeatures}{14}
+\newcommand{\NCrossFrameFeatures}{4}
+\newcommand{\LLMName}{EXAONE-4.0-32B}
+\newcommand{\VLMName}{Qwen2.5-VL-7B-Instruct}
+\newcommand{\DetectorName}{SAM3}

@@ -1,0 +1,186 @@
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Setup}
+
+Detection uses \DetectorName{} with CLIP embeddings per instance; text
+conditions use \LLMName{} and the image-conditioned baseline uses \VLMName,
+both served through vLLM. Change detection is evaluated on LEVIR-CD (test, 128
+tiles) and WHU-CD (test, 690 pairs); report quality on LEVIR-CC. All timings
+are measured on one A100 80GB.
+
+\textbf{Integrity.} Every run asserts and records four properties: train and
+test pair identifiers are disjoint; their parent scenes are disjoint, so two
+crops of one tile cannot straddle the split; all thresholds are selected on the
+validation split, never on test; and prompt style examples, where used, are
+drawn only from the training split. The assertions are part of the result
+files, not of the prose.
+
+\textbf{Tiers.} Methods trained on a benchmark's own training split and methods
+that have never seen it are not competing on equal terms, and printing them in
+one block is misleading whichever way the numbers fall. Tables group by tier
+and label each group. Our LEVIR-CD result occupies a third position we state
+rather than blur: the detector never saw LEVIR-CD, but the pairing head was
+trained on its training split from mask-derived labels, so it is not
+zero-shot. Section~\ref{ssec:e2} is the zero-shot claim.
+
+\subsection{Change Detection (E1)}
+
+\input{../results/levir_cd_test/table_levir_cd_pixel}
+\input{../results/levir_cd_test/table_levir_cd_instance}
+
+The row worth pointing at is not ours. Geometry-only pairing (\EOneGeoFOne),
+the production heuristic (\EOneHeuristicFOne) and AnyChange
+(\AnyChangeFOne) all land within two points of each other, at precision 13--16
+with high recall. Methods that do not learn to pair converge on the same place
+regardless of segmentation quality, and the \HeadParamsRound-parameter head is
+what leaves that cluster: \EOnePixelFOne{} pixel F1, $2.3\times$ AnyChange's,
+above even its human-assisted three-point setting (\AnyChangeHFOne).
+
+Both ablations are load-bearing. Without the verifier the system scores
+\EOneNoVerifierFOne{} --- below geometry-only --- because the head proposes
+matches and something has to reject them. Retrained without cross-frame
+evidence it loses \EOneCrossFrameGain{} pixel F1.
+
+\subsection{Transfer Without Retraining (E2)}
+\label{ssec:e2}
+
+\input{../results/whu_cd_test/table_whu_cd_pixel}
+\input{../results/whu_cd_test/table_whu_cd_instance}
+
+The head is applied to WHU-CD unchanged: no retraining, and the thresholds are
+those selected on LEVIR-CD's validation split. It reaches \ETwoPixelFOne{}
+pixel F1 against \ETwoHeuristicFOne{} for the heuristic it replaces, and
+\ETwoInstFOne{} instance F1 against \ETwoHeuristicInstFOne. The verifier
+ablation collapses below geometry-only exactly as in E1.
+
+The instance columns state it more usefully than F1 does. Against \ETwoNGT{}
+ground-truth instances the heuristic emits \ETwoHeuristicNPred{} predictions
+and ours emits \ETwoNPred: count error falls from \ETwoHeuristicCountMAE{} to
+\ETwoCountMAE. For a service that reports how many buildings appeared, that is
+the difference between a usable number and noise.
+
+\textbf{This is not evidence that transfer is easier than the source domain.}
+WHU-CD test averages \ETwoGTDensity{} ground-truth instances per tile against
+LEVIR-CD's \EOneGTDensity, a $38\times$ difference in change density, so
+\ETwoPixelFOne{} and \EOnePixelFOne{} are not comparable as difficulties. We
+report both densities for that reason.
+
+\subsection{Grounding and Factuality (E3, E4)}
+
+\input{../results/levir_cc_caption/table_factuality_caption}
+\input{../results/levir_cc_caption/table_levir_cc_caption}
+
+Two results in this table have to be reported rather than buried.
+
+\textbf{The external baseline decides at chance.} \texttt{vlm\_direct} reaches
+ChgAcc \EFourVLMChgAcc\% --- it is guessing whether anything changed --- while
+producing confident, well-formed prose. CFS-F1 \EFourVLMFOne{} against
+\EFourGraphRAGFOne{} for the grounded pipeline.
+
+\textbf{Aggregation is worth \EFourAggGain{} points; retrieval and graph
+aggregation on top of it are worth nothing measurable.} Structuring the raw
+detection dump into a change inventory moves CFS-F1 from
+\EFourRawFOne{} (\texttt{llm\_raw}) to \EFourStructFOne{}
+(\texttt{llm\_struct}). Adding top-$k$ retrieval of past observations
+(\EFourFlatRagFOne) or replacing it with graph entity and community
+aggregation (\EFourGraphRAGFOne) moves it by less than
+\EFourLadderSpread{} points, and not consistently in the graph's favour:
+over \EFourNCrops{} crops \texttt{llm\_flat\_rag} finishes marginally
+ahead. We read the three as indistinguishable rather than ranked.
+
+The reason is structural rather than a shortcoming of the graph. All three
+conditions receive the same change inventory for the crop being described, and
+CFS scores only claims about \emph{that} crop; retrieved history concerns
+\emph{other} crops, so it can move wording but rarely a claim. Measured
+directly: of \EFourNCrops{} generations, \EFourTextDiffer{}
+(\EFourTextDifferPct\%) differ in text between the three conditions and
+only \EFourClaimsDiffer{} (\EFourClaimsDifferPct\%) differ in extracted
+claims. A crop-level ladder therefore cannot decide the question it appears to
+ask, and reporting the three as an ablation would be presenting noise as a
+result. Section~\ref{ssec:e7} asks it at the unit where the answer can differ.
+
+\textbf{Generation adds no measurable factuality over the deterministic
+template.} The template states its claims from the same inventory without a
+language model and is not separated from the generated conditions on CFS. What
+generation adds is prose a subscriber can read, which is a different claim
+requiring different evidence, and we do not measure readability here.
+
+\subsection{Pairing Determines Report Factuality (E5)}
+
+E4 varies grounding with pairing fixed; E5 does the reverse. Grounding is
+pinned at \texttt{llm\_graphrag} and only the pairing is swapped, so whatever
+moves is attributable to pairing. Unlike the graph term, the swapped variable
+demonstrably reaches the evidence: every crop receives a different change
+inventory.
+
+\input{tables/e5_pairing}
+
+Report factuality moves by \EFiveGain{} CFS-F1. Two of every three claims the
+heuristic-fed report makes are unsupported (\EFiveHeuristicHal\%), against one
+in four (\EFiveLearnedHal\%) for the learned head; ChgAcc rises from
+\EFiveHeuristicChgAcc{} to \EFiveLearnedChgAcc. This is the measurement that
+connects detection quality to the product: E1 and E2 show the head detects
+better, and E5 shows the improvement survives into what the subscriber is
+shown. A paper with E1 alone would be asserting that link rather than measuring
+it.
+
+\subsection{Neighbourhood-Level Grounding (E7)}
+\label{ssec:e7}
+
+At crop level the conditions are nested and the graph term vanishes. At
+neighbourhood level they stop being a ladder and become three
+\emph{representations} of the same observations --- full concatenation, top-$k$
+retrieval, graph aggregate --- and the comparison becomes decidable. One report
+is generated per neighbourhood over every crop of the tile the split provides.
+
+\input{tables/e7_scene}
+
+\textbf{Counting is where representation decides the outcome, and the margins
+are not subtle.} Concatenating every crop's inventory into one prompt produces
+a scene count error of \ESevenStructCountMAE{} instances; top-$k$ retrieval,
+which drops crops by construction, reaches \ESevenFlatCountMAE; graph
+aggregation reaches \ESevenGraphCountMAE. The failure mode of concatenation is
+worth naming: handed everything, the language model does not aggregate it, and
+the error grows with the number of observations rather than shrinking. Top-$k$
+retrieval is better only because it truncates the prompt, and it cannot recover
+a count from crops it never retrieved. Aggregating before generation is what
+survives.
+
+\textbf{Graph aggregation is the only generated condition that beats the
+deterministic template on any axis}, and it does so on the axis this
+application cares about: \ESevenGraphCountMAE{} against the template's
+\ESevenTemplateCountMAE. On claim-level factuality it leads the other generated
+conditions (\ESevenGraphFOne{} against \ESevenStructFOne{} and
+\ESevenFlatFOne) but still trails the template (\ESevenTemplateFOne). We
+therefore claim that graph aggregation preserves counts better than either
+retrieval or concatenation, and that it is what makes generated
+neighbourhood-level reports numerically usable --- not that generation improves
+factuality overall.
+
+\textbf{Scale is what made this measurable.} An earlier run over
+\PilotESevenNScenes{} scenes put graph aggregation \emph{below} plain
+concatenation on CFS-F1 (\PilotESevenGraphFOne{} against
+\PilotESevenStructFOne). Over \ESevenNScenes{} scenes the ordering reverses and
+the counting gap widens by more than an order of magnitude. The two results are
+consistent rather than contradictory: with few observations any representation
+serves, and the cost of not aggregating appears only once there are enough
+observations to lose track of.
+
+\subsection{Deployment Cost (E6)}
+
+\input{../results/efficiency/table_efficiency}
+
+Measured over 512 pairs of the same cache the report experiments use.
+Segmentation is \ESixDetectShare\% of the per-tile budget. The learned head
+costs \ESixHeadMs~ms against \ESixHeuristicMs~ms for the heuristic it replaces
+--- \ESixHeadDelta~ms more, \ESixPipelineShare\% of the pipeline. We quote the
+difference rather than characterising it, because the two rows it is derived
+from are in the table above and a reader can check the subtraction.
+
+The comparison is only meaningful within one cache. The same measurement over
+the 8-scene pilot cache gives 1.45~ms, because those crops carry a different
+number of detections and both pairing strategies scale with that count; two
+runs over the full cache agree to 0.08~ms. A per-tile latency for this stage is
+therefore a property of the tile population, not a constant of the method, and
+we report it against the population the rest of the paper uses.

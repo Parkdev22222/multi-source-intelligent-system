@@ -1,0 +1,55 @@
+% ---------------------------------------------------------------------------
+% ICCE-Asia 2026 submission. Six pages, non-blind (confirm both against the CFP
+% before submitting -- see paper/README.md).
+%
+% Numbers are never typed into prose by hand. Tables are \input from the
+% directories the harness writes; prose figures come from macros in
+% numbers.tex, which names the single run each one was measured in. If a
+% measurement is re-run, numbers.tex is the one file that changes.
+% ---------------------------------------------------------------------------
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\input{numbers}
+
+\begin{document}
+
+\title{Grounding LLM Change Reports in Foundation-Model\\Instance Evidence for
+Consumer Satellite Monitoring}
+
+% TODO non-blind: fill in before submission.
+\author{\IEEEauthorblockN{Author Name}
+\IEEEauthorblockA{Affiliation\\
+Email: songjae7175@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\begin{IEEEkeywords}
+large language models, foundation models, vision--language models, change
+detection, retrieval-augmented generation, knowledge graph, hallucination,
+consumer services
+\end{IEEEkeywords}
+
+\input{sections/introduction}
+\input{sections/related}
+\input{sections/method}
+\input{sections/cfs}
+\input{sections/experiments}
+\input{sections/limitations}
+\input{sections/conclusion}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

@@ -1,0 +1,32 @@
+\section{Conclusion}
+
+A consumer monitoring service is judged on the sentences it sends, so we built
+and measured the pipeline accordingly. The component that matters is small: a
+\HeadParamsRound-parameter pairing head, supervised for free from masks the
+benchmarks already publish, deciding which detections across two revisits are
+the same object and which unmatched detections are real change. It lifts
+detection from the 23--26 F1 band that every non-learned pairing strategy
+occupies to \EOnePixelFOne{} on LEVIR-CD, and it carries that to WHU-CD
+unchanged at \ETwoPixelFOne, cutting instance count error to \ETwoCountMAE.
+
+Measuring the reports required a metric with no language model inside it.
+Change-Fact-Score reduces a report to atomic claims and checks them against
+human references and ground-truth masks; it is what shows that a
+vision--language model given both images writes fluently while deciding at
+chance whether anything changed. Holding grounding fixed and swapping only the
+pairing moves report factuality by \EFiveGain{} points, which is the link
+between detection quality and product quality stated as a measurement rather
+than an assumption.
+
+The graph earns a narrower claim than the one we set out to make. Its
+contribution is unmeasurable at crop level for structural reasons, and at
+neighbourhood level it is a counting result: handed every crop of a tile, a
+language model's scene count degrades badly
+(\ESevenStructCountMAE{} instances of error), while aggregating through the
+graph first holds it to \ESevenGraphCountMAE{} --- better than the
+deterministic template and an order of magnitude better than either
+alternative. What that does not yet test is the temporal half of the design,
+because both benchmarks carry two acquisitions and the graph is built to
+accumulate across many. A dataset with a real revisit history is the experiment
+this work now needs, alongside change types beyond buildings and true satellite
+ground sampling distances.
