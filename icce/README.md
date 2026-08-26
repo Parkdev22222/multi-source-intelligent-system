@@ -442,6 +442,40 @@ LEVIR-CC neighbourhoods are cached; the split is selected by scene rather than
 by `--limit` because a spread sample leaves roughly one crop per tile and
 starves the per-scene graph that E4 and E7 measure.
 
+### After a pod restart
+
+`/workspace` is a network volume and survives: the repo, `data/benchmarks`
+(16G), `data/cache` (473M), `data/checkpoints`, `results`, the HF weights
+(88G under `/workspace/.cache/huggingface`), the vLLM venv and the SAM3
+checkout. What does not survive is the pip metadata on the container disk, so
+the first command in a new session is:
+
+```bash
+bash scripts/setup_env.sh          # no re-downloads; restores pip + numpy<2
+```
+
+Skip it and SAM3 fails at import, or worse, numpy 2.x is present and it fails
+somewhere less obvious.
+
+Then the report experiments run as one chain:
+
+```bash
+bash scripts/icce_chain.sh                    # everything, one model load each
+STAGES="caption e5 e7" bash scripts/icce_chain.sh
+```
+
+`icce_chain.sh` exists because `run_report_eval` given a bare HF id loads vLLM
+in-process, so five invocations mean five 60GB loads. It serves one model,
+runs every text stage against it, swaps to the vision model once, and merges.
+It also encodes three things that cost real time to learn: ports are picked
+from a free list rather than assumed (RunPod's nginx holds `:8001` here),
+readiness means *the endpoint is serving the model we asked for* rather than
+*something answered* (nginx returns a 502 page with a 200 status, which
+satisfies `curl -sf`), and vLLM is stopped by process pattern because
+`vllm_server.sh` ends in `exec ... | tee` so the backgrounded pid is the
+pipeline's. `vllm_server.sh` now refuses a busy port up front and names the
+process holding it.
+
 ### Passes that cannot share a GPU
 
 EXAONE-4.0-32B is 60 GB of weights and Qwen2.5-VL-7B another 16.6 GB; one 80 GB

@@ -39,6 +39,22 @@ if [ ! -x "${VENV}/bin/vllm" ]; then
   "${VENV}/bin/pip" install --no-cache-dir vllm
 fi
 
+# Refuse a port something already holds, and say what holds it.
+#
+# On this pod RunPod's nginx listens on :8001 and answers /v1/models with a 502
+# page carrying a 200 status. vLLM then dies with EADDRINUSE while `curl -sf`
+# reports the endpoint healthy, so a harness that probes for readiness proceeds
+# to send generation requests to an HTML error page. That cost a full
+# vlm_direct pass before it was noticed. Fail here instead, loudly.
+if ss -ltn 2>/dev/null | grep -q ":${PORT} "; then
+  holder="$(ss -ltnp 2>/dev/null | grep ":${PORT} " | grep -o 'users:((\"[^\"]*\"' | head -1 | tr -d 'users:((\"')"
+  echo "!! port ${PORT} is already in use${holder:+ by ${holder}}."
+  echo "   vLLM would exit with EADDRINUSE, and if the listener answers"
+  echo "   /v1/models with any 2xx body a readiness probe will pass anyway."
+  echo "   Pick another: PORT=8005 bash scripts/vllm_server.sh"
+  exit 1
+fi
+
 # Keep the server's HF cache pointed at the same place the datasets/weights
 # already live, so nothing is downloaded twice.
 export HF_HOME="${HF_HOME:-/workspace/.cache/huggingface/}"
