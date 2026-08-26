@@ -168,7 +168,7 @@ ax.text(sys_x + 0.4, sys_y + sys_h - 0.75,
         "· \"DISAPPEARED ≠ destroyed\"  —  소실은 파괴 의미 아님 (도메인 가드레일)",
         fontsize=8.2, color=TEXT)
 ax.text(sys_x + 0.4, sys_y + sys_h - 1.0,
-        "· 정형 8개 섹션 구조 강제 · 좌표·수치·타임스탬프는 원본 그대로 유지",
+        "· 정형 9개 섹션 구조 강제 · 좌표·수치·타임스탬프는 원본 그대로 유지",
         fontsize=8.2, color=TEXT)
 
 # 사용자 프롬프트 카드
@@ -203,7 +203,7 @@ arrow_down(6.5, 12.5, 12.0)
 # [3단계] 1차 LLM 호출 — 영문 보고서
 # ═══════════════════════════════════════════════════════════════
 stage_bg(9.0, 3.0, "3단계",
-         "영문 정형 판독보고서 생성 (8개 섹션 구조 준수)")
+         "영문 정형 판독보고서 생성 (9개 섹션 구조 준수)")
 
 # 좌: LLM 호출 아이콘 + 1차 배지
 llm_x, llm_y = 0.9, 10.3
@@ -237,28 +237,29 @@ ax.add_patch(FancyBboxPatch((rep_x, rep_y), rep_w, rep_h,
                              boxstyle="round,pad=0.04",
                              facecolor="white", edgecolor=LLM, lw=1.3))
 ax.text(rep_x + rep_w/2, rep_y + rep_h - 0.22,
-        "English Interpretation Report (8 sections)",
+        "English Interpretation Report (9 sections)",
         ha="center", fontsize=9.5, fontweight="bold", color=LLM)
 # 얇은 구분선
 ax.plot([rep_x + 0.2, rep_x + rep_w - 0.2], [rep_y + rep_h - 0.4, rep_y + rep_h - 0.4],
         color=LLM, lw=0.5, alpha=0.5)
 
-# 8개 섹션 (2열 배치)
+# 9개 섹션 (2열 배치: 5 + 4)
 sections_en = [
-    "1. Executive Summary",
-    "2. Area & Timeframe",
-    "3. Detected Assets",
-    "4. Recent Changes",
-    "5. Historical Pattern",
-    "6. Co-occurrence Analysis",
-    "7. Confidence & Limitations",
+    "1. Classification",
+    "2. Executive Summary",
+    "3. Situation",
+    "4. Change Analysis",
+    "5. Coverage Gap",
+    "6. Threat Assessment",
+    "7. Intelligence Gap",
     "8. Recommendations",
+    "9. Appendix",
 ]
 for i, sec in enumerate(sections_en):
-    col = i // 4
-    row = i % 4
+    col = 0 if i < 5 else 1
+    row = i if i < 5 else i - 5
     xx = rep_x + 0.3 + col * (rep_w/2 - 0.15)
-    yy = rep_y + rep_h - 0.7 - row * 0.32
+    yy = rep_y + rep_h - 0.7 - row * 0.28
     ax.text(xx, yy, sec, fontsize=8.2, color=TEXT)
 
 # 하단 강조 문구
@@ -330,10 +331,10 @@ ax.plot([comp_x + comp_w/2, comp_x + comp_w/2],
         [comp_y + 0.9, comp_y + comp_h - 0.35],
         color=STAGE_BD, lw=0.8)
 
-# 3개 예시 대조 라인
+# 3개 예시 대조 라인 (실제 코드의 섹션명 반영)
 pairs = [
-    ("1. Executive Summary",           "1. 요약"),
-    ("4. Recent Changes",              "4. 최근 변화 사항"),
+    ("2. Executive Summary",           "2. 핵심요약"),
+    ("4. Change Analysis",             "4. 변화분석"),
     ("\"3 new tanks @ 37.5765,126.9680\"",
      "\"신규 전차 3대 @ 37.5765,126.9680\""),
 ]
@@ -390,22 +391,23 @@ ax.plot([doc_x + 0.2, doc_x + doc_w - 0.2],
         [doc_y + doc_h - 0.48, doc_y + doc_h - 0.48],
         color=REPORT, lw=0.5, alpha=0.6)
 
-# 8개 섹션 한글 목록
+# 9개 섹션 한글 목록 (실제 코드 스키마 그대로)
 mini_secs = [
-    "1. 요약",
-    "2. 대상 지역 및 기간",
-    "3. 탐지 자산 목록",
-    "4. 최근 변화 사항",
-    "5. 과거 이력 및 반복 패턴",
-    "6. 자산 공출현 분석",
-    "7. 신뢰도 및 한계",
-    "8. 후속 조치 권장",
+    "1. 분류등급",
+    "2. 핵심요약",
+    "3. 상황",
+    "4. 변화분석",
+    "5. 촬영공백구역",
+    "6. 위협평가",
+    "7. 정보공백",
+    "8. 권고조치",
+    "9. 부록",
 ]
 for i, s in enumerate(mini_secs):
-    col = i // 4
-    row = i % 4
+    col = 0 if i < 5 else 1
+    row = i if i < 5 else i - 5
     xx = doc_x + 0.3 + col * (doc_w/2 - 0.2)
-    yy = doc_y + doc_h - 0.7 - row * 0.28
+    yy = doc_y + doc_h - 0.7 - row * 0.24
     ax.text(xx, yy, s, fontsize=7.8, color=TEXT)
 
 # 화살표 → Report DB
