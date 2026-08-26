@@ -1,0 +1,69 @@
+{
+  "dataset": "levir_cc",
+  "style": "caption",
+  "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8000/v1",
+  "n_pairs": 1929,
+  "checkpoint": "None",
+  "graph_radius_deg": 0.05,
+  "rag_k": 5,
+  "style_examples": [
+    "many houses have been constructed on both sides of the center road .",
+    "several houses are built replacing some plants .",
+    "several villas appear at the top of the forest .",
+    "there is no difference ."
+  ],
+  "integrity": {
+    "checks_passed": [
+      "style examples drawn from train"
+    ],
+    "violations": [],
+    "waived": false,
+    "clean": true
+  },
+  "vlm": null,
+  "results": [
+    {
+      "name": "llm_graphrag",
+      "mode": "llm_graphrag",
+      "style": "caption",
+      "n_generated": 1929,
+      "BLEU-1": 0.36311293595733635,
+      "BLEU-2": 0.24167594520761726,
+      "BLEU-3": 0.18244529667464543,
+      "BLEU-4": 0.15161124839899254,
+      "METEOR": 0.33486931740282455,
+      "ROUGE-L": 0.33961572757354436,
+      "CIDEr-D": 0.4014620484782598,
+      "n_samples": 1929,
+      "_backend": "msis-native",
+      "cfs_precision": 0.34009137635636777,
+      "cfs_recall": 0.36793327154772937,
+      "cfs_f1": 0.3534649057723698,
+      "hallucination_rate": 0.6599086236436322,
+      "change_accuracy": 0.6500777604976672,
+      "count_mae": 7.265834932821497,
+      "n_pred_claims": 3502,
+      "n_gt_claims": 3237,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.47110621904237754,
+          "support": 1817
+        },
+        "disappeared": {
+          "recall": 0.22580645161290322,
+          "support": 31
+        },
+        "modified": {
+          "recall": 0.0023584905660377358,
+          "support": 424
+        },
+        "none": {
+          "recall": 0.338860103626943,
+          "support": 965
+        }
+      },
+      "mean_length_words": 10.688958009331259,
+      "seconds": 610.6710135936737
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+\begin{table}[t]
+\centering
+\caption{Instance-level change detection on WHU-CD (IoU $\geq$ 0.5).}
+\label{tab:whu_cd_instance}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccc}
+\toprule
+Method & P & R & F1 \\
+\midrule
+\multicolumn{4}{l}{\emph{This work}} \\
+geo-only & 4.73 & 55.62 & 8.73 \\
+heuristic (production) & 4.93 & 55.93 & 9.06 \\
+learned head + greedy & 44.18 & 63.83 & 52.22 \\
+learned head, no verifier & 2.36 & 69.00 & 4.56 \\
+\textbf{learned head (ours)} & \textbf{44.03} & \textbf{63.83} & \textbf{52.11} \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\caption{Per-tile processing cost on a single NVIDIA A100 80GB. The learned pairing head adds 19781 parameters and 0.70~ms/tile over the hand-tuned heuristic it replaces --- 0.01\% of the pipeline. Segmentation and language generation dominate the budget.}
+\label{tab:efficiency}
+\begin{tabular}{lrr}
+\toprule
+Stage & Latency (ms/tile) & Peak GPU (MB) \\
+\midrule
+SAM3 detection + CLIP (2 frames) & 6099.45 & -- \\
+pairing: heuristic (production) & 8.98 & 0 \\
+pairing: learned head (ours) & 9.69 & 10 \\
+knowledge graph: index + retrieve & 141.56 & 8 \\
+report LLM (server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8005/v1, batched) & 438.29 & 8 \\
+\bottomrule
+\end{tabular}
+\end{table}

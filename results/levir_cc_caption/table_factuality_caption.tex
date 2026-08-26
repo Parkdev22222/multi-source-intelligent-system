@@ -1,0 +1,19 @@
+\begin{table}[t]
+\centering
+\caption{Report factuality by grounding condition (caption style). CFS is claim-level precision/recall against the human references; Hal is the share of generated claims with no ground-truth support.}
+\label{tab:factuality_caption}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccc}
+\toprule
+Method & CFS-P & CFS-R & CFS-F1 & Hal & ChgAcc \\
+\midrule
+\multicolumn{6}{l}{\emph{This work}} \\
+template & 61.55 & 39.60 & 48.20 & 38.45 & 76.46 \\
+vlm_direct & 34.97 & 24.03 & 28.49 & 65.03 & 45.78 \\
+llm_raw & 55.87 & 38.06 & 45.28 & 44.13 & 70.40 \\
+llm_struct & 61.73 & 39.76 & 48.37 & 38.27 & 76.46 \\
+llm_flat_rag & 61.96 & 39.85 & 48.51 & 38.04 & 76.57 \\
+\textbf{llm_graphrag} & \textbf{61.72} & \textbf{39.70} & \textbf{48.32} & \textbf{38.28} & \textbf{76.52} \\
+\bottomrule
+\end{tabular}
+\end{table}

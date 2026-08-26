@@ -1,0 +1,72 @@
+{
+  "dataset": "levir_cc",
+  "style": "caption",
+  "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8000/v1",
+  "n_pairs": 128,
+  "checkpoint": "data/checkpoints/pairing_head.pt",
+  "graph_radius_deg": 0.05,
+  "rag_k": 5,
+  "style_examples": [
+    "many houses have been constructed on both sides of the center road .",
+    "several houses are built replacing some plants .",
+    "several villas appear at the top of the forest .",
+    "there is no difference ."
+  ],
+  "integrity": {
+    "checks_passed": [
+      "train/test pair ids disjoint",
+      "train/test parent scenes disjoint",
+      "thresholds selected on 'val', not 'test'",
+      "style examples drawn from train"
+    ],
+    "violations": [],
+    "waived": false,
+    "clean": true
+  },
+  "vlm": null,
+  "results": [
+    {
+      "name": "llm_graphrag",
+      "mode": "llm_graphrag",
+      "style": "caption",
+      "n_generated": 128,
+      "BLEU-1": 0.5164131305044035,
+      "BLEU-2": 0.3922555212150656,
+      "BLEU-3": 0.32522252611881713,
+      "BLEU-4": 0.28589644667738673,
+      "METEOR": 0.46938406334928495,
+      "ROUGE-L": 0.4928054272059225,
+      "CIDEr-D": 0.7063672283992606,
+      "n_samples": 128,
+      "_backend": "msis-native",
+      "cfs_precision": 0.746268656716418,
+      "cfs_recall": 0.43103448275862066,
+      "cfs_f1": 0.5464480874316939,
+      "hallucination_rate": 0.25373134328358204,
+      "change_accuracy": 0.8671875,
+      "count_mae": 3.4310344827586206,
+      "n_pred_claims": 134,
+      "n_gt_claims": 232,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.3888888888888889,
+          "support": 144
+        },
+        "disappeared": {
+          "recall": 0.0,
+          "support": 3
+        },
+        "modified": {
+          "recall": 0.05128205128205128,
+          "support": 39
+        },
+        "none": {
+          "recall": 0.9130434782608695,
+          "support": 46
+        }
+      },
+      "mean_length_words": 9.5,
+      "seconds": 30.078624486923218
+    }
+  ]
+}

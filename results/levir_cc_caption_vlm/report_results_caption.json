@@ -1,0 +1,72 @@
+{
+  "dataset": "levir_cc",
+  "style": "caption",
+  "llm": "echo",
+  "n_pairs": 1929,
+  "checkpoint": "data/checkpoints/pairing_head.pt",
+  "graph_radius_deg": 0.05,
+  "rag_k": 5,
+  "style_examples": [
+    "many houses have been constructed on both sides of the center road .",
+    "several houses are built replacing some plants .",
+    "several villas appear at the top of the forest .",
+    "there is no difference ."
+  ],
+  "integrity": {
+    "checks_passed": [
+      "train/test pair ids disjoint",
+      "train/test parent scenes disjoint",
+      "thresholds selected on 'val', not 'test'",
+      "style examples drawn from train"
+    ],
+    "violations": [],
+    "waived": false,
+    "clean": true
+  },
+  "vlm": "server:Qwen/Qwen2.5-VL-7B-Instruct@http://127.0.0.1:8005/v1",
+  "results": [
+    {
+      "name": "vlm_direct",
+      "mode": "vlm_direct",
+      "style": "caption",
+      "n_generated": 1929,
+      "BLEU-1": 0.31851851851851853,
+      "BLEU-2": 0.15795233174660714,
+      "BLEU-3": 0.0822533932403376,
+      "BLEU-4": 0.04512854590346185,
+      "METEOR": 0.21714036921479102,
+      "ROUGE-L": 0.2527112399568148,
+      "CIDEr-D": 0.11465393226660071,
+      "n_samples": 1929,
+      "_backend": "msis-native",
+      "cfs_precision": 0.3496629213483146,
+      "cfs_recall": 0.24034599938214396,
+      "cfs_f1": 0.2848773343097766,
+      "hallucination_rate": 0.6503370786516853,
+      "change_accuracy": 0.45775012960082945,
+      "count_mae": 2.1514860977948227,
+      "n_pred_claims": 2225,
+      "n_gt_claims": 3237,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.4105668684645019,
+          "support": 1817
+        },
+        "disappeared": {
+          "recall": 0.03225806451612903,
+          "support": 31
+        },
+        "modified": {
+          "recall": 0.03537735849056604,
+          "support": 424
+        },
+        "none": {
+          "recall": 0.016580310880829015,
+          "support": 965
+        }
+      },
+      "mean_length_words": 12.804043545878693,
+      "seconds": 453.2931447029114
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+\begin{table}[t]
+\centering
+\caption{Pixel-level change detection on WHU-CD. Baselines are fully supervised; ours is open-vocabulary with a 20k-parameter pairing head.}
+\label{tab:whu_cd_pixel}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Method & P & R & F1 & IoU \\
+\midrule
+%% TODO fill and verify in baselines.json: FC-Siam-Diff [supervised], BIT [supervised], ChangeFormer [supervised], AnyChange (SAM zero-shot) [zero-shot]
+\midrule
+\multicolumn{5}{l}{\emph{This work}} \\
+geo-only & 23.35 & 42.57 & 30.16 & 17.76 \\
+heuristic (production) & 21.73 & 42.98 & 28.86 & 16.87 \\
+learned head + greedy & 73.06 & 48.05 & 57.97 & 40.82 \\
+learned head, no verifier & 12.13 & 53.50 & 19.78 & 10.98 \\
+\textbf{learned head (ours)} & \textbf{72.89} & \textbf{48.05} & \textbf{57.92} & \textbf{40.77} \\
+\bottomrule
+\end{tabular}
+\end{table}

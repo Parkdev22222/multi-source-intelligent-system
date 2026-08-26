@@ -1,0 +1,327 @@
+{
+  "dataset": "levir_cc",
+  "style": "caption",
+  "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8000/v1",
+  "n_pairs": 1929,
+  "checkpoint": "data/checkpoints/pairing_head.pt",
+  "graph_radius_deg": 0.05,
+  "rag_k": 5,
+  "style_examples": [
+    "many houses have been constructed on both sides of the center road .",
+    "several houses are built replacing some plants .",
+    "several villas appear at the top of the forest .",
+    "there is no difference ."
+  ],
+  "integrity": {
+    "checks_passed": [
+      "train/test pair ids disjoint",
+      "train/test parent scenes disjoint",
+      "thresholds selected on 'val', not 'test'",
+      "style examples drawn from train"
+    ],
+    "violations": [],
+    "waived": false,
+    "clean": true
+  },
+  "vlm": null,
+  "results": [
+    {
+      "name": "template",
+      "mode": "template",
+      "style": "caption",
+      "n_generated": 1929,
+      "BLEU-1": 0.5033199505867819,
+      "BLEU-2": 0.3972774598761009,
+      "BLEU-3": 0.31924980826237437,
+      "BLEU-4": 0.2602916746944091,
+      "METEOR": 0.5150461377527639,
+      "ROUGE-L": 0.47102258392758084,
+      "CIDEr-D": 0.25289324583832207,
+      "n_samples": 1929,
+      "_backend": "msis-native",
+      "cfs_precision": 0.6154584733557369,
+      "cfs_recall": 0.39604572134692617,
+      "cfs_f1": 0.4819548872180451,
+      "hallucination_rate": 0.3845415266442631,
+      "change_accuracy": 0.7646448937273198,
+      "count_mae": 1.8223270440251573,
+      "n_pred_claims": 2083,
+      "n_gt_claims": 3237,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.29334067143643366,
+          "support": 1817
+        },
+        "disappeared": {
+          "recall": 0.16129032258064516,
+          "support": 31
+        },
+        "modified": {
+          "recall": 0.08726415094339622,
+          "support": 424
+        },
+        "none": {
+          "recall": 0.7326424870466322,
+          "support": 965
+        }
+      },
+      "mean_length_words": 13.072576464489373,
+      "seconds": 1.9125828742980957,
+      "_merged_from": {
+        "run": "results/levir_cc_caption",
+        "checkpoint": "data/checkpoints/pairing_head.pt",
+        "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8000/v1",
+        "n_pairs": 1929
+      }
+    },
+    {
+      "name": "vlm_direct",
+      "mode": "vlm_direct",
+      "style": "caption",
+      "n_generated": 1929,
+      "BLEU-1": 0.31851851851851853,
+      "BLEU-2": 0.15795233174660714,
+      "BLEU-3": 0.0822533932403376,
+      "BLEU-4": 0.04512854590346185,
+      "METEOR": 0.21714036921479102,
+      "ROUGE-L": 0.2527112399568148,
+      "CIDEr-D": 0.11465393226660071,
+      "n_samples": 1929,
+      "_backend": "msis-native",
+      "cfs_precision": 0.3496629213483146,
+      "cfs_recall": 0.24034599938214396,
+      "cfs_f1": 0.2848773343097766,
+      "hallucination_rate": 0.6503370786516853,
+      "change_accuracy": 0.45775012960082945,
+      "count_mae": 2.1514860977948227,
+      "n_pred_claims": 2225,
+      "n_gt_claims": 3237,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.4105668684645019,
+          "support": 1817
+        },
+        "disappeared": {
+          "recall": 0.03225806451612903,
+          "support": 31
+        },
+        "modified": {
+          "recall": 0.03537735849056604,
+          "support": 424
+        },
+        "none": {
+          "recall": 0.016580310880829015,
+          "support": 965
+        }
+      },
+      "mean_length_words": 12.804043545878693,
+      "seconds": 453.2931447029114,
+      "_merged_from": {
+        "run": "results/levir_cc_caption_vlm",
+        "checkpoint": "data/checkpoints/pairing_head.pt",
+        "llm": "echo",
+        "vlm": "server:Qwen/Qwen2.5-VL-7B-Instruct@http://127.0.0.1:8005/v1",
+        "n_pairs": 1929
+      }
+    },
+    {
+      "name": "llm_raw",
+      "mode": "llm_raw",
+      "style": "caption",
+      "n_generated": 1929,
+      "BLEU-1": 0.5301631086591508,
+      "BLEU-2": 0.404310843400658,
+      "BLEU-3": 0.3358698762118889,
+      "BLEU-4": 0.2914630325352006,
+      "METEOR": 0.40664514025335924,
+      "ROUGE-L": 0.44722636547940003,
+      "CIDEr-D": 0.6010950932460148,
+      "n_samples": 1929,
+      "_backend": "msis-native",
+      "cfs_precision": 0.5587301587301587,
+      "cfs_recall": 0.38059932035835653,
+      "cfs_f1": 0.4527747151782433,
+      "hallucination_rate": 0.44126984126984126,
+      "change_accuracy": 0.7039917055469155,
+      "count_mae": 1.8174386920980927,
+      "n_pred_claims": 2205,
+      "n_gt_claims": 3237,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.360484314804623,
+          "support": 1817
+        },
+        "disappeared": {
+          "recall": 0.16129032258064516,
+          "support": 31
+        },
+        "modified": {
+          "recall": 0.06839622641509434,
+          "support": 424
+        },
+        "none": {
+          "recall": 0.5626943005181347,
+          "support": 965
+        }
+      },
+      "mean_length_words": 8.632970451010886,
+      "seconds": 295.74751138687134,
+      "_merged_from": {
+        "run": "results/levir_cc_caption",
+        "checkpoint": "data/checkpoints/pairing_head.pt",
+        "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8000/v1",
+        "n_pairs": 1929
+      }
+    },
+    {
+      "name": "llm_struct",
+      "mode": "llm_struct",
+      "style": "caption",
+      "n_generated": 1929,
+      "BLEU-1": 0.4809483488569009,
+      "BLEU-2": 0.3727205532232048,
+      "BLEU-3": 0.3154847397957981,
+      "BLEU-4": 0.2814590784118006,
+      "METEOR": 0.49896365669028875,
+      "ROUGE-L": 0.5149040488440362,
+      "CIDEr-D": 0.7777271772118255,
+      "n_samples": 1929,
+      "_backend": "msis-native",
+      "cfs_precision": 0.6172661870503597,
+      "cfs_recall": 0.39759036144578314,
+      "cfs_f1": 0.4836527621195039,
+      "hallucination_rate": 0.38273381294964026,
+      "change_accuracy": 0.7646448937273198,
+      "count_mae": 2.924550898203593,
+      "n_pred_claims": 2085,
+      "n_gt_claims": 3237,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.2977435332966428,
+          "support": 1817
+        },
+        "disappeared": {
+          "recall": 0.16129032258064516,
+          "support": 31
+        },
+        "modified": {
+          "recall": 0.08018867924528301,
+          "support": 424
+        },
+        "none": {
+          "recall": 0.7326424870466322,
+          "support": 965
+        }
+      },
+      "mean_length_words": 10.022809745982375,
+      "seconds": 179.15529251098633,
+      "_merged_from": {
+        "run": "results/levir_cc_caption",
+        "checkpoint": "data/checkpoints/pairing_head.pt",
+        "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8000/v1",
+        "n_pairs": 1929
+      }
+    },
+    {
+      "name": "llm_flat_rag",
+      "mode": "llm_flat_rag",
+      "style": "caption",
+      "n_generated": 1929,
+      "BLEU-1": 0.49518382167532404,
+      "BLEU-2": 0.3870400780693759,
+      "BLEU-3": 0.32802327624244054,
+      "BLEU-4": 0.29189089724318307,
+      "METEOR": 0.5041535985872215,
+      "ROUGE-L": 0.5206277113327845,
+      "CIDEr-D": 0.7835492212287463,
+      "n_samples": 1929,
+      "_backend": "msis-native",
+      "cfs_precision": 0.6195965417867435,
+      "cfs_recall": 0.3985171455050973,
+      "cfs_f1": 0.485053581500282,
+      "hallucination_rate": 0.3804034582132565,
+      "change_accuracy": 0.7656817003628823,
+      "count_mae": 2.6492450638792104,
+      "n_pred_claims": 2082,
+      "n_gt_claims": 3237,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.2993946064942212,
+          "support": 1817
+        },
+        "disappeared": {
+          "recall": 0.16129032258064516,
+          "support": 31
+        },
+        "modified": {
+          "recall": 0.08018867924528301,
+          "support": 424
+        },
+        "none": {
+          "recall": 0.7326424870466322,
+          "support": 965
+        }
+      },
+      "mean_length_words": 9.902540176257128,
+      "seconds": 280.5005142688751,
+      "_merged_from": {
+        "run": "results/levir_cc_caption",
+        "checkpoint": "data/checkpoints/pairing_head.pt",
+        "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8000/v1",
+        "n_pairs": 1929
+      }
+    },
+    {
+      "name": "llm_graphrag",
+      "mode": "llm_graphrag",
+      "style": "caption",
+      "n_generated": 1929,
+      "BLEU-1": 0.49533678756476685,
+      "BLEU-2": 0.3876530355479083,
+      "BLEU-3": 0.33018376887178374,
+      "BLEU-4": 0.29556976257505935,
+      "METEOR": 0.49805710952770454,
+      "ROUGE-L": 0.5163366593750317,
+      "CIDEr-D": 0.780029997413497,
+      "n_samples": 1929,
+      "_backend": "msis-native",
+      "cfs_precision": 0.617195004803074,
+      "cfs_recall": 0.39697250540624035,
+      "cfs_f1": 0.48317352885880804,
+      "hallucination_rate": 0.382804995196926,
+      "change_accuracy": 0.7651632970451011,
+      "count_mae": 2.9301260022909505,
+      "n_pred_claims": 2082,
+      "n_gt_claims": 3237,
+      "per_direction": {
+        "appeared": {
+          "recall": 0.29609246009906437,
+          "support": 1817
+        },
+        "disappeared": {
+          "recall": 0.16129032258064516,
+          "support": 31
+        },
+        "modified": {
+          "recall": 0.08254716981132075,
+          "support": 424
+        },
+        "none": {
+          "recall": 0.7326424870466322,
+          "support": 965
+        }
+      },
+      "mean_length_words": 9.667703473302229,
+      "seconds": 415.06344866752625,
+      "_merged_from": {
+        "run": "results/levir_cc_caption",
+        "checkpoint": "data/checkpoints/pairing_head.pt",
+        "llm": "server:LGAI-EXAONE/EXAONE-4.0-32B@http://127.0.0.1:8000/v1",
+        "n_pairs": 1929
+      }
+    }
+  ],
+  "merged": [
+    "vlm_direct from results/levir_cc_caption_vlm"
+  ]
+}
