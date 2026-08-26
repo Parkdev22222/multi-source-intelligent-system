@@ -1,12 +1,12 @@
-"""도 4 v2 — LLM 2회 호출 기반 판독보고서 자율 생성 (이해하기 쉬운 시각화)
+"""도 4 v2 — 판독보고서 자율 생성 (이해하기 쉬운 시각화)
 
-제목: 'LLM 2회 호출 기반 판독보고서 자율 생성'
+제목: '판독보고서 자율 생성 — 영문 초안 → 한국어 무오염 번역'
 
 각 단계를 실제 그림으로 도식화:
 1) 두 갈래 입력 (Graph DB 압축 컨텍스트 + Pairing DB 변화 객체)
 2) 프롬프트 조립 (시스템 + 사용자, 실제 프롬프트 구조 카드로 표현)
-3) 1차 LLM 호출 → 영문 정형 8섹션 보고서
-4) 2차 LLM 호출 (동일 인스턴스) → 한국어 번역, 좌표·수치·타임스탬프 보존
+3) 영문 정형 8섹션 판독보고서 생성
+4) 동일 LLM 인스턴스로 한국어 번역, 좌표·수치·타임스탬프 보존
 5) 최종 보고서 → Report DB
 """
 
@@ -44,7 +44,7 @@ ax.set_xlim(0, 13); ax.set_ylim(0, 20)
 ax.axis("off")
 
 # 제목
-ax.text(6.5, 19.45, "도 4. LLM 2회 호출 기반 판독보고서 자율 생성",
+ax.text(6.5, 19.45, "도 4. 판독보고서 자율 생성",
         ha="center", fontsize=15, fontweight="bold", color=TEXT)
 ax.text(6.5, 19.05,
         "그래프 압축 컨텍스트 + 이번 회차 변화 객체를 LLM에 주입 → 영문 정형 보고서 → 무오염 한국어 번역",
@@ -203,7 +203,7 @@ arrow_down(6.5, 12.5, 12.0)
 # [3단계] 1차 LLM 호출 — 영문 보고서
 # ═══════════════════════════════════════════════════════════════
 stage_bg(9.0, 3.0, "3단계",
-         "1차 LLM 호출 — 영문 정형 판독보고서 생성 (8개 섹션 구조 준수)")
+         "영문 정형 판독보고서 생성 (8개 섹션 구조 준수)")
 
 # 좌: LLM 호출 아이콘 + 1차 배지
 llm_x, llm_y = 0.9, 10.3
@@ -213,7 +213,7 @@ ax.add_patch(FancyBboxPatch((llm_x, llm_y), llm_w, llm_h,
                              facecolor=LLM, edgecolor="#7f1d1d", lw=1.5))
 ax.text(llm_x + llm_w/2, llm_y + 0.8, "LLM (예: EXAONE)",
         ha="center", fontsize=11, fontweight="bold", color="white")
-ax.text(llm_x + llm_w/2, llm_y + 0.4, "1차 호출 · 영문 생성",
+ax.text(llm_x + llm_w/2, llm_y + 0.4, "영문 판독보고서 생성",
         ha="center", fontsize=8.5, color="white", style="italic")
 
 ax.add_patch(Circle((llm_x + llm_w - 0.15, llm_y + llm_h - 0.05), 0.28,
@@ -273,7 +273,7 @@ arrow_down(6.5, 9.0, 8.5)
 # [4단계] 2차 LLM 호출 — 한국어 무오염 번역
 # ═══════════════════════════════════════════════════════════════
 stage_bg(5.0, 3.5, "4단계",
-         "2차 LLM 호출 (동일 인스턴스) — 한국어로 번역하되 좌표·수치·타임스탬프는 원본 그대로 유지")
+         "동일 LLM 인스턴스로 한국어 번역 — 좌표·수치·타임스탬프는 원본 그대로 유지")
 
 # 좌: 같은 LLM 인스턴스 + 2차 배지
 llm2_x, llm2_y = 0.9, 6.5
@@ -283,7 +283,7 @@ ax.add_patch(FancyBboxPatch((llm2_x, llm2_y), llm2_w, llm2_h,
                              facecolor=LLM, edgecolor="#7f1d1d", lw=1.5))
 ax.text(llm2_x + llm2_w/2, llm2_y + 0.8, "LLM (동일 인스턴스)",
         ha="center", fontsize=10.5, fontweight="bold", color="white")
-ax.text(llm2_x + llm2_w/2, llm2_y + 0.4, "2차 호출 · 한국어 번역",
+ax.text(llm2_x + llm2_w/2, llm2_y + 0.4, "한국어 번역",
         ha="center", fontsize=8.5, color="white", style="italic")
 
 ax.add_patch(Circle((llm2_x + llm2_w - 0.15, llm2_y + llm2_h - 0.05), 0.28,
