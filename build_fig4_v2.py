@@ -291,10 +291,25 @@ ax.add_patch(Circle((llm2_x + llm2_w - 0.15, llm2_y + llm2_h - 0.05), 0.28,
 ax.text(llm2_x + llm2_w - 0.15, llm2_y + llm2_h - 0.05, "2",
         ha="center", va="center", fontsize=12, fontweight="bold", color=LLM)
 
-# 아래에 "1차와 동일 인스턴스" 강조
-ax.text(llm2_x + llm2_w/2, llm2_y - 0.2,
-        "※ 3단계의 LLM과 동일한 인스턴스\n(모델·가중치 재로드 없음)",
-        ha="center", fontsize=7.5, color=MUTED, style="italic")
+# 하단 콜아웃: 왜 영문→한국어 2단계로 하는지 요약
+call_x, call_y = 0.5, 5.15
+call_w, call_h = 4.0, 1.15
+ax.add_patch(FancyBboxPatch((call_x, call_y), call_w, call_h,
+                             boxstyle="round,pad=0.05",
+                             facecolor="#fef9c3",
+                             edgecolor="#ca8a04", lw=1.3))
+ax.text(call_x + call_w/2, call_y + call_h - 0.2,
+        "왜 영문 → 한국어 2단계?",
+        ha="center", fontsize=9, fontweight="bold", color="#854d0e")
+ax.text(call_x + 0.2, call_y + call_h - 0.5,
+        "· 정형 출력·도메인 규칙 준수율이 영문에서 안정적",
+        fontsize=7.5, color="#713f12")
+ax.text(call_x + 0.2, call_y + call_h - 0.75,
+        "· 번역만 좁게 잠가 좌표·수치·타임스탬프 raw 값 보존",
+        fontsize=7.5, color="#713f12")
+ax.text(call_x + 0.2, call_y + call_h - 1.0,
+        "· 동일 인스턴스 재사용 → 모델·가중치 재로드 없음",
+        fontsize=7.5, color="#713f12")
 
 # 화살표 → 번역 결과
 arrow_right(llm2_x + llm2_w + 0.1, llm2_y + llm2_h/2, 5.6, color=LLM, lw=2)
