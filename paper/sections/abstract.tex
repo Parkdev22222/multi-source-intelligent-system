@@ -21,7 +21,7 @@ WHU-CD --- a domain it has never seen, no retraining, no threshold tuning --- it
 reaches \ETwoPixelFOne{} against \ETwoHeuristicFOne{} for the heuristic it
 replaces, cutting instance count error from \ETwoHeuristicCountMAE{} to
 \ETwoCountMAE. To measure reports we introduce Change-Fact-Score, which reduces
-a report to atomic $(\text{direction},\text{class},\text{count})$ claims with a
+a report to atomic direction--class--count claims with a
 deterministic extractor and scores them against human references and
 ground-truth masks, so no language model sits inside the metric. It exposes what
 n-gram overlap hides: a capable vision--language model shown both images writes

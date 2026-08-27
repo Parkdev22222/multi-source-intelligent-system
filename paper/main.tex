@@ -1,24 +1,39 @@
 % ---------------------------------------------------------------------------
-% ICCE-Asia 2026 submission. The conference's submission page states 2--6
-% pages, two-column, at least 10pt, on A4 -- hence a4paper below, which
-% IEEEtran does not default to. Blinding is still unconfirmed, and this file
-% has never been built against the venue's own template package
-% (see paper/README.md).
+% ICCE-Asia 2026 submission.
+%
+% Built on the venue's own template package (Conference-LaTeX-template_10-17-19,
+% the IEEE conference template ICCE-Asia distributes). `IEEEtran.cls` beside
+% this file is that package's copy, byte-for-byte, so the build does not depend
+% on whatever IEEEtran a local TeX installation happens to carry. The preamble
+% below is the template's, with two deliberate departures, both marked.
+%
+% Paper size follows the template: `[conference]` alone, which is US Letter.
+% The conference's submission page says A4. That conflict is unresolved -- see
+% paper/README.md -- and switching is one word: `[conference,a4paper]`.
 %
 % Numbers are never typed into prose by hand. Tables are \input from the
 % directories the harness writes; prose figures come from macros in
 % numbers.tex, which names the single run each one was measured in. If a
 % measurement is re-run, numbers.tex is the one file that changes.
 % ---------------------------------------------------------------------------
-\documentclass[conference,a4paper]{IEEEtran}
+\documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
-
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
 \usepackage{cite}
-\usepackage{amsmath,amssymb}
+\usepackage{amsmath,amssymb,amsfonts}
+% Departure 1: the template loads `algorithmic` here. This paper contains no
+% algorithm environment, and the package is absent from a minimal TeX Live, so
+% loading it would only turn a working build into a missing-file error.
 \usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+% Departure 2: added for this paper. The result tables are written by the
+% evaluation harness and use booktabs rules; `url` is here because IEEEtran.bst
+% reaches for \url when a reference carries one.
 \usepackage{booktabs}
 \usepackage{url}
-\usepackage[hidelinks]{hyperref}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
 \input{numbers}
 
@@ -27,10 +42,15 @@
 \title{Grounding LLM Change Reports in Foundation-Model\\Instance Evidence for
 Consumer Satellite Monitoring}
 
-% TODO non-blind: fill in before submission.
-\author{\IEEEauthorblockN{Author Name}
-\IEEEauthorblockA{Affiliation\\
-Email: songjae7175@gmail.com}}
+% TODO: the template's author block, filled for one author. Blinding is still
+% unconfirmed; if the venue reviews blind, this block and the repository link
+% both have to go.
+\author{\IEEEauthorblockN{1\textsuperscript{st} Given Name Surname}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{name of organization (of Aff.)}\\
+City, Country \\
+songjae7175@gmail.com}
+}
 
 \maketitle
 
@@ -52,6 +72,11 @@ consumer services
 \input{sections/limitations}
 \input{sections/conclusion}
 
+% The template ships a hand-written thebibliography. This paper keeps BibTeX:
+% every entry in refs.bib records the source it was verified against, and that
+% audit trail is the point. `latexmk -pdf main.tex` runs BibTeX itself;
+% IEEEtran.bst ships with TeX Live. If the venue asks for LaTeX sources rather
+% than a PDF, include the generated main.bbl with them.
 \bibliographystyle{IEEEtran}
 \bibliography{refs}
 

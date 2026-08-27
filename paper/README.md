@@ -2,18 +2,30 @@
 
 ICCE-Asia 2026 submission.
 
-**This is not built on the venue's template package.** No `.cls` is vendored
-here; `main.tex` calls plain `IEEEtran` and the build uses TeX Live's copy of
-it. Download the template the conference publishes and build against that
-before submitting -- a class version mismatch is the kind of thing that is
-caught at upload, not before.
+This is built on the venue's own template package
+(`Conference-LaTeX-template_10-17-19`, the IEEE conference template ICCE-Asia
+distributes). `IEEEtran.cls` in this directory is that package's copy,
+byte-for-byte, so the build does not depend on whichever IEEEtran a local TeX
+installation carries -- and `main.tex` starts from the template's preamble,
+with its two departures marked in the file.
 
-The conference's submission page states regular papers are **2--6 pages,
-two-column, at least 10pt, on A4**, which is why `main.tex` passes `a4paper`
-(IEEEtran defaults to US Letter). That was read off a search summary of
-`icce-asia2026.org`, not off the page itself -- confirm it. **Blinding is still
-unknown**, and it decides how the author block and the repository link are
-handled.
+Two things about the template are worth knowing before submitting:
+
+- **Paper size is unresolved.** The template is `[conference]`, which is US
+  Letter, and that is what this builds as. The conference's submission page
+  says A4. That was read off a search summary of `icce-asia2026.org`, not off
+  the page itself, so confirm it: if A4 is right, `[conference,a4paper]` is the
+  whole change (tried; still 8 pages, still no overfull boxes).
+- **The template's bibliography is a hand-written `thebibliography`; this paper
+  keeps BibTeX.** Every entry in `refs.bib` records the source it was verified
+  against, and that trail is worth more than matching the template's example.
+  `IEEEtran.bst` is not in the template package -- it ships with TeX Live. If
+  the venue wants LaTeX sources rather than a PDF, send the generated
+  `main.bbl` with them.
+
+**Blinding is still unknown**, and it decides how the author block and the
+repository link are handled. The author block is currently the template's, with
+one author and its placeholder fields intact.
 
 ## Build
 
@@ -27,16 +39,15 @@ On a bare pod that needs a TeX installation first:
 ```bash
 apt-get install -y --no-install-recommends \
     texlive-latex-base texlive-latex-recommended \
-    texlive-publishers texlive-fonts-recommended   # texlive-publishers has IEEEtran
+    texlive-publishers texlive-fonts-recommended
 ```
 
-The document **compiles clean** with that toolchain: 8 pages, no errors, no
-undefined references, no overfull boxes. `latexmk` runs BibTeX itself; by hand
-it is pdflatex, bibtex, pdflatex, pdflatex.
+`texlive-publishers` is still needed, not for the class -- that one is vendored
+here -- but for `IEEEtran.bst`.
 
-`IEEEtran.cls` is still not vendored. The build above uses TeX Live's copy,
-which is fine for reading a draft; for the actual submission get the class from
-the CFP's template package, so the version matches what the venue expects.
+The document **compiles clean** against the vendored class: 8 pages, no errors,
+no undefined references, no overfull boxes, no font substitutions. `latexmk`
+runs BibTeX itself; by hand it is pdflatex, bibtex, pdflatex, pdflatex.
 
 ## How numbers get into the paper
 
@@ -83,8 +94,8 @@ Every `\input` in `experiments.tex` resolves against a file that exists in
 - [ ] **The draft is 8 pages against a stated 6-page maximum.** Two pages have
       to go: Related Work compresses well, and E3/E4 ship two tables
       (factuality and caption metrics) where the argument needs one
-- [ ] Build against the venue's own template package, not TeX Live's IEEEtran
-- [ ] Confirm the page limit and blinding on the submission page itself
+- [ ] Confirm the page limit, the paper size and blinding on the submission
+      page itself -- all three are currently second-hand
 - [ ] Fill the author block in `main.tex`
 - [ ] `baselines.json`: WHU-CD has **no verified rows**, so `latex_table`
       emits a TODO comment instead of a comparison block. LEVIR-CC has four
