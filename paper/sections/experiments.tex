@@ -3,11 +3,12 @@
 
 \subsection{Setup}
 
-Detection uses \DetectorName{} with CLIP embeddings per instance; text
-conditions use \LLMName{} and the image-conditioned baseline uses \VLMName,
-both served through vLLM. Change detection is evaluated on LEVIR-CD (test, 128
-tiles) and WHU-CD (test, 690 pairs); report quality on LEVIR-CC. All timings
-are measured on one A100 80GB.
+Detection uses \DetectorName~\cite{sam3} with CLIP~\cite{radford2021learning}
+embeddings per instance; text conditions use \LLMName~\cite{exaone4} and the
+image-conditioned baseline uses \VLMName~\cite{qwen25vl}, both served through
+vLLM. Change detection is evaluated on LEVIR-CD~\cite{chen2020spatial} (test,
+128 tiles) and WHU-CD~\cite{ji2019fully} (test, 690 pairs); report quality on
+LEVIR-CC~\cite{liu2022remote}. All timings are measured on one A100 80GB.
 
 \textbf{Integrity.} Every run asserts and records four properties: train and
 test pair identifiers are disjoint; their parent scenes are disjoint, so two

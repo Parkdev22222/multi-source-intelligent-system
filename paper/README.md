@@ -36,22 +36,26 @@ If you re-run an experiment, the sequence is: re-run, then `make_tables.py`,
 then update the affected macros in `numbers.tex`. The macro block names the
 source run for exactly this reason.
 
-## What is provisional right now
+## Experiment status
 
-| Section | Status |
+Every experiment now runs at the scale the paper reports, and `numbers.tex`
+carries no `PROVISIONAL` macro.
+
+| Section | Scale |
 |---|---|
-| E1 (LEVIR-CD) | final -- 128 test tiles |
-| E2 (WHU-CD) | final -- 690 test pairs |
-| E3/E4 (grounding ladder) | **provisional** -- 128 crops of 8 neighbourhoods |
-| E5 (pairing swap) | **provisional** -- same 128 crops |
-| E6 (deployment cost) | final |
-| E7 (neighbourhood level) | **provisional twice over** -- $n=8$, and produced by the 60-tile pilot head |
+| E1 (LEVIR-CD) | 128 test tiles |
+| E2 (WHU-CD) | 690 test pairs |
+| E3/E4 (grounding ladder) | 1929 crops, `results/levir_cc_caption/` (+ the Qwen pass merged in from `results/levir_cc_caption_vlm/`) |
+| E5 (pairing swap) | same 1929 crops, heuristic arm in `results/levir_cc_caption_heuristic_pairing/` |
+| E6 (deployment cost) | 512 pairs of the full LEVIR-CC cache |
+| E7 (neighbourhood level) | 218 scenes, `results/levir_cc_scene/` |
 
-The full-scale LEVIR-CC runs replace the E3/E4/E5/E7 rows. `experiments.tex`
-already points at `../results/levir_cc_caption/`, which the full-scale run
-creates; until it lands those `\input` lines have no file and the build will
-fail on them. Either run the experiments first or comment those two lines while
-drafting.
+The pilot-scale values (128 crops of the 8 largest scenes) survive only in the
+`Pilot*` macro block at the bottom of `numbers.tex`, and only to support the
+sentence that compares the two scales. Do not typeset them as results.
+
+Every `\input` in `experiments.tex` resolves against a file that exists in
+`results/`, so the build no longer depends on an experiment landing first.
 
 ## Before submission
 
@@ -61,10 +65,18 @@ drafting.
       emits a TODO comment instead of a comparison block. LEVIR-CC has four
       unverified supervised rows. Fill and verify both, or those tables ship
       with our rows and nothing to compare against.
-- [ ] `refs.bib`: every entry needs checking; volume/issue/pages were omitted
-      rather than guessed, and entries marked `TODO-CITE` need the authors'
-      preferred citation form.
-- [ ] Re-read `numbers.tex` and confirm nothing is still marked `PROVISIONAL`
-- [ ] Figure: `docs/architecture.png` is referenced as
-      `fig:architecture` in `method.tex` but not yet included -- add the
-      `figure` environment or drop the reference
+- [ ] `refs.bib`: the model and recent-paper entries have been checked against
+      a primary source (each names its source in a comment above it), but the
+      older entries still lack volume, issue and page numbers -- these were
+      omitted rather than guessed. Add them from the publisher's record.
+- [ ] Compile once and read the reference list: `sam3` and `qwen25vl` are
+      deliberately abbreviated to `and others`, which IEEEtran renders as
+      "et al."; confirm the venue accepts that for a 38-author paper rather
+      than requiring the full list.
+
+Done since the first draft, kept here so it is not re-checked:
+
+- `numbers.tex` is fully `FINAL`
+- `docs/architecture.png` is included by the `figure` environment at the top of
+  `method.tex`, so `fig:architecture` resolves
+- every entry in `refs.bib` is cited, and every `\cite` key resolves to an entry

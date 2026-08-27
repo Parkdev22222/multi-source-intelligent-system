@@ -8,9 +8,11 @@
 % the harness applies to baseline numbers applies here: nothing unverified
 % should be typeset.
 %
-% Entries marked TODO-CITE are the ones to check first -- either recent enough
-% that the canonical form may have changed, or model releases whose preferred
-% citation is set by the authors.
+% The entries that were marked TODO-CITE have since been checked against a
+% primary source, named in a comment above each one: the authors' own
+% repository where they publish a preferred citation, and the venue's own
+% record otherwise. Volume, issue and page numbers of the remaining entries are
+% still missing rather than wrong -- add them from the publisher's record.
 % ---------------------------------------------------------------------------
 
 % --- change detection -----------------------------------------------------
@@ -60,7 +62,9 @@
   year    = {2023}
 }
 
-% TODO-CITE: recent; confirm the venue and the canonical author list.
+% Verified: NeurIPS 2024 (neurips.cc/virtual/2024/poster/96101); author list and
+% title match arXiv:2402.01188, which is also the source of the baseline
+% numbers in icce/eval/baselines.json.
 @inproceedings{zheng2024segment,
   author    = {Zheng, Zhuo and Zhong, Yanfei and Zhang, Liangpei and
                Ermon, Stefano},
@@ -89,15 +93,19 @@
   year    = {2022}
 }
 
-% TODO-CITE: confirm whether the archival version is the journal or the
-% workshop paper.
-@article{liu2023progressive,
-  author  = {Liu, Chenyang and Zhao, Rui and Chen, Jianqi and Qi, Zipeng and
-             Zou, Zhengxia and Shi, Zhenwei},
-  title   = {A Progressive Scale-Aware Network for Remote Sensing Image Change
-             Captioning},
-  journal = {IEEE International Geoscience and Remote Sensing Symposium},
-  year    = {2023}
+% Verified against the authors' own repository (github.com/Chen-Yang-Liu/PSNet),
+% which publishes this citation: IGARSS 2023 is the archival version, and the
+% author list here replaces the one written from memory.
+@inproceedings{liu2023progressive,
+  author    = {Liu, Chenyang and Yang, Jiajun and Qi, Zipeng and
+               Zou, Zhengxia and Shi, Zhenwei},
+  title     = {Progressive Scale-Aware Network for Remote Sensing Image Change
+               Captioning},
+  booktitle = {IEEE International Geoscience and Remote Sensing Symposium
+               (IGARSS)},
+  year      = {2023},
+  pages     = {6668--6671},
+  doi       = {10.1109/IGARSS52108.2023.10283451}
 }
 
 @article{chang2024changes,
@@ -119,14 +127,19 @@
 }
 
 % --- models used in the pipeline ------------------------------------------
-% TODO-CITE: all three. Use the citation the model authors ask for; these are
-% placeholders with the right identity but not necessarily the right form.
+% Each of the three now carries the citation its own authors publish, checked
+% in their release repository rather than written from memory.
 
-@misc{sam3,
-  author = {{Meta AI}},
-  title  = {{SAM 3}: Segment Anything with Concepts},
-  year   = {2025},
-  note   = {TODO-CITE: replace with the authors' preferred citation}
+% Verified: github.com/facebookresearch/sam3 publishes the arXiv form
+% (arXiv:2511.16719, 38 authors, first author Nicolas Carion). The paper has
+% since appeared at ICLR 2026, which is the archival version cited here; the
+% author list is abbreviated because IEEEtran would otherwise typeset all 38.
+@inproceedings{sam3,
+  author    = {Carion, Nicolas and others},
+  title     = {{SAM 3}: Segment Anything with Concepts},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2026},
+  note      = {arXiv:2511.16719}
 }
 
 @inproceedings{radford2021learning,
@@ -140,16 +153,22 @@
   year      = {2021}
 }
 
-@misc{exaone4,
-  author = {{LG AI Research}},
-  title  = {{EXAONE} 4.0},
-  year   = {2025},
-  note   = {TODO-CITE: replace with the authors' preferred citation}
+% Verified: this is the citation published in github.com/LG-AI-EXAONE/EXAONE-4.0,
+% reproduced as the authors ask for it, corporate author included.
+@article{exaone4,
+  author  = {{LG AI Research}},
+  title   = {{EXAONE} 4.0: Unified Large Language Models Integrating
+             Non-reasoning and Reasoning Modes},
+  journal = {arXiv preprint arXiv:2507.11407},
+  year    = {2025}
 }
 
-@misc{qwen25vl,
-  author = {{Qwen Team}},
-  title  = {{Qwen2.5-VL}},
-  year   = {2025},
-  note   = {TODO-CITE: replace with the authors' preferred citation}
+% Verified: the citation published in github.com/QwenLM/Qwen2.5-VL. That entry
+% lists 27 authors beginning with Shuai Bai; abbreviated here for the same
+% reason as SAM 3.
+@article{qwen25vl,
+  author  = {Bai, Shuai and others},
+  title   = {{Qwen2.5-VL} Technical Report},
+  journal = {arXiv preprint arXiv:2502.13923},
+  year    = {2025}
 }

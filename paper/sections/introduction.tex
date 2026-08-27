@@ -47,14 +47,15 @@ would look correct in demos and be wrong half the time in production.
 
 \textbf{Our approach} grounds the text in explicit instance evidence, using the
 current AI stack end to end. A promptable segmentation foundation model
-(\DetectorName) proposes object instances in each frame open-vocabulary, without
-having been trained on either benchmark; CLIP~\cite{radford2021learning}
-embeddings describe each instance's appearance; a learned head decides which
-detections across revisits are the same physical object and which unmatched
-detections are genuine change; surviving instances accumulate in a persistent
-spatio-temporal knowledge graph keyed by location, so a pinned neighbourhood
-carries its own history forward; and a large language model (\LLMName) writes
-the report from that structure rather than from pixels. Because the report is
+(\DetectorName)~\cite{sam3} proposes object instances in each frame
+open-vocabulary, without having been trained on either benchmark;
+CLIP~\cite{radford2021learning} embeddings describe each instance's appearance;
+a learned head decides which detections across revisits are the same physical
+object and which unmatched detections are genuine change; surviving instances
+accumulate in a persistent spatio-temporal knowledge graph keyed by location,
+so a pinned neighbourhood carries its own history forward; and a large language
+model (\LLMName)~\cite{exaone4} writes the report from that structure rather
+than from pixels. Because the report is
 assembled from objects, counting is a property of the evidence rather than of
 the prose.
 
