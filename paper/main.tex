@@ -45,39 +45,48 @@
 \title{Grounding LLM Change Reports in Foundation-Model Instance Evidence
 for Consumer Satellite Monitoring}
 
-% TODO: the template's author block, kept in its placeholder form for the five
-% authors this paper will carry. Fill each block; the ordinals are the
-% template's own convention and IEEEtran lays the blocks out itself, so do not
-% add spacing or line breaks between them. Blinding is still unconfirmed -- if
-% the venue reviews blind, this whole block and the repository link go.
-\author{\IEEEauthorblockN{1\textsuperscript{st} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
+% Five authors, in the format IEEEtran documents for exactly this case.
+% IEEEtran_HOWTO, "Names in Conference Mode": the \and column format is for
+% "three or less affiliations"; past that, "if there are more than three
+% authors and/or the text is too wide to fit across the page, use an alternate
+% long format" -- names on one line carrying \IEEEauthorrefmark, then one
+% affiliation block per affiliation. Five \and columns is what produced the
+% lopsided 3+2 grid: IEEEtran sizes every column to the widest one, so the
+% row of two sat under the row of three at the wrong pitch. This format has no
+% rows to misalign, and it costs less vertical space, which matters while the
+% paper is over its page limit.
+%
+% The marks number AFFILIATIONS, not authors. As written, each author has their
+% own; where authors share one, give them the same mark and delete the spare
+% block -- five authors from one lab collapse to a single \IEEEauthorblockA with
+% no marks at all.
+%
+% The \\ in the name line is there because five copies of "Given Name Surname"
+% overrun the page by 52pt. Real names are shorter: if they fit on one line,
+% delete it.
+%
+% TODO: fill in. Blinding is still unconfirmed -- if the venue reviews blind,
+% this whole block and the repository link go.
+\author{\IEEEauthorblockN{
+Given Name Surname\IEEEauthorrefmark{1},
+Given Name Surname\IEEEauthorrefmark{2},
+Given Name Surname\IEEEauthorrefmark{3},\\
+Given Name Surname\IEEEauthorrefmark{4} and
+Given Name Surname\IEEEauthorrefmark{5}}
+\IEEEauthorblockA{\IEEEauthorrefmark{1}\textit{dept. name of organization},
+\textit{name of organization}, City, Country\\
 songjae7175@gmail.com}
-\and
-\IEEEauthorblockN{2\textsuperscript{nd} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
+\IEEEauthorblockA{\IEEEauthorrefmark{2}\textit{dept. name of organization},
+\textit{name of organization}, City, Country\\
 email address or ORCID}
-\and
-\IEEEauthorblockN{3\textsuperscript{rd} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
+\IEEEauthorblockA{\IEEEauthorrefmark{3}\textit{dept. name of organization},
+\textit{name of organization}, City, Country\\
 email address or ORCID}
-\and
-\IEEEauthorblockN{4\textsuperscript{th} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
+\IEEEauthorblockA{\IEEEauthorrefmark{4}\textit{dept. name of organization},
+\textit{name of organization}, City, Country\\
 email address or ORCID}
-\and
-\IEEEauthorblockN{5\textsuperscript{th} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
+\IEEEauthorblockA{\IEEEauthorrefmark{5}\textit{dept. name of organization},
+\textit{name of organization}, City, Country\\
 email address or ORCID}
 }
 
