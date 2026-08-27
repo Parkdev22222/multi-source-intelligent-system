@@ -39,6 +39,32 @@ def _fmt(v: Optional[float], scale: float = 100.0, digits: int = 2) -> str:
     return f"{v * scale:.{digits}f}"
 
 
+# Characters LaTeX will not typeset as themselves. Backslash is absent on
+# purpose: a label that already contains one is taken to be LaTeX the caller
+# wrote deliberately, and is passed through untouched.
+_TEX_ESCAPES = {"&": r"\&", "%": r"\%", "#": r"\#", "$": r"\$"}
+
+
+def _tex_label(name: object, mono: bool = False) -> str:
+    r"""Render a row or column label so pdflatex accepts it.
+
+    Condition names reach this module as the identifiers the pipeline uses --
+    ``vlm_direct``, ``llm_graphrag`` -- and an unescaped underscore is a fatal
+    error, not a cosmetic one ("Missing $ inserted"). Identifiers are set in
+    ``\texttt`` with the underscore escaped, which is also how ``method.tex``
+    names these conditions in prose; published method names, which carry no
+    underscore, are left as they read in their papers.
+    """
+    s = str(name)
+    if "\\" in s:
+        return s
+    for ch, rep in _TEX_ESCAPES.items():
+        s = s.replace(ch, rep)
+    if mono or "_" in s:
+        return "\\texttt{" + s.replace("_", r"\_") + "}"
+    return s
+
+
 def _to_dict(obj) -> Dict:
     if is_dataclass(obj):
         return asdict(obj)
@@ -74,11 +100,17 @@ def latex_table(
     scale: float = 100.0,
     highlight_last: bool = True,
     group_by_tier: bool = True,
+    mono_rows: bool = False,
 ) -> str:
     """Build a booktabs table, grouped by tier.
 
     `rows` are dicts with a 'name' plus the metric keys named in `columns`.
     `metric_map` renames a column to the key used in baselines.json.
+    `mono_rows` sets our own row names in \\texttt: the grounding conditions are
+    identifiers the pipeline uses, and `method.tex` names them that way, so
+    `template` should not be typeset differently from `llm_raw` just because it
+    happens to contain no underscore. Baseline names are never affected --
+    those are published method names.
     """
     metric_map = metric_map or {}
     lines: List[str] = [
@@ -86,10 +118,13 @@ def latex_table(
         "\\centering",
         f"\\caption{{{caption}}}",
         f"\\label{{{label}}}",
-        "\\setlength{\\tabcolsep}{4pt}",
+        # A five-metric table plus a cited baseline name overruns the IEEEtran
+        # column at 4pt; the narrower tables are unaffected by the tighter
+        # setting, so it keys off the column count rather than the caller.
+        f"\\setlength{{\\tabcolsep}}{{{3 if len(columns) >= 5 else 4}pt}}",
         "\\begin{tabular}{l" + "c" * len(columns) + "}",
         "\\toprule",
-        "Method & " + " & ".join(columns) + " \\\\",
+        "Method & " + " & ".join(_tex_label(c) for c in columns) + " \\\\",
         "\\midrule",
     ]
 
@@ -115,7 +150,7 @@ def latex_table(
                 lines.append(TIER_HEADINGS[tier] % n_cols)
             for m in entries:
                 cells = [_fmt(m.get(metric_map.get(c, c)), scale) for c in columns]
-                lines.append(f"{m['name']}~\\cite{{{m['cite']}}} & "
+                lines.append(f"{_tex_label(m['name'])}~\\cite{{{m['cite']}}} & "
                              + " & ".join(cells) + " \\\\")
             lines.append("\\midrule")
 
@@ -130,7 +165,7 @@ def latex_table(
 
     for i, r in enumerate(rows):
         cells = [_fmt(r.get(metric_map.get(c, c)), scale) for c in columns]
-        name = r.get("name", "?")
+        name = _tex_label(r.get("name", "?"), mono=mono_rows)
         if highlight_last and i == len(rows) - 1:
             name = f"\\textbf{{{name}}}"
             cells = [f"\\textbf{{{c}}}" for c in cells]

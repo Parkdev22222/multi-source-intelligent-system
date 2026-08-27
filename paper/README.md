@@ -12,10 +12,21 @@ python paper/make_tables.py     # builds the two tables the harness does not emi
 cd paper && latexmk -pdf main.tex
 ```
 
-There is no LaTeX toolchain on this pod, so **nothing here has been compiled**.
-Expect to fix the first round of errors by hand. `IEEEtran.cls` is not vendored
-either; get it from the CFP's template package rather than from CTAN, so the
-class version matches what the venue expects.
+On a bare pod that needs a TeX installation first:
+
+```bash
+apt-get install -y --no-install-recommends \
+    texlive-latex-base texlive-latex-recommended \
+    texlive-publishers texlive-fonts-recommended   # texlive-publishers has IEEEtran
+```
+
+The document **compiles clean** with that toolchain: 8 pages, no errors, no
+undefined references, no overfull boxes. `latexmk` runs BibTeX itself; by hand
+it is pdflatex, bibtex, pdflatex, pdflatex.
+
+`IEEEtran.cls` is still not vendored. The build above uses TeX Live's copy,
+which is fine for reading a draft; for the actual submission get the class from
+the CFP's template package, so the version matches what the venue expects.
 
 ## How numbers get into the paper
 
@@ -59,6 +70,9 @@ Every `\input` in `experiments.tex` resolves against a file that exists in
 
 ## Before submission
 
+- [ ] **The draft is 8 pages.** If the CFP says six, roughly two pages have to
+      go: Related Work compresses well, and E3/E4 ship two tables (factuality
+      and caption metrics) where the argument needs one
 - [ ] Confirm page limit and blinding against the CFP
 - [ ] Fill the author block in `main.tex`
 - [ ] `baselines.json`: WHU-CD has **no verified rows**, so `latex_table`

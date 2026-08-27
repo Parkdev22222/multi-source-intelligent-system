@@ -2,7 +2,7 @@
 \centering
 \caption{Change captioning on LEVIR-CC. Baselines are trained on the LEVIR-CC training split; our conditions are zero-shot apart from the pairing head.}
 \label{tab:levir_cc_caption}
-\setlength{\tabcolsep}{4pt}
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{lccccc}
 \toprule
 Method & BLEU-1 & BLEU-4 & METEOR & ROUGE-L & CIDEr-D \\
@@ -10,7 +10,7 @@ Method & BLEU-1 & BLEU-4 & METEOR & ROUGE-L & CIDEr-D \\
 %% TODO fill and verify in baselines.json: Capt-Rep-Diff [supervised], RSICCformer [supervised], PSNet [supervised], Chg2Cap [supervised]
 \midrule
 \multicolumn{6}{l}{\emph{This work}} \\
-\textbf{llm_graphrag} & \textbf{51.64} & \textbf{28.59} & \textbf{46.94} & \textbf{49.28} & \textbf{70.64} \\
+\textbf{\texttt{llm\_graphrag}} & \textbf{51.64} & \textbf{28.59} & \textbf{46.94} & \textbf{49.28} & \textbf{70.64} \\
 \bottomrule
 \end{tabular}
 \end{table}

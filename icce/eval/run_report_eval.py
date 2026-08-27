@@ -285,6 +285,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "training split; our conditions are zero-shot apart from the "
             "pairing head.",
             "tab:levir_cc_caption", cols, rows, baseline_group="levir_cc",
+            mono_rows=True,
         ), out / "table_levir_cc_caption.tex")
 
     fact_cols = ["cfs_precision", "cfs_recall", "cfs_f1",
@@ -299,6 +300,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         metric_map={"CFS-P": "cfs_precision", "CFS-R": "cfs_recall",
                     "CFS-F1": "cfs_f1", "Hal": "hallucination_rate",
                     "ChgAcc": "change_accuracy"},
+        mono_rows=True,
     ), out / f"table_factuality_{args.style}.tex")
     return 0
 

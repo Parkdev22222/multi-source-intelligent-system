@@ -71,6 +71,75 @@ def time_stage(fn, n_items: int, warmup: int = 2, repeats: int = 3) -> Dict:
     }
 
 
+def stage_label(stage: Dict, llm_spec: Optional[str] = None) -> str:
+    r"""A stage name fit to be typeset.
+
+    The report-LLM stage used to carry the backend spec verbatim, which meant
+    the table read ``report LLM (server:LGAI-EXAONE/EXAONE-4.0-32B@http://
+    127.0.0.1:8005/v1, batched)``: 195pt wider than the column, and a local
+    endpoint printed in a conference paper. The spec stays in the JSON, where
+    provenance belongs; the table gets the model's name.
+    """
+    name = stage["stage"]
+    spec = stage.get("llm_spec") or llm_spec
+    if spec and "report LLM" in name:
+        model = spec.split("@", 1)[0].split(":", 1)[-1].rstrip("/").split("/")[-1]
+        if model:
+            return f"report LLM ({model}, batched)"
+    return name
+
+
+def render_table(stages: Sequence[Dict], head_params: Optional[int] = None,
+                 llm_spec: Optional[str] = None) -> str:
+    """Build the efficiency table from measured stages.
+
+    Separate from `main` so the table can be re-rendered from a run's
+    `efficiency.json` without re-measuring anything on a GPU.
+    """
+    # The cost that matters is the head *against the heuristic it replaces*, not
+    # against zero, and it is quoted rather than characterised: "sub-
+    # millisecond" was wrong here (the measured delta is above 1 ms) and a
+    # reader can check a number straight off the rows below. Derived from the
+    # measurement so it cannot drift from the table again.
+    def _ms(needle):
+        for s in stages:
+            if needle in s["stage"]:
+                return s.get("per_item_ms")
+        return None
+
+    heur_ms, head_ms = _ms("heuristic"), _ms("learned head")
+    if heur_ms is not None and head_ms is not None:
+        delta = head_ms - heur_ms
+        total = sum(s["per_item_ms"] for s in stages if s.get("per_item_ms"))
+        share = 100.0 * delta / total if total else None
+        cost = (f"adds {head_params if head_params else '--'} parameters and "
+                f"{delta:.2f}~ms/tile over the hand-tuned heuristic it replaces"
+                + (f" --- {share:.2f}\\% of the pipeline" if share is not None else ""))
+    else:
+        cost = (f"has {head_params if head_params else '--'} parameters; the "
+                "heuristic it replaces was not measured in this run")
+
+    lines = [
+        "\\begin{table}[t]", "\\centering",
+        "\\caption{Per-tile processing cost on a single NVIDIA A100 80GB. "
+        f"The learned pairing head {cost}. Segmentation and language "
+        "generation dominate the budget.}",
+        "\\label{tab:efficiency}",
+        # Header kept short and the columns tight: spelled out, this table is
+        # 20pt wider than the IEEEtran column, and the caption already says
+        # the cost is per tile.
+        "\\setlength{\\tabcolsep}{4pt}",
+        "\\begin{tabular}{lrr}", "\\toprule",
+        "Stage & ms/tile & peak GPU (MB) \\\\", "\\midrule",
+    ]
+    for s in stages:
+        mem = f"{s['peak_gpu_mb']:.0f}" if s.get("peak_gpu_mb") else "--"
+        lines.append(f"{stage_label(s, llm_spec)} & {s['per_item_ms']:.2f} "
+                     f"& {mem} \\\\")
+    lines += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    return "\n".join(lines)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Per-stage latency and memory budget")
     ap.add_argument("--cache", required=True, type=Path)
@@ -180,7 +249,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         texts = llm.generate_batch(reqs)
         total = time.perf_counter() - t0
         stages.append({
-            "stage": f"report LLM ({args.llm}, batched)",
+            "stage": "report LLM (batched)",
+            "llm_spec": args.llm,
             "total_s": total,
             "per_item_ms": total / max(1, n) * 1000.0,
             "peak_gpu_mb": gpu_memory_mb(),
@@ -204,43 +274,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                "pairing_head_parameters": head_params, "stages": stages},
               out / "efficiency.json")
 
-    # The cost that matters is the head *against the heuristic it replaces*, not
-    # against zero, and it is quoted rather than characterised: "sub-
-    # millisecond" was wrong here (the measured delta is above 1 ms) and a
-    # reader can check a number straight off the rows below. Derived from the
-    # measurement so it cannot drift from the table again.
-    def _ms(needle):
-        for s in stages:
-            if needle in s["stage"]:
-                return s.get("per_item_ms")
-        return None
-
-    heur_ms, head_ms = _ms("heuristic"), _ms("learned head")
-    if heur_ms is not None and head_ms is not None:
-        delta = head_ms - heur_ms
-        total = sum(s["per_item_ms"] for s in stages if s.get("per_item_ms"))
-        share = 100.0 * delta / total if total else None
-        cost = (f"adds {head_params if head_params else '--'} parameters and "
-                f"{delta:.2f}~ms/tile over the hand-tuned heuristic it replaces"
-                + (f" --- {share:.2f}\\% of the pipeline" if share is not None else ""))
-    else:
-        cost = (f"has {head_params if head_params else '--'} parameters; the "
-                "heuristic it replaces was not measured in this run")
-
-    lines = [
-        "\\begin{table}[t]", "\\centering",
-        "\\caption{Per-tile processing cost on a single NVIDIA A100 80GB. "
-        f"The learned pairing head {cost}. Segmentation and language "
-        "generation dominate the budget.}",
-        "\\label{tab:efficiency}",
-        "\\begin{tabular}{lrr}", "\\toprule",
-        "Stage & Latency (ms/tile) & Peak GPU (MB) \\\\", "\\midrule",
-    ]
-    for s in stages:
-        mem = f"{s['peak_gpu_mb']:.0f}" if s.get("peak_gpu_mb") else "--"
-        lines.append(f"{s['stage']} & {s['per_item_ms']:.2f} & {mem} \\\\")
-    lines += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
-    save_latex("\n".join(lines), out / "table_efficiency.tex")
+    save_latex(render_table(stages, head_params), out / "table_efficiency.tex")
 
     for s in stages:
         print(f"{s['stage']:<42} {s['per_item_ms']:>10.2f} ms/tile")

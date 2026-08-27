@@ -2,7 +2,7 @@
 \centering
 \caption{Change captioning on LEVIR-CC. Baselines are trained on the LEVIR-CC training split; our conditions are zero-shot apart from the pairing head.}
 \label{tab:levir_cc_caption}
-\setlength{\tabcolsep}{4pt}
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{lccccc}
 \toprule
 Method & BLEU-1 & BLEU-4 & METEOR & ROUGE-L & CIDEr-D \\
@@ -10,12 +10,12 @@ Method & BLEU-1 & BLEU-4 & METEOR & ROUGE-L & CIDEr-D \\
 %% TODO fill and verify in baselines.json: Capt-Rep-Diff [supervised], RSICCformer [supervised], PSNet [supervised], Chg2Cap [supervised]
 \midrule
 \multicolumn{6}{l}{\emph{This work}} \\
-template & 50.33 & 26.03 & 51.50 & 47.10 & 25.29 \\
-vlm_direct & 31.85 & 4.51 & 21.71 & 25.27 & 11.47 \\
-llm_raw & 53.02 & 29.15 & 40.66 & 44.72 & 60.11 \\
-llm_struct & 48.09 & 28.15 & 49.90 & 51.49 & 77.77 \\
-llm_flat_rag & 49.52 & 29.19 & 50.42 & 52.06 & 78.35 \\
-\textbf{llm_graphrag} & \textbf{49.53} & \textbf{29.56} & \textbf{49.81} & \textbf{51.63} & \textbf{78.00} \\
+\texttt{template} & 50.33 & 26.03 & 51.50 & 47.10 & 25.29 \\
+\texttt{vlm\_direct} & 31.85 & 4.51 & 21.71 & 25.27 & 11.47 \\
+\texttt{llm\_raw} & 53.02 & 29.15 & 40.66 & 44.72 & 60.11 \\
+\texttt{llm\_struct} & 48.09 & 28.15 & 49.90 & 51.49 & 77.77 \\
+\texttt{llm\_flat\_rag} & 49.52 & 29.19 & 50.42 & 52.06 & 78.35 \\
+\textbf{\texttt{llm\_graphrag}} & \textbf{49.53} & \textbf{29.56} & \textbf{49.81} & \textbf{51.63} & \textbf{78.00} \\
 \bottomrule
 \end{tabular}
 \end{table}
