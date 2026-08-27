@@ -1,9 +1,19 @@
 # Paper source
 
-ICCE-Asia 2026 submission. Written against a **six-page, non-blind** assumption
--- neither has been checked against the CFP. Confirm both before going far:
-the page limit decides how much of Related Work and how many tables survive,
-and blinding decides how the repository and the author block are handled.
+ICCE-Asia 2026 submission.
+
+**This is not built on the venue's template package.** No `.cls` is vendored
+here; `main.tex` calls plain `IEEEtran` and the build uses TeX Live's copy of
+it. Download the template the conference publishes and build against that
+before submitting -- a class version mismatch is the kind of thing that is
+caught at upload, not before.
+
+The conference's submission page states regular papers are **2--6 pages,
+two-column, at least 10pt, on A4**, which is why `main.tex` passes `a4paper`
+(IEEEtran defaults to US Letter). That was read off a search summary of
+`icce-asia2026.org`, not off the page itself -- confirm it. **Blinding is still
+unknown**, and it decides how the author block and the repository link are
+handled.
 
 ## Build
 
@@ -70,10 +80,11 @@ Every `\input` in `experiments.tex` resolves against a file that exists in
 
 ## Before submission
 
-- [ ] **The draft is 8 pages.** If the CFP says six, roughly two pages have to
-      go: Related Work compresses well, and E3/E4 ship two tables (factuality
-      and caption metrics) where the argument needs one
-- [ ] Confirm page limit and blinding against the CFP
+- [ ] **The draft is 8 pages against a stated 6-page maximum.** Two pages have
+      to go: Related Work compresses well, and E3/E4 ship two tables
+      (factuality and caption metrics) where the argument needs one
+- [ ] Build against the venue's own template package, not TeX Live's IEEEtran
+- [ ] Confirm the page limit and blinding on the submission page itself
 - [ ] Fill the author block in `main.tex`
 - [ ] `baselines.json`: WHU-CD has **no verified rows**, so `latex_table`
       emits a TODO comment instead of a comparison block. LEVIR-CC has four
