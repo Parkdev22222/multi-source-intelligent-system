@@ -192,58 +192,125 @@ stage_bg(8.8, 2.6, "3단계",
 ax.text(0.55, 11.0, "시간 →", fontsize=8.5, color=MUTED,
         style="italic", fontweight="bold")
 
-# 3개 회차 카드 (좌→우, 시간순)
-rounds = [
-    (0.6, 4.1,  "1회차",       "과거 2025.01.15 ↔ 현재 2025.02.15"),
-    (4.5, 8.0,  "2회차",       "과거 2025.02.15 ↔ 현재 2025.04.10"),
-    (8.4, 11.9, "3회차 (지금)", "과거 2025.04.10 ↔ 현재 2025.08.20"),
-]
-for x1, x2, round_name, date_range in rounds:
-    is_now = "지금" in round_name
-    fc = "#faf5ff" if is_now else "white"
-    ec = GRAPH if is_now else STAGE_BD
-    lw = 1.8 if is_now else 1.0
-    ax.add_patch(FancyBboxPatch((x1, 10.15), x2-x1, 0.82,
-                                 boxstyle="round,pad=0.04",
-                                 facecolor=fc, edgecolor=ec, lw=lw))
-    ax.text((x1+x2)/2, 10.74, round_name, ha="center", fontsize=9.5,
-            fontweight="bold", color=GRAPH if is_now else TEXT)
-    ax.text((x1+x2)/2, 10.5, date_range, ha="center", fontsize=7.8,
-            color=TEXT)
-    ax.text((x1+x2)/2, 10.28, "→ 전차 @ 같은 격자 발견",
-            ha="center", fontsize=7.5, color=MUTED, style="italic")
+def draw_graph_snapshot(cx, cy, tank_count, apc_count, coocc_weight,
+                        title, subtitle, highlight=False):
+    """(자산 × 격자) 그래프 스냅샷을 그린다.
+    tank_count / apc_count : 관측 횟수
+    coocc_weight : 공출현 엣지 가중치 (0이면 엣지 생략)
+    """
+    # 스냅샷 제목
+    tcolor = GRAPH if highlight else TEXT
+    ax.text(cx, cy + 1.55, title, ha="center", fontsize=10,
+            fontweight="bold", color=tcolor)
+    ax.text(cx, cy + 1.3, subtitle, ha="center", fontsize=7.5,
+            color=MUTED, style="italic")
 
-# 각 카드 → 중앙 노드로 하강 화살표 + "+1" 라벨
-node_x, node_y = 6.5, 9.35
-for x1, x2, *_ in rounds:
-    cx = (x1+x2)/2
-    ax.add_patch(FancyArrowPatch((cx, 10.12),
-                                  (node_x + (cx-node_x)*0.15, node_y+0.35),
-                                  arrowstyle="->,head_length=7,head_width=5",
-                                  color=GRAPH, lw=1.4))
-    ax.text(cx + 0.15, 9.85, "+1", fontsize=8.5, color=GRAPH,
-            fontweight="bold")
+    # 위치 노드 (상단)
+    loc_y = cy + 0.85
+    ax.add_patch(Circle((cx, loc_y), 0.32, facecolor=NODE_L,
+                        edgecolor="white", lw=1.5))
+    ax.text(cx, loc_y, "위치", ha="center", va="center",
+            fontsize=8.5, fontweight="bold", color="white")
 
-# 중앙 노드 (같은 노드가 매 회차마다 갱신됨)
-ax.add_patch(Circle((node_x, node_y), 0.35, facecolor=NODE_A,
-                    edgecolor="white", lw=2))
-ax.text(node_x, node_y, "전차", ha="center", va="center", fontsize=10,
-        fontweight="bold", color="white")
-# 노드 왼쪽 설명
-ax.text(node_x - 0.55, node_y,
-        "같은 (자산 × 격자)\n조합의 단일 노드",
-        ha="right", va="center", fontsize=7.8, color=MUTED, style="italic")
-# 노드 오른쪽 관측 횟수 강조 뱃지
-ax.add_patch(FancyBboxPatch((node_x+0.55, node_y-0.22), 1.9, 0.44,
-                             boxstyle="round,pad=0.04",
-                             facecolor="#dcfce7", edgecolor=GREEN, lw=1.2))
-ax.text(node_x+1.5, node_y, "관측 횟수 3회", ha="center", va="center",
-        fontsize=10, fontweight="bold", color=GREEN)
+    # 자산 노드 2개 (하단)
+    tank_x = cx - 1.0
+    apc_x  = cx + 1.0
+    asset_y = cy - 0.15
 
-# 하단 note
-ax.text(6.5, 8.98,
-        "※ 같은 영상을 반복 처리하는 게 아님 · 새 영상이 들어올 때마다 새 회차 비교가 실행되고, "
-        "같은 조합이면 관측 횟수만 +1 (다른 자산과 함께 관측되면 공출현 엣지도 +1)",
+    ax.add_patch(Circle((tank_x, asset_y), 0.32, facecolor=NODE_A,
+                        edgecolor="white", lw=1.5))
+    ax.text(tank_x, asset_y, "전차", ha="center", va="center",
+            fontsize=8.5, fontweight="bold", color="white")
+    # 관측 횟수 뱃지
+    badge_c = "#dcfce7" if highlight else "white"
+    badge_ec = GREEN if highlight else MUTED
+    txt_c = GREEN if highlight else MUTED
+    fw = "bold" if highlight else "normal"
+    ax.add_patch(FancyBboxPatch((tank_x-0.65, asset_y-0.72), 1.3, 0.3,
+                                 boxstyle="round,pad=0.02",
+                                 facecolor=badge_c, edgecolor=badge_ec, lw=0.9))
+    ax.text(tank_x, asset_y-0.57, f"관측 횟수 {tank_count}회",
+            ha="center", va="center", fontsize=7.8, color=txt_c,
+            fontweight=fw)
+
+    ax.add_patch(Circle((apc_x, asset_y), 0.32, facecolor=NODE_A,
+                        edgecolor="white", lw=1.5))
+    ax.text(apc_x, asset_y, "APC", ha="center", va="center",
+            fontsize=8.5, fontweight="bold", color="white")
+    ax.add_patch(FancyBboxPatch((apc_x-0.65, asset_y-0.72), 1.3, 0.3,
+                                 boxstyle="round,pad=0.02",
+                                 facecolor=badge_c, edgecolor=badge_ec, lw=0.9))
+    ax.text(apc_x, asset_y-0.57, f"관측 횟수 {apc_count}회",
+            ha="center", va="center", fontsize=7.8, color=txt_c,
+            fontweight=fw)
+
+    # found_at 엣지 (자산 → 위치, 실선)
+    edge_lw_base = 1.2 + coocc_weight * 0.35
+    ax.plot([tank_x + 0.22, cx - 0.24], [asset_y + 0.22, loc_y - 0.24],
+            color=GRAPH if highlight else MUTED,
+            lw=edge_lw_base, zorder=0)
+    ax.plot([apc_x - 0.22, cx + 0.24], [asset_y + 0.22, loc_y - 0.24],
+            color=GRAPH if highlight else MUTED,
+            lw=edge_lw_base, zorder=0)
+
+    # co_occurred_with 엣지 (자산 ↔ 자산, 점선, 가중치에 따라 두께)
+    if coocc_weight > 0:
+        coocc_lw = 1.0 + coocc_weight * 0.7
+        ax.plot([tank_x + 0.32, apc_x - 0.32], [asset_y, asset_y],
+                color=GRAPH if highlight else MUTED,
+                lw=coocc_lw, linestyle="--", zorder=0)
+        ax.text(cx, asset_y - 0.22,
+                f"공출현 {coocc_weight}회",
+                ha="center", fontsize=7,
+                color=GRAPH if highlight else MUTED, style="italic")
+
+
+# ─── 좌: Before (1~2회차 누적) ───
+draw_graph_snapshot(cx=2.0, cy=9.6,
+                    tank_count=2, apc_count=1, coocc_weight=1,
+                    title="Before (1~2회차 누적)",
+                    subtitle="전차·APC 이미 같은 격자 관측 이력 존재",
+                    highlight=False)
+
+# ─── 중앙: 3회차 upsert 이벤트 ───
+mid_x = 6.5
+# 이벤트 카드
+ax.add_patch(FancyBboxPatch((mid_x - 1.35, 9.2), 2.7, 1.15,
+                             boxstyle="round,pad=0.05",
+                             facecolor="#faf5ff", edgecolor=GRAPH, lw=1.5))
+ax.text(mid_x, 10.15, "3회차 upsert (지금)",
+        ha="center", fontsize=9.5, fontweight="bold", color=GRAPH)
+ax.text(mid_x, 9.88, "2025.04.10 ↔ 08.20",
+        ha="center", fontsize=7.5, color=TEXT)
+ax.text(mid_x, 9.63,
+        "전차 · APC 같은 격자 재관측",
+        ha="center", fontsize=8, color=TEXT)
+ax.text(mid_x, 9.35,
+        "→ 관측 횟수 +1, 공출현 엣지 +1",
+        ha="center", fontsize=8, color=GRAPH,
+        fontweight="bold", style="italic")
+
+# 좌→중앙 화살표
+ax.add_patch(FancyArrowPatch((3.4, 9.6), (5.15, 9.75),
+                              arrowstyle="->,head_length=8,head_width=6",
+                              color="#334155", lw=1.4))
+# 중앙→우 화살표
+ax.add_patch(FancyArrowPatch((7.85, 9.75), (9.6, 9.6),
+                              arrowstyle="->,head_length=8,head_width=6",
+                              color=GRAPH, lw=1.8))
+ax.text(8.72, 9.98, "upsert", ha="center", fontsize=7.5,
+        color=GRAPH, fontweight="bold", style="italic")
+
+# ─── 우: After (3회차 반영) ───
+draw_graph_snapshot(cx=11.0, cy=9.6,
+                    tank_count=3, apc_count=2, coocc_weight=2,
+                    title="After (3회차 반영)",
+                    subtitle="관측 횟수와 공출현 엣지 가중치 모두 +1",
+                    highlight=True)
+
+# 하단 범례
+ax.text(6.5, 8.94,
+        "실선 = found_at (자산 → 위치)  ·  점선 = co_occurred_with (자산 ↔ 자산, 두께 = 공출현 누적 횟수)",
         ha="center", fontsize=7.3, color=MUTED, style="italic")
 
 arrow_down(6.5, 8.8, 7.5)
