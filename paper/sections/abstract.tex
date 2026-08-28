@@ -1,20 +1,20 @@
-A consumer satellite-monitoring service returns prose, not masks: a subscriber
-pins a neighbourhood and expects to be told what changed after each revisit. We
-build that service from the current AI stack --- a promptable segmentation
-foundation model (\DetectorName) for open-vocabulary instance detection, CLIP
-embeddings for appearance, a persistent spatio-temporal knowledge graph for
-history, and a large language model (\LLMName) for the report --- and we
-evaluate it on what it writes rather than only on what it segments. Two failures
-that segmentation metrics cannot see become product failures: a report that
-invents construction, and a report that miscounts it. We find that neither is
-fixed where practitioners usually reach. Adding retrieval or graph aggregation
-to the language model's context leaves factuality essentially unchanged; what
-moves it is the quality of the upstream instance evidence, and specifically the
-step of deciding which detections across two revisits are the same physical
-object. Every pairing strategy we tested that does not learn --- geometry, a
-hand-tuned CLIP-plus-geometry heuristic, and the strongest published zero-shot
-method --- lands in the same narrow band regardless of segmentation quality. A
-\HeadParamsRound-parameter pairing head, supervised for free from
+We build a satellite change-monitoring service for consumers --- a subscriber
+pins a neighbourhood and, after each revisit, receives a short written report of
+what changed --- from the current AI stack: a promptable segmentation foundation
+model (\DetectorName) for open-vocabulary instance detection, CLIP embeddings
+for appearance, a persistent spatio-temporal knowledge graph for history, and a
+large language model (\LLMName) for the report. Because the deliverable is
+prose, we evaluate it on what it writes, not only on what it segments. Two
+failures that segmentation metrics cannot see become product failures: a report
+that invents construction, and a report that miscounts it. We find that neither
+is fixed where practitioners usually reach. Adding retrieval or graph
+aggregation to the language model's context leaves factuality essentially
+unchanged; what moves it is the quality of the upstream instance evidence, and
+specifically the step of deciding which detections across two revisits are the
+same physical object. Every pairing strategy we tested that does not learn ---
+geometry, a hand-tuned CLIP-plus-geometry heuristic, and the strongest published
+zero-shot method --- lands in the same narrow band regardless of segmentation
+quality. A \HeadParamsRound-parameter pairing head, supervised for free from
 change-detection masks, leaves it, reaching \EOnePixelFOne{} pixel F1 on
 LEVIR-CD against \AnyChangeFOne{} for the zero-shot peer; applied unchanged to
 WHU-CD --- a domain it has never seen, no retraining, no threshold tuning --- it
