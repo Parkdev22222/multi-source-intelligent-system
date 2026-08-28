@@ -119,7 +119,7 @@ arrow_down(6.5, 15.0, 14.5)
 # ═══════════════════════════════════════════════════════════════
 # [2단계] 격자 양자화
 # ═══════════════════════════════════════════════════════════════
-stage_bg(12.6, 1.9, "2단계", "위경도를 1km 격자로 반올림 → 결정론적 노드 키 생성")
+stage_bg(12.6, 1.9, "2단계", "위경도를 소수점 2자리로 반올림 (≈ 1 km 격자 단위) → 결정론적 노드 키 생성")
 
 # 좌: 지도에 격자 그리드
 gx, gy = 1.0, 12.8
@@ -145,10 +145,10 @@ for cx, cy, col, lbl in objects:
 # 해당 격자 셀 강조
 ax.add_patch(Rectangle((gx + 2*gs, gy + 2*gs), gs, gs,
                        facecolor="none", edgecolor=GRAPH, lw=2))
-ax.text(gx + 2.5*gs, gy - 0.2, "같은 격자 셀 (약 1km²)",
+ax.text(gx + 2.5*gs, gy - 0.2, "같은 격자 셀 (약 1 km × 1 km)",
         ha="center", fontsize=8, color=GRAPH, fontweight="bold")
 
-ax.text(gx + grid_w*gs/2, gy + grid_h*gs + 0.15, "지도 + 1km 격자",
+ax.text(gx + grid_w*gs/2, gy + grid_h*gs + 0.15, "지도 + 약 1km 격자",
         ha="center", fontsize=9, color=TEXT, fontweight="bold")
 
 # 우: 결정론 키 생성
