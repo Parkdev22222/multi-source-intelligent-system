@@ -205,64 +205,65 @@ def draw_graph_snapshot(cx, cy, tank_count, apc_count, coocc_weight,
     ax.text(cx, cy + 1.3, subtitle, ha="center", fontsize=7.5,
             color=MUTED, style="italic")
 
-    # 위치 노드 (상단)
+    # 좌표
     loc_y = cy + 0.85
-    ax.add_patch(Circle((cx, loc_y), 0.32, facecolor=NODE_L,
-                        edgecolor="white", lw=1.5))
-    ax.text(cx, loc_y, "위치", ha="center", va="center",
-            fontsize=8.5, fontweight="bold", color="white")
-
-    # 자산 노드 2개 (하단)
     tank_x = cx - 1.0
     apc_x  = cx + 1.0
     asset_y = cy - 0.15
+    edge_color = GRAPH if highlight else MUTED
 
+    # ─── 엣지 먼저 그림 (zorder=2, 노드가 나중에 덮음) ───
+    # found_at 실선 (자산 중심 → 위치 중심)
+    edge_lw_base = 1.5 + coocc_weight * 0.4
+    ax.plot([tank_x, cx], [asset_y, loc_y],
+            color=edge_color, lw=edge_lw_base, zorder=2)
+    ax.plot([apc_x, cx], [asset_y, loc_y],
+            color=edge_color, lw=edge_lw_base, zorder=2)
+
+    # co_occurred_with 점선 (자산 ↔ 자산)
+    if coocc_weight > 0:
+        coocc_lw = 1.3 + coocc_weight * 0.8
+        ax.plot([tank_x, apc_x], [asset_y, asset_y],
+                color=edge_color, lw=coocc_lw,
+                linestyle="--", zorder=2)
+        # 공출현 라벨 (엣지 하단)
+        ax.text(cx, asset_y - 0.24,
+                f"공출현 {coocc_weight}회",
+                ha="center", fontsize=7, zorder=6,
+                color=edge_color, style="italic", fontweight="bold")
+
+    # ─── 노드 (엣지 위에 덮이도록 zorder=4) ───
+    # 위치 노드
+    ax.add_patch(Circle((cx, loc_y), 0.32, facecolor=NODE_L,
+                        edgecolor="white", lw=1.5, zorder=4))
+    ax.text(cx, loc_y, "위치", ha="center", va="center",
+            fontsize=8.5, fontweight="bold", color="white", zorder=5)
+
+    # 전차 노드
     ax.add_patch(Circle((tank_x, asset_y), 0.32, facecolor=NODE_A,
-                        edgecolor="white", lw=1.5))
+                        edgecolor="white", lw=1.5, zorder=4))
     ax.text(tank_x, asset_y, "전차", ha="center", va="center",
-            fontsize=8.5, fontweight="bold", color="white")
-    # 관측 횟수 뱃지
+            fontsize=8.5, fontweight="bold", color="white", zorder=5)
+
+    # APC 노드
+    ax.add_patch(Circle((apc_x, asset_y), 0.32, facecolor=NODE_A,
+                        edgecolor="white", lw=1.5, zorder=4))
+    ax.text(apc_x, asset_y, "APC", ha="center", va="center",
+            fontsize=8.5, fontweight="bold", color="white", zorder=5)
+
+    # ─── 관측 횟수 뱃지 (노드 아래) ───
     badge_c = "#dcfce7" if highlight else "white"
     badge_ec = GREEN if highlight else MUTED
     txt_c = GREEN if highlight else MUTED
     fw = "bold" if highlight else "normal"
-    ax.add_patch(FancyBboxPatch((tank_x-0.65, asset_y-0.72), 1.3, 0.3,
-                                 boxstyle="round,pad=0.02",
-                                 facecolor=badge_c, edgecolor=badge_ec, lw=0.9))
-    ax.text(tank_x, asset_y-0.57, f"관측 횟수 {tank_count}회",
-            ha="center", va="center", fontsize=7.8, color=txt_c,
-            fontweight=fw)
-
-    ax.add_patch(Circle((apc_x, asset_y), 0.32, facecolor=NODE_A,
-                        edgecolor="white", lw=1.5))
-    ax.text(apc_x, asset_y, "APC", ha="center", va="center",
-            fontsize=8.5, fontweight="bold", color="white")
-    ax.add_patch(FancyBboxPatch((apc_x-0.65, asset_y-0.72), 1.3, 0.3,
-                                 boxstyle="round,pad=0.02",
-                                 facecolor=badge_c, edgecolor=badge_ec, lw=0.9))
-    ax.text(apc_x, asset_y-0.57, f"관측 횟수 {apc_count}회",
-            ha="center", va="center", fontsize=7.8, color=txt_c,
-            fontweight=fw)
-
-    # found_at 엣지 (자산 → 위치, 실선)
-    edge_lw_base = 1.2 + coocc_weight * 0.35
-    ax.plot([tank_x + 0.22, cx - 0.24], [asset_y + 0.22, loc_y - 0.24],
-            color=GRAPH if highlight else MUTED,
-            lw=edge_lw_base, zorder=0)
-    ax.plot([apc_x - 0.22, cx + 0.24], [asset_y + 0.22, loc_y - 0.24],
-            color=GRAPH if highlight else MUTED,
-            lw=edge_lw_base, zorder=0)
-
-    # co_occurred_with 엣지 (자산 ↔ 자산, 점선, 가중치에 따라 두께)
-    if coocc_weight > 0:
-        coocc_lw = 1.0 + coocc_weight * 0.7
-        ax.plot([tank_x + 0.32, apc_x - 0.32], [asset_y, asset_y],
-                color=GRAPH if highlight else MUTED,
-                lw=coocc_lw, linestyle="--", zorder=0)
-        ax.text(cx, asset_y - 0.22,
-                f"공출현 {coocc_weight}회",
-                ha="center", fontsize=7,
-                color=GRAPH if highlight else MUTED, style="italic")
+    for asset_x, cnt in [(tank_x, tank_count), (apc_x, apc_count)]:
+        ax.add_patch(FancyBboxPatch((asset_x-0.65, asset_y-0.78), 1.3, 0.3,
+                                     boxstyle="round,pad=0.02",
+                                     facecolor=badge_c, edgecolor=badge_ec,
+                                     lw=0.9, zorder=4))
+        ax.text(asset_x, asset_y-0.63, f"관측 횟수 {cnt}회",
+                ha="center", va="center", fontsize=7.8, color=txt_c,
+                fontweight=fw, zorder=5)
 
 
 # ─── 좌: Before (1~2회차 누적) ───
