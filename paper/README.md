@@ -68,6 +68,26 @@ If you re-run an experiment, the sequence is: re-run, then `make_tables.py`,
 then update the affected macros in `numbers.tex`. The macro block names the
 source run for exactly this reason.
 
+## Structure
+
+Rewritten to follow an accepted ICCE-Asia paper's flow, at six pages:
+
+| Section | Contents |
+|---|---|
+| I. Introduction | the product, the two product failures, contributions |
+| II. Related Work | change detection (supervised ceiling + zero-shot peer), captioning and grounding |
+| III. Proposed Method | 5-step procedure, then A. Learned Pairing, B. Cross-Frame Evidence, C. Change-Fact-Score, D. Grounding Conditions |
+| IV. Experiment | A. Setup, B. Main Result, C. Ablation Study |
+| V. Discussion | A. Why grounding did not move factuality, B. Limitations, C. Future Work |
+
+There is no separate Conclusion: the accepted paper ends on Discussion and so
+does this one. `cfs.tex` was folded into the method, `limitations.tex` and
+`conclusion.tex` into the discussion.
+
+Five tables, down from nine. `tables/detection.tex` folds what the harness
+emits as four tables (pixel and instance, on each of two datasets) into one;
+the efficiency table was dropped and its three numbers moved into prose.
+
 ## Experiment status
 
 Every experiment now runs at the scale the paper reports, and `numbers.tex`
@@ -91,20 +111,23 @@ Every `\input` in `experiments.tex` resolves against a file that exists in
 
 ## Before submission
 
-- [ ] **The draft is 8 pages against a stated 6-page maximum.** Two pages have
-      to go: Related Work compresses well, and E3/E4 ship two tables
-      (factuality and caption metrics) where the argument needs one
+- [x] **Six pages.** Builds clean against the vendored class: no errors, no
+      undefined references, no overfull or underfull boxes.
 - [ ] Confirm the page limit, the paper size and blinding on the submission
-      page itself -- all three are currently second-hand
+      page itself -- all three are still second-hand
 - [ ] Fill the author block in `main.tex`
-- [ ] `baselines.json`: WHU-CD has **no verified rows**, so `latex_table`
-      emits a TODO comment instead of a comparison block. LEVIR-CC has four
-      unverified supervised rows. Fill and verify both, or those tables ship
-      with our rows and nothing to compare against.
+- [ ] `baselines.json`: WHU-CD still has **no verified rows**. It no longer
+      shows as a TODO in the paper, because `tables/detection.tex` prints only
+      the zero-shot tier and LEVIR-CD is the dataset that has one. Verify the
+      WHU rows or leave the transfer result without a published comparison --
+      WHU-CD has no standard split, so rows from different papers are often
+      not comparable anyway.
 - [ ] `refs.bib`: the model and recent-paper entries have been checked against
       a primary source (each names its source in a comment above it), but the
       older entries still lack volume, issue and page numbers -- these were
       omitted rather than guessed. Add them from the publisher's record.
+- [ ] LEVIR-CC baselines are **done**: five verified rows from one table
+      (Chg2Cap Table IX), same 1929-pair split and same CIDEr-D as ours
 - [ ] Compile once and read the reference list: `sam3` and `qwen25vl` are
       deliberately abbreviated to `and others`, which IEEEtran renders as
       "et al."; confirm the venue accepts that for a 38-author paper rather

@@ -1,0 +1,60 @@
+\section{Discussion}
+
+\subsection{Why Grounding Did Not Move Factuality}
+
+We set out expecting the knowledge graph to reduce unsupported claims and it
+does not, at crop level, by any margin we can measure. The reason is not that
+the graph fails but that the question was posed at the wrong unit. A crop-level
+ladder gives every condition the same inventory for the crop under description
+and then scores only claims about that crop; the retrieved history is about
+other crops, so it has almost nothing to act on. Reported as an ablation it
+would be noise presented as a result. At neighbourhood level, where the
+conditions become genuinely different representations of the same observations,
+the graph earns a claim --- and it is a counting claim, not a factuality one.
+We state it that way rather than the way we intended to.
+
+A second null belongs here for the same reason. On our data a deterministic
+template is indistinguishable from a language model on CFS, and at
+neighbourhood level it leads on CFS-F1. The case for generation rests on
+readability and on producing a count a reader can act on; we measure only the
+second.
+
+\subsection{Limitations}
+
+\textbf{We do not approach the supervised ceiling.} Models trained on these
+benchmarks' splits reach 86--91 F1 on LEVIR-CD; we reach \EOnePixelFOne. Our
+claim is confined to methods that have not been trained on the benchmark, and
+to the practitioner's default of prompting a vision--language model.
+
+\textbf{The LEVIR-CD result is not zero-shot.} The detector never saw the
+dataset, but the head was trained on its training split from mask-derived
+labels. The WHU-CD transfer carries the zero-shot claim.
+
+\textbf{The temporal half of the graph is untested.} The graph is designed to
+accumulate entity histories across many revisits, but both benchmarks carry
+exactly two timepoints, so what we exercise is spatial aggregation over the
+crops of one tile, not history over time. The design's main hypothesis is
+therefore not evaluated here.
+
+\textbf{Claim extraction is rule-based.} This is what keeps a language model
+out of the metric, but the extractor sees only the direction cues, object
+classes and quantifiers it encodes, and is tuned to this domain's vocabulary.
+
+\textbf{Both benchmarks are building-centric and aerial rather than
+satellite}, so generalisation to other change types and lower ground sampling
+distances is untested.
+
+\textbf{The report model is licensed for research use only.} \LLMName{} is
+released under a non-commercial licence, so the service this paper is written
+around would swap in a commercially licensed model. Nothing in the pipeline
+depends on which model writes the report, but nothing here shows the factuality
+numbers survive that swap either.
+
+\subsection{Future Work}
+
+The experiment this work now needs is a dataset with a real revisit history:
+more than two acquisitions of the same area, which is what would test the
+temporal aggregation the graph was built for and which neither public benchmark
+provides. Beyond that, change types other than buildings, true satellite ground
+sampling distances, and a commercially licensed report model are the three
+steps between this evaluation and a service that could ship.

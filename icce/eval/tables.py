@@ -119,9 +119,12 @@ def latex_table(
         f"\\caption{{{caption}}}",
         f"\\label{{{label}}}",
         # A five-metric table plus a cited baseline name overruns the IEEEtran
-        # column at 4pt; the narrower tables are unaffected by the tighter
-        # setting, so it keys off the column count rather than the caller.
+        # column even at 3pt with \footnotesize, so wide tables are set in
+        # \scriptsize. Narrower tables are unaffected; this keys off the column
+        # count rather than the caller, so a regenerated table cannot silently
+        # start overflowing when a baseline row is added.
         f"\\setlength{{\\tabcolsep}}{{{3 if len(columns) >= 5 else 4}pt}}",
+        *(["\\scriptsize"] if len(columns) >= 5 else []),
         "\\begin{tabular}{l" + "c" * len(columns) + "}",
         "\\toprule",
         "Method & " + " & ".join(_tex_label(c) for c in columns) + " \\\\",

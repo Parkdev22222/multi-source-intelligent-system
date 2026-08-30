@@ -1,31 +1,35 @@
-\section{Method}
+\section{Proposed Method}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{../docs/architecture.png}
 \caption{Pipeline. Two revisits are segmented independently; detections are
 geo-referenced; the learned head matches instances across frames and verifies
-the unmatched ones; survivors are written to a persistent spatio-temporal graph
-that the report is generated from.}
+the unmatched ones; survivors are written to a spatio-temporal graph that the
+report is generated from.}
 \label{fig:architecture}
 \end{figure}
 
-\subsection{Pipeline}
+Two co-registered revisits of a tile enter and a report leaves. The procedure
+is as follows.
 
-Two co-registered revisits of a tile enter; a report leaves. An
-open-vocabulary segmenter (\DetectorName) proposes object instances in each
-frame independently, at three scales, with non-maximum suppression across
-scales. Each detection is geo-referenced through an invertible
-pixel-to-latitude/longitude transform, so every downstream stage reasons in
-world coordinates rather than tile coordinates and observations of the same
-place from different tiles or dates coincide.
-
-The pairing head then decides, for candidate detection pairs across the two
-frames, which are the same physical object, and for detections left unmatched,
-which represent a genuine change. Surviving instances are written into a
-persistent spatio-temporal knowledge graph keyed by location, so a
-neighbourhood accumulates entity histories across revisits. The report is
-generated from that structure rather than from the images.
+\begin{enumerate}
+\item \textbf{Open-vocabulary detection.} \DetectorName{} proposes object
+      instances in each frame independently, at three scales, with non-maximum
+      suppression across scales.
+\item \textbf{Geo-referencing.} Each detection is mapped through an invertible
+      pixel-to-latitude/longitude transform, so every downstream stage reasons
+      in world coordinates and observations of one place from different tiles
+      or dates coincide.
+\item \textbf{Matching.} The head scores candidate detection pairs across the
+      two frames and assigns them one-to-one.
+\item \textbf{Verification.} Detections left unmatched are kept only if the
+      head judges them genuine change, using cross-frame evidence described in
+      Section~\ref{ssec:xf}.
+\item \textbf{Graph update and generation.} Survivors are upserted into a
+      spatio-temporal knowledge graph keyed by location, and the report is
+      generated from that structure rather than from pixels.
+\end{enumerate}
 
 \subsection{Learned Pairing}
 
@@ -38,30 +42,24 @@ class agreement, signed centre offsets, mutual-best-match indicators for CLIP
 and geometry, normalised candidate ranks, and candidate densities on both
 sides. The rank and density features matter more than they look: they let the
 head condition on how contested a match is, which a pairwise similarity alone
-cannot express.
+cannot express. For each detection we compute \NUnaryFeatures{} unary features:
+confidence, log relative area, aspect, position in the tile, mask fill ratio,
+the best geometric and CLIP agreement found in the other frame, the number of
+overlapping detections there, distance to the tile edge, and
+\NCrossFrameFeatures{} cross-frame features.
 
-For each detection we compute \NUnaryFeatures{} unary features: confidence,
-log relative area, aspect, position in the tile, mask fill ratio (a proxy for
-segmentation quality), the best geometric and CLIP agreement it finds in the
-other frame, the number of overlapping detections there, distance to the tile
-edge, and \NCrossFrameFeatures{} cross-frame features described below.
-
-Three small multi-layer perceptrons share a class embedding
-(Fig.~\ref{fig:architecture}): $\mathrm{match}$ scores a candidate pair,
-$\mathrm{state}$ classifies a matched pair as stationary, moved or modified,
-and $\mathrm{verify}$ scores whether an unmatched detection is a genuine change
-instance. Each is two hidden layers of width 64 with layer normalisation, GELU
-and dropout; features are standardised with statistics fitted on the training
-split. The whole head is \HeadParams{} parameters.
-
-Matching is a greedy assignment over $\mathrm{match}$ scores above a threshold;
-we also report a variant using the Hungarian algorithm, which changes the
-result by less than 0.1 F1. Unmatched detections are kept only if
-$\mathrm{verify}$ exceeds its own threshold. Both thresholds are selected on
-the validation split and never on test.
+Three small multi-layer perceptrons share a class embedding:
+$\mathrm{match}$ scores a candidate pair, $\mathrm{state}$ classifies a matched
+pair as stationary, moved or modified, and $\mathrm{verify}$ scores whether an
+unmatched detection is genuine change. Each has two hidden layers of width 64
+with layer normalisation, GELU and dropout; features are standardised with
+statistics fitted on the training split. The whole head is \HeadParams{}
+parameters. Matching is a greedy assignment over $\mathrm{match}$ scores above
+a threshold; a Hungarian variant changes the result by less than 0.1 F1. Both
+thresholds are selected on the validation split and never on test.
 
 \textbf{Supervision is free.} Change-detection benchmarks publish binary change
-masks. We convert a mask to instances by connected components, then label a
+masks. We convert a mask to instances by connected components, label a
 candidate pair positive when both detections fall outside the change region and
 co-locate, and label an unmatched detection positive when it overlaps a
 ground-truth change instance. No annotation beyond what the benchmark already
@@ -69,6 +67,7 @@ ships is required, which is what makes the head cheap to retrain for a new
 sensor or region.
 
 \subsection{Cross-Frame Co-located Evidence}
+\label{ssec:xf}
 
 The dominant failure of any detect-then-pair design is asymmetric detector
 recall. If the segmenter misses a building in the past frame and finds it in
@@ -78,46 +77,53 @@ frame's pixels, not in its detections.
 
 For every detection we therefore crop \emph{the same geographic footprint} from
 both frames --- regardless of whether the detector fired in the other frame ---
-and compute four quantities: CLIP cosine between the two crops, mean absolute
-pixel difference, normalised cross-correlation, and signed edge-density change,
-which rises sharply when a roof appears. These are handed to $\mathrm{verify}$
-as features rather than compared against a fixed threshold, which is what the
-production heuristic did.
+and compute four quantities: CLIP cosine between the crops, mean absolute pixel
+difference, normalised cross-correlation, and signed edge-density change, which
+rises sharply when a roof appears. These are handed to $\mathrm{verify}$ as
+features rather than compared against a fixed threshold. Ablating this evidence
+requires \emph{retraining} without it, not zeroing it at inference: after
+standardisation, zero is not a neutral input, so zeroing measures a broken
+model rather than the feature's contribution.
 
-Ablating this evidence requires \emph{retraining} without it, not zeroing it at
-inference: after standardisation, zero is not a neutral input, so zeroing
-measures a broken model rather than the feature's contribution. Retrained
-without it, the head loses \EOneCrossFrameGain{} pixel F1 and
-\EOneCrossFrameInstGain{} instance F1.
+\subsection{Change-Fact-Score}
+\label{ssec:cfs}
 
-\subsection{Spatio-Temporal Knowledge Graph and Report Generation}
+BLEU rewards phrasing that overlaps the references and is blind to a report
+announcing construction that never happened. A monitoring service is judged on
+the second thing, so we score reports at the level of the claims they make. A
+deterministic rule-based extractor reduces a report to atomic claims
+\[
+  c = (\textit{direction},\ \textit{object class},\ \textit{count}),
+\]
+where \textit{direction} $\in$ \{appeared, disappeared, modified, none\}. Each
+sentence is scanned for a direction cue, an object class, and a numeral or
+quantifier; a sentence with no direction cue makes no claim. The same extractor
+is applied to the five human reference captions, and a reference claim is kept
+when at least two annotators support it. Ground-truth counts come from the
+mask's connected components. Precision and recall of the predicted claim set
+against the reference set give CFS-P, CFS-R and CFS-F1. Two further quantities
+are read directly: ChgAcc, whether the report agrees with ground truth on
+whether anything changed at all, and CountMAE, the absolute error in the number
+of instances asserted.
 
-Verified instances are upserted into a graph keyed by geographic location:
-entity nodes with observation histories, location nodes, and typed relations
-between them. Community detection over the entity graph yields neighbourhood
-summaries. On a revisit, an entity is matched to its own history by location,
-so the graph accumulates rather than resets.
+Two properties matter for review. First, \textbf{no language model sits inside
+the metric}, so the model under evaluation cannot optimise against the judge.
+Second, \textbf{hallucination rate is not independent}: we define it as
+$1 - \text{CFS-P}$, so we report CFS-P/R/F1 in tables and quote the
+hallucination rate only in prose.
 
-Report generation is conditioned on progressively more of this structure, which
-gives the grounding ladder we ablate in Section~\ref{sec:experiments}:
+\subsection{Grounding Conditions}
 
-\begin{itemize}
-\item \texttt{template} --- deterministic prose from the change inventory, no
-      language model. This is not a hallucination-free condition: it invents no
-      sentences but states whatever the detector found, so every detection
-      error becomes an unsupported claim. It fixes the error floor our own
-      detector imposes.
-\item \texttt{vlm\_direct} --- an external baseline: a vision--language model
-      shown both images and none of our pipeline.
-\item \texttt{llm\_raw} --- a language model over the unaggregated detection
-      dump.
-\item \texttt{llm\_struct} --- over the aggregated change inventory, isolating
-      aggregation.
-\item \texttt{llm\_flat\_rag} --- plus top-$k$ retrieved past observations,
-      isolating whether \emph{any} history helps.
-\item \texttt{llm\_graphrag} --- plus entity histories and community summaries.
-\end{itemize}
-
-\texttt{llm\_flat\_rag} is the condition that makes the comparison honest:
-without it, a gain from graph grounding could be nothing more than ``retrieval
-helps''.
+Report generation is conditioned on progressively more of the pipeline's
+structure, giving the ablation of Section~\ref{ssec:ablation}:
+\texttt{template} (deterministic prose from the change inventory, no language
+model), \texttt{vlm\_direct} (an external baseline shown both images and none
+of our pipeline), \texttt{llm\_raw} (the unaggregated detection dump),
+\texttt{llm\_struct} (the aggregated inventory, isolating aggregation),
+\texttt{llm\_flat\_rag} (plus top-$k$ retrieved past observations), and
+\texttt{llm\_graphrag} (plus entity histories and community summaries).
+\texttt{llm\_flat\_rag} is what makes the comparison honest: without it, a gain
+from graph grounding could be nothing more than ``retrieval helps''.
+\texttt{template} is not a hallucination-free condition --- it invents no
+sentences but states whatever the detector found, so it fixes the error floor
+our own detector imposes.

@@ -1,148 +1,91 @@
 \section{Introduction}
 
-We build a consumer satellite change-monitoring service, for a product that
-looks like this. A homeowner watching a plot next to theirs, a small builder
-tracking three sites, someone deciding whether the district they are about to
-move into is being built up or emptied out. Each pins an area in an app. After
-every satellite revisit they receive a short message: \emph{four new buildings
-on the north edge; the lot behind the school has been cleared}. Nobody in this
-audience wants a segmentation mask, and nobody will open one.
+Satellite revisit intervals over populated areas have fallen to a cadence that
+supports a subscription rather than a commissioned study, and the per-request
+cost of imagery and inference has fallen with it. What was an analyst workflow
+becomes a consumer application: a homeowner watching the plot next door, a
+small builder tracking three sites, someone deciding whether a district is
+being built up or emptied out. Each pins an area in an app and, after every
+revisit, receives a short message --- \emph{four new buildings on the north
+edge; the lot behind the school has been cleared}. Nobody in this audience
+wants a segmentation mask, and nobody will open one.
 
-Two things made this a consumer proposition rather than an institutional one.
-Revisit intervals over populated areas have fallen to the point where a given
-neighbourhood is re-imaged on a cadence that supports a subscription rather
-than a commissioned study, and the per-request cost of imagery and inference
-has fallen with it. What was an analyst workflow becomes an app that has to run
-unattended, for many subscribers, at a cost per notification that a consumer
-price point can absorb.
+That shift changes which errors matter, in a way segmentation metrics cannot
+express. The deliverable is a sentence, and a sentence makes commitments a mask
+does not: it says \emph{how many} buildings appeared, and \emph{whether}
+anything appeared at all. Two product failures follow.
 
-That shift changes which errors matter, and it changes them in a way that
-segmentation metrics cannot express. The deliverable is a sentence, and a
-sentence makes commitments a mask does not. It says \emph{how many} buildings
-appeared. It says \emph{whether} anything appeared at all. Two product failures
-follow.
-
-The first is invention. A report that confidently announces construction that
-never happened is worse than no report: the subscriber walks out to look, finds
-nothing, and stops trusting the service. This failure is invisible to
-pixel-level precision, which is computed against a mask the user never sees.
-
-The second is miscounting. ``Several buildings appeared'' when the answer is
-one, or forty when the answer is four, is directionally correct and
-operationally useless. A change-detection model can score well on IoU while the
-instance count derived from it is off by an order of magnitude, because IoU
-rewards covering the right pixels rather than resolving the right objects.
-
-Both failures are what a subscriber would file a complaint about, and neither
-appears in the metrics the field optimises.
+\begin{enumerate}
+\item \textbf{Invention.} A report announcing construction that never happened
+      is worse than no report: the subscriber walks out to look, finds nothing,
+      and stops trusting the service. Pixel precision cannot see this, because
+      it is computed against a mask the user never sees.
+\item \textbf{Miscounting.} ``Several buildings appeared'' when the answer is
+      one is directionally correct and operationally useless. A model can score
+      well on IoU while the instance count derived from it is off by an order of
+      magnitude, because IoU rewards covering the right pixels rather than
+      resolving the right objects.
+\end{enumerate}
 
 \textbf{The obvious build fails on both.} A practitioner asked to ship this
-today would hand both images to a capable vision--language model and ask for a
+today would hand both images to a vision--language model and ask for a
 description. We measure that baseline rather than dismiss it, and it fails in
-the way that is hardest to notice: it writes fluent, well-formed, confident
-prose while deciding at chance (\EFourVLMChgAcc\%) whether the scene changed at
-all. Its BLEU-4 is \EFourVLMBleu, which a practitioner would read as a
-stylistic mismatch rather than as the symptom it is. A service built this way
-would look correct in demos and be wrong half the time in production.
+the way hardest to notice: it writes fluent, confident prose while deciding at
+chance (\EFourVLMChgAcc\%) whether the scene changed. Its BLEU-4 is
+\EFourVLMBleu, which reads as a stylistic mismatch rather than as the symptom
+it is. Such a service would look correct in demos and be wrong half the time in
+production.
 
-\textbf{Our approach} grounds the text in explicit instance evidence, using the
-current AI stack end to end. A promptable segmentation foundation model
-(\DetectorName)~\cite{sam3} proposes object instances in each frame
+\textbf{Our approach} grounds the text in explicit instance evidence.
+\DetectorName~\cite{sam3} proposes object instances in each frame
 open-vocabulary, without having been trained on either benchmark;
-CLIP~\cite{radford2021learning} embeddings describe each instance's appearance;
-a learned head decides which detections across revisits are the same physical
-object and which unmatched detections are genuine change; surviving instances
-accumulate in a persistent spatio-temporal knowledge graph keyed by location,
-so a pinned neighbourhood carries its own history forward; and a large language
-model (\LLMName)~\cite{exaone4} writes the report from that structure rather
-than from pixels. Because the report is
-assembled from objects, counting is a property of the evidence rather than of
-the prose.
+CLIP~\cite{radford2021learning} embeddings describe appearance; a learned head
+decides which detections across revisits are the same object and which
+unmatched detections are genuine change; survivors accumulate in a
+spatio-temporal knowledge graph keyed by location; and
+\LLMName~\cite{exaone4} writes the report from that structure rather than from
+pixels. Because the report is assembled from objects, counting is a property of
+the evidence rather than of the prose.
 
-\textbf{The result that surprised us concerns where in this stack factuality is
-won.} The natural assumption --- and the one the retrieval-augmented generation
-literature encourages --- is that the language model's context is the lever:
-give it more history, aggregate that history better, and it will assert fewer
-things that are not true. Over \EFourNCrops{} crops we find otherwise.
-Aggregating raw detections into a change inventory is worth
-\EFourAggGain{} CFS-F1, but adding top-$k$ retrieval of past observations
-on top of that, or replacing it with graph entity and community aggregation,
-moves factuality by less than \EFourLadderSpread{} points --- in both
-directions. What does move it, by \EFiveGain{} points, is improving the pairing
-that produced the evidence in the first place. For a CE system built on this
-stack the design implication is direct: spend the engineering budget upstream of
-the language model, not on its prompt.
+\textbf{Where factuality is won was not where we expected.} The
+retrieval-augmented generation literature encourages the assumption that the
+language model's context is the lever. Over \EFourNCrops{} crops we find
+otherwise: aggregating raw detections into a change inventory is worth
+\EFourAggGain{} CFS-F1, but adding top-$k$ retrieval or graph aggregation on
+top moves factuality by less than \EFourLadderSpread{} points, in both
+directions. What moves it, by \EFiveGain{} points, is improving the pairing
+that produced the evidence. The design implication is direct: spend the
+engineering budget upstream of the language model, not on its prompt.
 
-The accuracy lives in a component small enough to be an implementation detail:
-a \HeadParamsRound-parameter model, supervised for free from the change masks
-that public benchmarks already ship. It also addresses an error mode specific
-to this design. If the segmenter misses a building in the earlier frame and
-finds it in the later one, pairing has nothing to pair against and the object
-is reported as new construction --- the invention failure, arriving through the
-detector rather than the language model. We compute cross-frame co-located
-evidence, comparing each detection's footprint against the same coordinates in
-the other frame whether or not the detector fired there, and hand it to a
-learned verifier.
-
-\textbf{Cost is a first-class constraint here, not an afterthought.} A
-monitoring service pays for every tile of every subscriber on every revisit, so
-an accuracy gain that doubles inference cost does not ship. We measure the
-per-stage budget and show the learned head adds \ESixHeadDelta~ms per tile to a
-pipeline that spends \ESixDetectShare\% of its time in segmentation ---
-\ESixPipelineShare\% of the total, which is what makes the accuracy free in
-practice.
-
-Our contributions:
+Our contributions are as follows.
 
 \begin{itemize}
-\item \textbf{An LLM change-reporting pipeline built on segmentation and
-      vision--language foundation models}, with a persistent spatio-temporal
-      knowledge graph for neighbourhood history, evaluated on the factuality of
-      its prose rather than only on segmentation overlap.
-\item \textbf{Where factuality is won in such a pipeline.} Over
-      \EFourNCrops{} crops, retrieval and graph aggregation over the same
-      evidence move CFS-F1 by less than \EFourLadderSpread{} points, while
-      improving the upstream pairing moves it by \EFiveGain{} and drops
-      unsupported claims from \EFiveHeuristicHal\% to \EFiveLearnedHal\% --- at
-      \ESixHeadDelta~ms per tile, \ESixPipelineShare\% of the pipeline. The
-      lever is the evidence, not the language model's context.
-\item \textbf{Learned instance pairing, and the finding that motivates it.}
-      Every pairing strategy we tested that does \emph{not} learn ---
-      geometry-only, a hand-tuned CLIP-plus-geometry heuristic, and the
+\item An LLM change-reporting pipeline built on segmentation and
+      vision--language foundation models, evaluated on the factuality of its
+      prose rather than only on segmentation overlap.
+\item \textbf{Learned instance pairing.} Every non-learned strategy we tested
+      --- geometry, a hand-tuned CLIP-plus-geometry heuristic, and the
       strongest published zero-shot method --- lands in the same narrow band
-      (\EOneGeoFOne, \EOneHeuristicFOne{} and \AnyChangeFOne{} F1) at precision
-      13--16, regardless of segmentation quality. A
-      \HeadParamsRound-parameter head, supervised for free from the change
-      masks benchmarks already publish, leaves that band: \EOnePixelFOne{}
-      pixel F1 on LEVIR-CD. It includes cross-frame co-located evidence, which
-      addresses the failure that pairing alone cannot --- an object the
-      detector missed in the earlier frame.
-\item \textbf{Transfer without retraining.} The same head, unchanged and with
-      thresholds carried over, reaches \ETwoPixelFOne{} on WHU-CD against
-      \ETwoHeuristicFOne{} for the heuristic it replaces, and cuts instance
-      count error from \ETwoHeuristicCountMAE{} to \ETwoCountMAE{} --- the
-      difference between a subscriber-facing count that is usable and one that
-      is not.
-\item \textbf{Change-Fact-Score, and the failure it exposes.} A claim-level
-      factuality metric with no language model inside it, so the system under
-      evaluation cannot optimise against the judge. It shows that a capable
-      vision--language model shown both images writes fluent prose while
-      deciding at chance (\EFourVLMChgAcc\%) whether the scene changed at all
-      --- a failure n-gram overlap registers only faintly.
+      (\EOneGeoFOne, \EOneHeuristicFOne, \AnyChangeFOne{} F1) regardless of
+      segmentation quality. A \HeadParamsRound-parameter head, supervised for
+      free from masks benchmarks already publish, leaves it at
+      \EOnePixelFOne{} and transfers to WHU-CD unchanged at \ETwoPixelFOne,
+      cutting instance count error from \ETwoHeuristicCountMAE{} to
+      \ETwoCountMAE.
+\item \textbf{Change-Fact-Score}, a claim-level factuality metric with no
+      language model inside it, so the system under evaluation cannot optimise
+      against the judge.
+\item \textbf{Where the budget should go.} Retrieval and graph aggregation over
+      the same evidence move CFS-F1 by less than \EFourLadderSpread{} points;
+      improving the upstream pairing moves it by \EFiveGain{} and drops
+      unsupported claims from \EFiveHeuristicHal\% to \EFiveLearnedHal\%, at
+      \ESixHeadDelta~ms per tile.
 \end{itemize}
 
-Two further results constrain how such systems should be evaluated rather than
-advancing our own, and we state them because the alternative is to present a
-null as a gain. A crop-level grounding ladder \emph{cannot} measure a knowledge
-graph's contribution, for a structural reason we give in
-Section~\ref{sec:experiments}; and on our data a deterministic template is
-indistinguishable from a language model on factuality, so the case for
-generation rests on readability, which we do not measure.
-
-We are explicit about scope. We evaluate on public benchmarks, not on a live
-subscriber base; the consumer setting motivates the design and the choice of
-metrics rather than supplying the evaluation data. We do not claim
-state-of-the-art pixel-level change detection --- models trained on these
-benchmarks' own training splits reach 86--91 F1 and we do not approach that.
-The comparisons we make are against methods that have not been trained on the
-benchmark, and against the build a practitioner would try first.
+We are explicit about scope. We evaluate on public benchmarks, not a live
+subscriber base; the consumer setting motivates the design and the metrics
+rather than supplying the data. We do not claim state-of-the-art pixel-level
+change detection --- models trained on these benchmarks' own splits reach
+86--91 F1 and we do not approach that. Our comparisons are against methods that
+have not been trained on the benchmark, and against the build a practitioner
+would try first.
