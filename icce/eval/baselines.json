@@ -249,8 +249,8 @@
       },
       {
         "name": "Chg2Cap",
-        "cite": "chang2024changes",
-        "venue": "IEEE TIP",
+        "cite": "chang2023changes",
+        "venue": "IEEE TIP 2023",
         "tier": "supervised",
         "BLEU-1": 0.8614,
         "BLEU-2": null,
@@ -276,7 +276,7 @@
     "slots": [
       {
         "name": "Chg2Cap",
-        "cite": "chang2024changes",
+        "cite": "chang2023changes",
         "path": null,
         "how": "github.com/Chang-Sheng/Chg2Cap -- run test.py, dump predictions"
       },
