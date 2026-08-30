@@ -7,7 +7,12 @@
 \toprule
 Method & BLEU-1 & BLEU-4 & METEOR & ROUGE-L & CIDEr-D \\
 \midrule
-%% TODO fill and verify in baselines.json: Capt-Rep-Diff [supervised], RSICCformer [supervised], PSNet [supervised], Chg2Cap [supervised]
+\multicolumn{6}{l}{\emph{Trained on this dataset (reference ceiling)}} \\
+DUDA~\cite{park2019robust} & 81.44 & 57.79 & 37.15 & 71.04 & 124.32 \\
+MCCFormers-S~\cite{qiu2021describing} & 82.16 & 59.41 & 38.26 & 72.10 & 128.34 \\
+MCCFormers-D~\cite{qiu2021describing} & 80.49 & 57.34 & 38.23 & 71.40 & 126.85 \\
+RSICCformer~\cite{liu2022remote} & 84.11 & 61.93 & 38.79 & 73.02 & 131.40 \\
+Chg2Cap~\cite{chang2024changes} & 86.14 & 64.39 & 40.03 & 75.12 & 136.61 \\
 \midrule
 \multicolumn{6}{l}{\emph{This work}} \\
 \texttt{template} & 50.33 & 26.03 & 51.50 & 47.10 & 25.29 \\

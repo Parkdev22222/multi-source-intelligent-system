@@ -1,1 +1,291 @@
-{"_note": ["Published numbers for the comparison tables. Values are deliberately null:", "fill each one by reading it off the cited paper (or its official repo) and", "flip 'verified' to true. icce/eval/tables.py refuses to typeset an", "unverified row, so nothing unchecked can reach the submitted PDF.", "", "Every method carries a 'tier'. Tables group by tier and label the groups,", "because these are not one league:", "  supervised  trained on this dataset's own training split. A specialist", "              with in-domain labels; reported as a reference ceiling, not", "              as our competitor.", "  zero-shot   no training on this dataset. Our actual peer group.", "  ours        this work."], "levir_cd": {"_metric_keys": ["precision", "recall", "f1", "iou"], "_protocol": "dataset-level confusion matrix over the 128-tile test split, change class", "methods": [{"name": "FC-Siam-Diff", "cite": "daudt2018fully", "venue": "ICIP 2018", "precision": 0.8953, "recall": 0.8331, "f1": 0.8631, "iou": 0.7592, "verified": true, "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.", "tier": "supervised"}, {"name": "STANet", "cite": "chen2020spatial", "venue": "Remote Sensing 2020", "precision": 0.8381, "recall": 0.9100, "f1": 0.8726, "iou": 0.7740, "verified": true, "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.", "tier": "supervised"}, {"name": "SNUNet", "cite": "fang2021snunet", "venue": "IEEE GRSL 2021", "precision": 0.8918, "recall": 0.8717, "f1": 0.8816, "iou": 0.7883, "verified": true, "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.", "tier": "supervised"}, {"name": "BIT", "cite": "chen2021remote", "venue": "IEEE TGRS 2021", "precision": 0.8924, "recall": 0.8937, "f1": 0.8931, "iou": 0.8068, "verified": true, "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.", "tier": "supervised"}, {"name": "ChangeFormer", "cite": "bandara2022transformer", "venue": "IGARSS 2022", "precision": 0.9205, "recall": 0.8880, "f1": 0.9040, "iou": 0.8248, "verified": true, "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.", "tier": "supervised"}, {"name": "TinyCD", "cite": "codegoni2023tinycd", "venue": "Neural Comput. Appl. 2023", "precision": null, "recall": null, "f1": 0.9105, "iou": 0.8357, "verified": true, "_source": "F1/IoU confirmed by two independent sources (arXiv:2207.13159 abstract and the emergentmind summary of it), both giving 91.05 / 83.57. Precision and recall are left null on purpose: the only value seen for them (92.68 / 89.47, skip-connection variant) came from a single secondary summary, and this file's rule is that nothing unchecked is typeset. Read them off the paper's table before submission.", "tier": "supervised"}, {"name": "AnyChange (SAM zero-shot)", "cite": "zheng2024segment", "venue": "NeurIPS 2024", "tier": "zero-shot", "precision": 0.137, "recall": 0.830, "f1": 0.234, "iou": null, "verified": true, "_source": "arXiv:2402.01188 Table 'Zero-shot Object Change Proposals', ViT-B row (best automatic F1 of the three backbones; ViT-L 21.9, ViT-H 23.0). IoU is not reported by the paper. Full 128-tile LEVIR-CD test split."}, {"name": "AnyChange-H + 3-point query", "cite": "zheng2024segment", "venue": "NeurIPS 2024", "tier": "zero-shot", "precision": 0.285, "recall": 0.811, "f1": 0.422, "iou": null, "verified": true, "_source": "arXiv:2402.01188 Table 'Zero-shot Object-centric Change Detection'. Human-in-the-loop: three point queries per image. Listed so the comparison is not read as cherry-picking the weakest AnyChange setting."}]}, "whu_cd": {"_metric_keys": ["precision", "recall", "f1", "iou"], "_protocol": "cropped 256px test split, change class", "methods": [{"name": "FC-Siam-Diff", "cite": "daudt2018fully", "venue": "ICIP 2018", "precision": null, "recall": null, "f1": null, "iou": null, "verified": false, "tier": "supervised"}, {"name": "BIT", "cite": "chen2021remote", "venue": "IEEE TGRS 2021", "precision": null, "recall": null, "f1": null, "iou": null, "verified": false, "tier": "supervised"}, {"name": "ChangeFormer", "cite": "bandara2022transformer", "venue": "IGARSS 2022", "precision": null, "recall": null, "f1": null, "iou": null, "verified": false, "tier": "supervised"}, {"name": "AnyChange (SAM zero-shot)", "cite": "zheng2024segment", "venue": "NeurIPS 2024", "tier": "zero-shot", "precision": null, "recall": null, "f1": null, "iou": null, "verified": false}]}, "levir_cc": {"_metric_keys": ["BLEU-1", "BLEU-2", "BLEU-3", "BLEU-4", "METEOR", "ROUGE-L", "CIDEr-D"], "_protocol": "LEVIR-CC test split, 5 references per pair, coco-caption metrics", "methods": [{"name": "Capt-Rep-Diff", "cite": "hoxha2022change", "venue": "IEEE TGRS 2022", "BLEU-1": null, "BLEU-2": null, "BLEU-3": null, "BLEU-4": null, "METEOR": null, "ROUGE-L": null, "CIDEr-D": null, "verified": false, "tier": "supervised"}, {"name": "RSICCformer", "cite": "liu2022remote", "venue": "IEEE TGRS 2022", "BLEU-1": null, "BLEU-2": null, "BLEU-3": null, "BLEU-4": null, "METEOR": null, "ROUGE-L": null, "CIDEr-D": null, "verified": false, "tier": "supervised"}, {"name": "PSNet", "cite": "liu2023progressive", "venue": "IEEE GRSL 2023", "BLEU-1": null, "BLEU-2": null, "BLEU-3": null, "BLEU-4": null, "METEOR": null, "ROUGE-L": null, "CIDEr-D": null, "verified": false, "tier": "supervised"}, {"name": "Chg2Cap", "cite": "chang2024changes", "venue": "IEEE TGRS 2024", "BLEU-1": null, "BLEU-2": null, "BLEU-3": null, "BLEU-4": null, "METEOR": null, "ROUGE-L": null, "CIDEr-D": null, "verified": false, "tier": "supervised"}]}, "_external_outputs": {"_note": ["Caption files produced by running a published model's released checkpoint", "on the LEVIR-CC test split. Scoring these with Change-Fact-Score is what", "gives our factuality metric an external reference point -- without it a", "reviewer can fairly say we invented a metric and only measured ourselves.", "Format: JSON or JSONL of {pair_id: caption} or {'key','text'} records.", "Score with: python -m icce.eval.score_external --predictions <file>"], "slots": [{"name": "Chg2Cap", "cite": "chang2024changes", "path": null, "how": "github.com/Chang-Sheng/Chg2Cap -- run test.py, dump predictions"}, {"name": "RSICCformer", "cite": "liu2022remote", "path": null, "how": "github.com/Chen-Yang-Liu/RSICC -- run eval, dump predictions"}]}}
+{
+  "_note": [
+    "Published numbers for the comparison tables. Values are deliberately null:",
+    "fill each one by reading it off the cited paper (or its official repo) and",
+    "flip 'verified' to true. icce/eval/tables.py refuses to typeset an",
+    "unverified row, so nothing unchecked can reach the submitted PDF.",
+    "",
+    "Every method carries a 'tier'. Tables group by tier and label the groups,",
+    "because these are not one league:",
+    "  supervised  trained on this dataset's own training split. A specialist",
+    "              with in-domain labels; reported as a reference ceiling, not",
+    "              as our competitor.",
+    "  zero-shot   no training on this dataset. Our actual peer group.",
+    "  ours        this work."
+  ],
+  "levir_cd": {
+    "_metric_keys": [
+      "precision",
+      "recall",
+      "f1",
+      "iou"
+    ],
+    "_protocol": "dataset-level confusion matrix over the 128-tile test split, change class",
+    "methods": [
+      {
+        "name": "FC-Siam-Diff",
+        "cite": "daudt2018fully",
+        "venue": "ICIP 2018",
+        "precision": 0.8953,
+        "recall": 0.8331,
+        "f1": 0.8631,
+        "iou": 0.7592,
+        "verified": true,
+        "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.",
+        "tier": "supervised"
+      },
+      {
+        "name": "STANet",
+        "cite": "chen2020spatial",
+        "venue": "Remote Sensing 2020",
+        "precision": 0.8381,
+        "recall": 0.91,
+        "f1": 0.8726,
+        "iou": 0.774,
+        "verified": true,
+        "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.",
+        "tier": "supervised"
+      },
+      {
+        "name": "SNUNet",
+        "cite": "fang2021snunet",
+        "venue": "IEEE GRSL 2021",
+        "precision": 0.8918,
+        "recall": 0.8717,
+        "f1": 0.8816,
+        "iou": 0.7883,
+        "verified": true,
+        "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.",
+        "tier": "supervised"
+      },
+      {
+        "name": "BIT",
+        "cite": "chen2021remote",
+        "venue": "IEEE TGRS 2021",
+        "precision": 0.8924,
+        "recall": 0.8937,
+        "f1": 0.8931,
+        "iou": 0.8068,
+        "verified": true,
+        "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.",
+        "tier": "supervised"
+      },
+      {
+        "name": "ChangeFormer",
+        "cite": "bandara2022transformer",
+        "venue": "IGARSS 2022",
+        "precision": 0.9205,
+        "recall": 0.888,
+        "f1": 0.904,
+        "iou": 0.8248,
+        "verified": true,
+        "_source": "bandara2022transformer Table 'The average quantitative results of different CD methods on LEVIR-CD and DSIFN-CD'. One source for the whole supervised group on purpose: numbers re-evaluated under a single protocol are mutually comparable, whereas each paper's own self-report is not.",
+        "tier": "supervised"
+      },
+      {
+        "name": "TinyCD",
+        "cite": "codegoni2023tinycd",
+        "venue": "Neural Comput. Appl. 2023",
+        "precision": null,
+        "recall": null,
+        "f1": 0.9105,
+        "iou": 0.8357,
+        "verified": true,
+        "_source": "F1/IoU confirmed by two independent sources (arXiv:2207.13159 abstract and the emergentmind summary of it), both giving 91.05 / 83.57. Precision and recall are left null on purpose: the only value seen for them (92.68 / 89.47, skip-connection variant) came from a single secondary summary, and this file's rule is that nothing unchecked is typeset. Read them off the paper's table before submission.",
+        "tier": "supervised"
+      },
+      {
+        "name": "AnyChange (SAM zero-shot)",
+        "cite": "zheng2024segment",
+        "venue": "NeurIPS 2024",
+        "tier": "zero-shot",
+        "precision": 0.137,
+        "recall": 0.83,
+        "f1": 0.234,
+        "iou": null,
+        "verified": true,
+        "_source": "arXiv:2402.01188 Table 'Zero-shot Object Change Proposals', ViT-B row (best automatic F1 of the three backbones; ViT-L 21.9, ViT-H 23.0). IoU is not reported by the paper. Full 128-tile LEVIR-CD test split."
+      },
+      {
+        "name": "AnyChange-H + 3-point query",
+        "cite": "zheng2024segment",
+        "venue": "NeurIPS 2024",
+        "tier": "zero-shot",
+        "precision": 0.285,
+        "recall": 0.811,
+        "f1": 0.422,
+        "iou": null,
+        "verified": true,
+        "_source": "arXiv:2402.01188 Table 'Zero-shot Object-centric Change Detection'. Human-in-the-loop: three point queries per image. Listed so the comparison is not read as cherry-picking the weakest AnyChange setting."
+      }
+    ]
+  },
+  "whu_cd": {
+    "_metric_keys": [
+      "precision",
+      "recall",
+      "f1",
+      "iou"
+    ],
+    "_protocol": "cropped 256px test split, change class",
+    "methods": [
+      {
+        "name": "FC-Siam-Diff",
+        "cite": "daudt2018fully",
+        "venue": "ICIP 2018",
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "iou": null,
+        "verified": false,
+        "tier": "supervised"
+      },
+      {
+        "name": "BIT",
+        "cite": "chen2021remote",
+        "venue": "IEEE TGRS 2021",
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "iou": null,
+        "verified": false,
+        "tier": "supervised"
+      },
+      {
+        "name": "ChangeFormer",
+        "cite": "bandara2022transformer",
+        "venue": "IGARSS 2022",
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "iou": null,
+        "verified": false,
+        "tier": "supervised"
+      },
+      {
+        "name": "AnyChange (SAM zero-shot)",
+        "cite": "zheng2024segment",
+        "venue": "NeurIPS 2024",
+        "tier": "zero-shot",
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "iou": null,
+        "verified": false
+      }
+    ]
+  },
+  "levir_cc": {
+    "_metric_keys": [
+      "BLEU-1",
+      "BLEU-2",
+      "BLEU-3",
+      "BLEU-4",
+      "METEOR",
+      "ROUGE-L",
+      "CIDEr-D"
+    ],
+    "_protocol": "LEVIR-CC default split (6815/1333/1929 train/val/test), 1929 test pairs, 5 references per pair, CIDEr-D. Matches our run exactly.",
+    "methods": [
+      {
+        "name": "DUDA",
+        "cite": "park2019robust",
+        "venue": "ICCV 2019",
+        "tier": "supervised",
+        "BLEU-1": 0.8144,
+        "BLEU-2": null,
+        "BLEU-3": null,
+        "BLEU-4": 0.5779,
+        "METEOR": 0.3715,
+        "ROUGE-L": 0.7104,
+        "CIDEr-D": 1.2431999999999999,
+        "verified": true,
+        "source": "Chang & Ghamisi, Chg2Cap, Table IX (LEVIR-CC, ResNet-101 backbone). Same protocol as ours: the default LEVIR-CC split, 1929 test pairs, 5 references each, BLEU-N / METEOR / ROUGE-L / CIDEr-D."
+      },
+      {
+        "name": "MCCFormers-S",
+        "cite": "qiu2021describing",
+        "venue": "ICCV 2021",
+        "tier": "supervised",
+        "BLEU-1": 0.8216,
+        "BLEU-2": null,
+        "BLEU-3": null,
+        "BLEU-4": 0.5941,
+        "METEOR": 0.3826,
+        "ROUGE-L": 0.721,
+        "CIDEr-D": 1.2834,
+        "verified": true,
+        "source": "Chang & Ghamisi, Chg2Cap, Table IX (LEVIR-CC, ResNet-101 backbone). Same protocol as ours: the default LEVIR-CC split, 1929 test pairs, 5 references each, BLEU-N / METEOR / ROUGE-L / CIDEr-D."
+      },
+      {
+        "name": "MCCFormers-D",
+        "cite": "qiu2021describing",
+        "venue": "ICCV 2021",
+        "tier": "supervised",
+        "BLEU-1": 0.8049,
+        "BLEU-2": null,
+        "BLEU-3": null,
+        "BLEU-4": 0.5734,
+        "METEOR": 0.3823,
+        "ROUGE-L": 0.7140000000000001,
+        "CIDEr-D": 1.2685,
+        "verified": true,
+        "source": "Chang & Ghamisi, Chg2Cap, Table IX (LEVIR-CC, ResNet-101 backbone). Same protocol as ours: the default LEVIR-CC split, 1929 test pairs, 5 references each, BLEU-N / METEOR / ROUGE-L / CIDEr-D."
+      },
+      {
+        "name": "RSICCformer",
+        "cite": "liu2022remote",
+        "venue": "IEEE TGRS 2022",
+        "tier": "supervised",
+        "BLEU-1": 0.8411,
+        "BLEU-2": null,
+        "BLEU-3": null,
+        "BLEU-4": 0.6193,
+        "METEOR": 0.38789999999999997,
+        "ROUGE-L": 0.7302,
+        "CIDEr-D": 1.314,
+        "verified": true,
+        "source": "Chang & Ghamisi, Chg2Cap, Table IX (LEVIR-CC, ResNet-101 backbone). Same protocol as ours: the default LEVIR-CC split, 1929 test pairs, 5 references each, BLEU-N / METEOR / ROUGE-L / CIDEr-D."
+      },
+      {
+        "name": "Chg2Cap",
+        "cite": "chang2024changes",
+        "venue": "IEEE TIP",
+        "tier": "supervised",
+        "BLEU-1": 0.8614,
+        "BLEU-2": null,
+        "BLEU-3": null,
+        "BLEU-4": 0.6439,
+        "METEOR": 0.4003,
+        "ROUGE-L": 0.7512000000000001,
+        "CIDEr-D": 1.3661,
+        "verified": true,
+        "source": "Chang & Ghamisi, Chg2Cap, Table IX (LEVIR-CC, ResNet-101 backbone). Same protocol as ours: the default LEVIR-CC split, 1929 test pairs, 5 references each, BLEU-N / METEOR / ROUGE-L / CIDEr-D."
+      }
+    ]
+  },
+  "_external_outputs": {
+    "_note": [
+      "Caption files produced by running a published model's released checkpoint",
+      "on the LEVIR-CC test split. Scoring these with Change-Fact-Score is what",
+      "gives our factuality metric an external reference point -- without it a",
+      "reviewer can fairly say we invented a metric and only measured ourselves.",
+      "Format: JSON or JSONL of {pair_id: caption} or {'key','text'} records.",
+      "Score with: python -m icce.eval.score_external --predictions <file>"
+    ],
+    "slots": [
+      {
+        "name": "Chg2Cap",
+        "cite": "chang2024changes",
+        "path": null,
+        "how": "github.com/Chang-Sheng/Chg2Cap -- run test.py, dump predictions"
+      },
+      {
+        "name": "RSICCformer",
+        "cite": "liu2022remote",
+        "path": null,
+        "how": "github.com/Chen-Yang-Liu/RSICC -- run eval, dump predictions"
+      }
+    ]
+  }
+}
