@@ -2,11 +2,12 @@
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{../docs/architecture.png}
-\caption{Pipeline. Two revisits are segmented independently; detections are
-geo-referenced; the learned head matches instances across frames and verifies
-the unmatched ones; survivors are written to a spatio-temporal graph that the
-report is generated from.}
+\includegraphics[width=\columnwidth]{../docs/method_figure.pdf}
+\caption{The pipeline. The learned head matches instances across two revisits
+and verifies the unmatched ones, with cross-frame evidence feeding the
+verifier. The annotations are the paper's central result: the head is worth
+\EOnePairingGain{} pixel F1, the grounding conditions less than
+\EFourLadderSpread{} CFS-F1.}
 \label{fig:architecture}
 \end{figure}
 

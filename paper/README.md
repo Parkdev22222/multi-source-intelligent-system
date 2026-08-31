@@ -45,10 +45,16 @@ secretariat if needed before uploading.
 From the repository root:
 
 ```bash
+python scripts/gen_paper_figure.py   # method figure, from the results
 python paper/make_tables.py
 cd paper
 latexmk -pdf main.tex
 ```
+
+The figure is generated, not drawn: its two annotations are read from
+`results/*.json`, so it cannot drift from the tables. The old
+`docs/architecture.png` is the repository's deployment diagram and stays in
+the top-level README; the paper uses `docs/method_figure.pdf`.
 
 Equivalent manual sequence:
 
