@@ -30,7 +30,6 @@ the figure cannot drift from the tables the way a hand-drawn one would.
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -56,41 +55,8 @@ EDGE_EVID = "#c8802a"
 FILL_EVAL = "#ffffff"
 EDGE_EVAL = "#7a8492"
 
-FIG_W, FIG_H = 3.5, 2.42
+FIG_W, FIG_H = 3.5, 2.30
 
-
-def _load(rel: str) -> dict | None:
-    p = ROOT / rel
-    if not p.is_file():
-        return None
-    return json.loads(p.read_text(encoding="utf-8"))
-
-
-def read_callout() -> str:
-    """Controlled pairing-to-report gain and incremental pairing latency."""
-    learned = _load("results/levir_cc_caption/report_results_caption.json")
-    heuristic = _load(
-        "results/levir_cc_caption_heuristic_pairing/report_results_caption.json"
-    )
-    efficiency = _load("results/efficiency/efficiency.json")
-
-    gain = None
-    if learned and heuristic:
-        def graph_f1(blob):
-            rows = {r["name"]: r for r in blob["results"]}
-            return rows["llm_graphrag"]["cfs_f1"]
-        gain = (graph_f1(learned) - graph_f1(heuristic)) * 100
-
-    latency = None
-    if efficiency:
-        stages = {r["stage"]: r for r in efficiency["stages"]}
-        latency = (stages["pairing: learned head (ours)"]["per_item_ms"]
-                   - stages["pairing: heuristic (production)"]["per_item_ms"])
-
-    if gain is None or latency is None:
-        print("warning: incomplete E5/E6 results; callout left unquantified")
-        return "pairing changes report factuality at negligible cost"
-    return f"Pairing swap: +{gain:.2f} CFS-F1  ·  +{latency:.2f} ms/tile"
 
 
 def box(ax, x, y, w, h, label, sub=None, fill=FILL_STAGE, edge=EDGE_STAGE,
@@ -123,98 +89,89 @@ def arrow(ax, x1, y1, x2, y2, color=LINE, lw=0.9, ls="-", zorder=1, shrink=0.0):
 
 
 def build() -> None:
-    result_callout = read_callout()
-
     fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
     ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
+    # The drawing occupies 0.22 upwards; cropping to it removes a band of empty
+    # canvas that bbox_inches alone does not reclaim from an invisible axes.
+    ax.set_ylim(0.205, 0.975)
     ax.axis("off")
 
     L, R = 0.03, 0.97
     W = R - L
     cx = (L + R) / 2
 
-    # ---- inputs and feature preparation ----------------------------------
-    y_in, h_in = 0.910, 0.060
-    box(ax, 0.18, y_in, 0.64, h_in, "TWO CO-REGISTERED REVISITS",
-        sub="past image $t_0$  ·  current image $t_1$", fs=5.8)
+    # A clear channel is reserved down the right-hand side of the head so the
+    # cross-frame path can reach the verifier without crossing the state box.
+    CHANNEL = 0.075
+    ix = L + 0.026
+    inner_w = W - 0.052 - CHANNEL
+    chan_x = ix + inner_w + CHANNEL / 2
 
-    y_feat, h_feat = 0.770, 0.095
-    left_x, left_w = L, 0.545
-    right_x, right_w = 0.605, R - 0.605
-    box(ax, left_x, y_feat, left_w, h_feat,
-        "SAM3 DETECTIONS + PAIR FEATURES",
-        sub="past $P$ · current $C$  |  CLIP · geometry · context",
-        fill=FILL_STAGE, edge=EDGE_STAGE, fs=5.2)
-    box(ax, right_x, y_feat, right_w, h_feat,
-        "CO-LOCATED CROSS-FRAME EVIDENCE",
-        sub="same footprint in both images",
-        fill=FILL_EVID, edge=EDGE_EVID, fs=4.8)
-    arrow(ax, 0.41, y_in, 0.30, y_feat + h_feat)
-    arrow(ax, 0.59, y_in, 0.79, y_feat + h_feat)
+    # ---- input ------------------------------------------------------------
+    y_in, h_in = 0.895, 0.068
+    box(ax, 0.20, y_in, 0.60, h_in,
+        "two co-registered revisits  ($t_0$, $t_1$)", fs=7.2)
 
-    # ---- the learned head, emphasised ------------------------------------
-    hy, hh = 0.305, 0.420
+    # ---- detections and cross-frame evidence ------------------------------
+    y_f, h_f = 0.757, 0.095
+    lw_ = 0.46
+    box(ax, L, y_f, lw_, h_f, "SAM3 detections", fs=7.2)
+    box(ax, R - lw_, y_f, lw_, h_f, "cross-frame evidence",
+        sub="same footprint, both frames", fill=FILL_EVID, edge=EDGE_EVID,
+        fs=7.2)
+    arrow(ax, 0.36, y_in, L + lw_ / 2, y_f + h_f)
+    arrow(ax, 0.64, y_in, R - lw_ / 2, y_f + h_f)
+
+    # ---- the learned head -------------------------------------------------
+    hy, hh = 0.408, 0.307
     ax.add_patch(FancyBboxPatch((L, hy), W, hh,
                                 boxstyle="round,pad=0.008,rounding_size=0.018",
                                 linewidth=1.6, facecolor=FILL_HEAD,
                                 edgecolor=EDGE_HEAD, zorder=2))
-    ax.text(cx, hy + hh - 0.040, "LEARNED PAIRING HEAD", ha="center",
-            va="center", fontsize=7.3, color=EDGE_HEAD, fontweight="bold",
+    ax.text(cx, hy + hh - 0.040, "learned pairing head", ha="center",
+            va="center", fontsize=7.8, color=EDGE_HEAD, fontweight="bold",
             zorder=3)
-    ax.text(cx, hy + hh - 0.078, "19.8k parameters  ·  trained from change masks",
-            ha="center", va="center", fontsize=5.8, color=MUTED, zorder=3)
 
-    iw, ih = 0.520, 0.092
-    ix = L + 0.045
-    r_match = hy + 0.205
-    r_verify = hy + 0.065
-    box(ax, ix, r_match, iw, ih, "MATCH + AUXILIARY STATE",
-        sub="same object? · stationary / moved / modified",
-        fill="#ffffff", edge=EDGE_HEAD, fs=5.8, lw=0.8)
-    box(ax, ix, r_verify, iw, ih, "VERIFY UNMATCHED INSTANCES",
-        sub="real change or detection miss?",
-        fill="#ffffff", edge=EDGE_HEAD, fs=5.8, lw=0.8)
-    arrow(ax, ix + iw / 2, r_match, ix + iw / 2, r_verify + ih,
-          color=LINE, lw=0.9, zorder=5)
-    ax.text(ix + iw / 2 + 0.020, (r_match + r_verify + ih) / 2,
-            "unmatched only", ha="left", va="center", fontsize=4.6,
-            color=MUTED, style="italic", zorder=6)
+    ih = 0.076
+    r1, r2 = 0.565, 0.441
+    bw2 = (inner_w - 0.028) / 2
+    box(ax, ix, r1, bw2, ih, "match", fill="#ffffff", edge=EDGE_HEAD,
+        fs=7.2, lw=0.8)
+    box(ax, ix + bw2 + 0.028, r1, bw2, ih, "state", fill="#ffffff",
+        edge=EDGE_HEAD, fs=7.2, lw=0.8)
+    box(ax, ix, r2, inner_w, ih, "verify", fill="#ffffff", edge=EDGE_HEAD,
+        fs=7.2, lw=0.8)
 
-    # Pair features feed matching; image-derived co-located evidence feeds
-    # only the unmatched verifier.
-    arrow(ax, left_x + left_w / 2, y_feat, ix + iw / 2, r_match + ih,
-          color=LINE, lw=0.9, zorder=5)
-    elbow_x = R - 0.045
-    target_y = r_verify + ih / 2
-    ax.plot([right_x + right_w / 2, elbow_x, elbow_x],
-            [y_feat, y_feat - 0.025, target_y], color=EDGE_EVID,
-            linewidth=1.0, zorder=4)
-    arrow(ax, elbow_x, target_y, ix + iw, target_y,
-          color=EDGE_EVID, lw=1.0, zorder=5)
+    arrow(ax, ix + bw2 / 2, r1, ix + bw2 / 2, r2 + ih, color=EDGE_HEAD,
+          zorder=5)
+    ax.text(ix + bw2 / 2 + 0.016, (r1 + r2 + ih) / 2, "unmatched only",
+            ha="left", va="center", fontsize=6.2, color=MUTED, style="italic",
+            zorder=5)
 
-    ax.text(cx + 0.10, hy + 0.019, result_callout,
-            ha="center", va="center", fontsize=5.0, color=EDGE_HEAD,
-            fontweight="bold", zorder=4,
-            bbox=dict(boxstyle="round,pad=0.18", facecolor="#ffffff",
-                      edgecolor=EDGE_HEAD, linewidth=0.7))
+    arrow(ax, L + lw_ / 2, y_f, L + lw_ / 2, hy + hh)
+    ax.add_patch(FancyArrowPatch((chan_x, y_f), (ix + inner_w + 0.002,
+                                                 r2 + ih / 2),
+                                 arrowstyle="-|>", mutation_scale=7,
+                                 linewidth=1.1, color=EDGE_EVID,
+                                 connectionstyle="angle,angleA=-90,angleB=0,rad=4",
+                                 shrinkA=0, shrinkB=0, zorder=5))
 
-    # ---- tail as a strip, not a stack ------------------------------------
-    ty, th = 0.070, 0.145
-    n = 4
-    gap = 0.030
+    # ---- tail -------------------------------------------------------------
+    ty, th = 0.215, 0.155
+    n, gap = 4, 0.028
     bw = (W - gap * (n - 1)) / n
-    tail = [("PAIRING RESULTS", "matched · moved · modified\nappeared · disappeared",
-             FILL_STAGE, EDGE_STAGE, "-"),
-            ("GROUNDED\nEVIDENCE", "current inventory\noptional graph context",
-             FILL_STAGE, EDGE_STAGE, "-"),
-            ("GROUNDED LLM\nREPORT", None, FILL_STAGE, EDGE_STAGE, "-"),
-            ("DETERMINISTIC\nEVALUATION", "references + GT masks\nCFS · ChgAcc · CountMAE",
-             FILL_EVAL, EDGE_EVAL, (0, (2.5, 2)))]
-    for i, (label, sub, fill, edge, ls) in enumerate(tail):
+    tail = [("change\ninstances", FILL_STAGE, EDGE_STAGE, "-"),
+            ("knowledge\ngraph", FILL_STAGE, EDGE_STAGE, "-"),
+            ("LLM\nreport", FILL_STAGE, EDGE_STAGE, "-"),
+            ("Change-\nFact-Score", FILL_EVAL, EDGE_EVAL, (0, (2.5, 2)))]
+    for i, (label, fill, edge, ls) in enumerate(tail):
         x = L + i * (bw + gap)
-        box(ax, x, ty, bw, th, label, sub=sub, fill=fill, edge=edge,
-            fs=4.6, lw=0.9, ls=ls)
+        ax.add_patch(FancyBboxPatch((x, ty), bw, th,
+                                    boxstyle="round,pad=0.008,rounding_size=0.018",
+                                    linewidth=0.9, facecolor=fill,
+                                    edgecolor=edge, linestyle=ls, zorder=2))
+        ax.text(x + bw / 2, ty + th / 2, label, ha="center", va="center",
+                fontsize=6.9, color=INK, zorder=3, linespacing=1.35)
         if i:
             arrow(ax, x - gap, ty + th / 2, x, ty + th / 2,
                   ls=(0, (2.5, 2)) if i == n - 1 else "-", zorder=5)
@@ -229,7 +186,6 @@ def build() -> None:
     plt.close(fig)
     print(f"wrote {OUT_PDF.relative_to(ROOT)}")
     print(f"wrote {OUT_PNG.relative_to(ROOT)}  (preview only; the paper uses the PDF)")
-    print(f"callout: {result_callout!r}")
 
 
 if __name__ == "__main__":
