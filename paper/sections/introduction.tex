@@ -37,8 +37,8 @@ in many evaluated cases.
 
 \textbf{Our approach} generates reports from object instances detected and
 matched across the two images.
-\DetectorName~\cite{sam3} proposes object instances in each frame
-open-vocabulary, without having been trained on either benchmark;
+\DetectorName~\cite{sam3} generates object-instance proposals for each frame
+using open-vocabulary text prompts, without being trained on either benchmark;
 CLIP~\cite{radford2021learning} embeddings describe appearance; a learned head
 decides which detections across revisits are the same object and which
 unmatched detections are genuine change; survivors accumulate in a
