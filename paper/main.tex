@@ -37,23 +37,15 @@
 
 \begin{document}
 
-% No manual line break: the one that used to sit after "Foundation-Model" was
-% tuned for a different column width and broke the title across four ragged
-% lines under this class. IEEEtran balances it into three.
-% Colon form, as the venue's accepted papers use: application first so a CE
-% reviewer can place it, then the two things the paper contributes. The null
-% result on retrieval and graph grounding is the abstract's job, not a title's.
-% Two rendered lines is a hard constraint: a three-line title costs a seventh
-% page. Measured, not assumed -- see paper/README.md.
+% No manual line break: IEEEtran balances this title at the current width.
+% The title foregrounds the staged vision-to-language task and names the two
+% citable contributions. "Vision-grounded" is deliberate: SAM3, CLIP and the
+% pairing head establish object evidence before the LLM writes the report, so
+% this is not an end-to-end VLM claim. The consumer-facing use case remains in
+% the abstract and introduction rather than overloading the title.
 %
-% The title names the two contributions a reader should be able to cite: the
-% pairing head and the claim-level evaluation. The grounding null result is the
-% abstract's job. It is deliberately not "pairing, not prompting": the paper
-% says the crop-level ladder *cannot* decide that question and that graph
-% aggregation does earn a neighbourhood-level counting claim, so a title
-% asserting the null would be stronger than the paper's own position.
-\title{Learned Instance Pairing and Claim-Level Evaluation
-for Consumer Satellite Change Reporting}
+\title{Vision-Grounded LLM Reports for Satellite Change Monitoring:
+Learned Instance Pairing and Claim-Level Evaluation}
 
 % Five authors in the template's own column format, laid out 3 + 2.
 %

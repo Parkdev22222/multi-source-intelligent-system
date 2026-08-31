@@ -2,8 +2,8 @@
 
 Submission title:
 
-> **Lightweight Instance Pairing for Factual LLM Change Reports in Consumer
-> Satellite Monitoring**
+> **Vision-Grounded LLM Reports for Satellite Change Monitoring: Learned
+> Instance Pairing and Claim-Level Evaluation**
 
 The paper studies a consumer-facing satellite monitoring pipeline that turns
 two revisits into a written change report. Its contribution order is deliberate:
@@ -190,16 +190,20 @@ results are in `results/levir_cc_scene/`. Pilot values remain only in the
 
 ### Title and keywords
 
-The title must render in **two lines**. A third line costs a seventh page --
-measured, not assumed. Candidates were compiled and counted; at the current
-content, 10--11 words fits and 12--13 does not, depending on the words.
+The title foregrounds the complete vision-to-language pipeline while retaining
+the two contributions a reader should be able to cite: learned instance pairing
+and claim-level evaluation. "Vision-grounded" means that SAM3, CLIP and the
+pairing head establish explicit object evidence before the LLM generates a
+report; it does not describe an end-to-end vision--language model. The
+consumer-facing use case remains explicit in the abstract and Introduction.
 
-It names the pairing head and the claim-level evaluation, the two contributions
-a reader should be able to cite. It deliberately does not assert the grounding
-null ("pairing, not prompting"): the paper's own position is that the
-crop-level ladder *cannot* decide that question and that graph aggregation
-earns a neighbourhood-level counting claim, so such a title would overstate
-what the experiments support.
+The title deliberately does not assert the grounding null ("pairing, not
+prompting"): the paper's own position is that the crop-level ladder *cannot*
+decide that question and that graph aggregation earns a neighbourhood-level
+counting claim. Such a title would overstate what the experiments support.
+
+Rebuild the author-complete PDF and verify the rendered title and six-page limit
+before submission.
 
 ### Known measurement caveats
 
