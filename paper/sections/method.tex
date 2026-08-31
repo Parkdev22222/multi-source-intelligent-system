@@ -10,8 +10,8 @@ report is generated from.}
 \label{fig:architecture}
 \end{figure}
 
-Two co-registered revisits of a tile enter and a report leaves. The procedure
-is as follows.
+Two co-registered revisits of a tile enter and a report leaves
+(Fig.~\ref{fig:architecture}). The procedure is as follows.
 
 \begin{enumerate}
 \item \textbf{Open-vocabulary detection.} \DetectorName{} proposes object
@@ -51,7 +51,10 @@ overlapping detections there, distance to the tile edge, and
 Three small multi-layer perceptrons share a class embedding:
 $\mathrm{match}$ scores a candidate pair, $\mathrm{state}$ classifies a matched
 pair as stationary, moved or modified, and $\mathrm{verify}$ scores whether an
-unmatched detection is genuine change. Each has two hidden layers of width 64
+unmatched detection is genuine change. The state head is carried by the
+pipeline but not evaluated here: both change-detection benchmarks label change
+as a binary mask, so no ground truth for the moved/modified distinction
+exists. Each has two hidden layers of width 64
 with layer normalisation, GELU and dropout; features are standardised with
 statistics fitted on the training split. The whole head is \HeadParams{}
 parameters. Matching is a greedy assignment over $\mathrm{match}$ scores above

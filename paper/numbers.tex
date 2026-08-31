@@ -20,19 +20,27 @@
 \newcommand{\EOneGTDensity}{54.5}
 
 % --- E2: WHU-CD test, 690 pairs -- results/whu_cd_test/ --------------------
-\newcommand{\ETwoPixelFOne}{57.92}
-\newcommand{\ETwoIoU}{40.77}
-\newcommand{\ETwoInstFOne}{52.11}
+% Re-measured on 2026-08-31 in one run that also produces the cross-frame
+% ablation row the original E2 run omitted. geo-only, the heuristic and the
+% greedy arm reproduce the earlier run exactly; the two Hungarian arms move
+% (ours 57.92 -> 57.97, no-verifier 19.78 -> 20.84) because Hungarian
+% assignment breaks ties non-deterministically. One run is quoted rather
+% than two so the table has a single provenance.
+\newcommand{\ETwoPixelFOne}{57.97}
+\newcommand{\ETwoIoU}{40.82}
+\newcommand{\ETwoInstFOne}{52.22}
 \newcommand{\ETwoHeuristicFOne}{28.86}
 \newcommand{\ETwoHeuristicInstFOne}{9.06}
 \newcommand{\ETwoGeoFOne}{30.16}
-\newcommand{\ETwoNoVerifierFOne}{19.78}
+\newcommand{\ETwoNoVerifierFOne}{20.84}
 \newcommand{\ETwoCountMAE}{1.3}
 \newcommand{\ETwoHeuristicCountMAE}{14.8}
-\newcommand{\ETwoNPred}{1{,}431}
+\newcommand{\ETwoNPred}{1{,}426}
 \newcommand{\ETwoHeuristicNPred}{11{,}204}
 \newcommand{\ETwoNGT}{987}
 \newcommand{\ETwoGTDensity}{1.4}
+\newcommand{\ETwoCrossFrameGain}{9.82}   % 57.97 - 48.15 pixel F1
+\newcommand{\ETwoCrossFrameInstGain}{4.24} % 52.22 - 47.98 instance F1
 
 % --- Published zero-shot peer (AnyChange, LEVIR-CD) -- baselines.json ------
 \newcommand{\AnyChangeFOne}{23.40}
@@ -56,6 +64,14 @@
 \newcommand{\EFourVLMHal}{65.03}
 \newcommand{\EFourVLMBleu}{4.51}
 \newcommand{\EFourVLMGap}{19.83}      % llm_graphrag - vlm_direct, CFS-F1
+% Over-assertion on crops the references call unchanged. Counted directly from
+% the generation dumps against LevirCCcaptions.json: a crop is unchanged when at
+% least three of its five references say so, and a report asserts change when it
+% carries no no-change phrasing.
+\newcommand{\EFourNNoChange}{965}
+\newcommand{\EFourVLMFalseChange}{98.0}
+\newcommand{\EFourGraphRAGFalseChange}{26.7}
+
 % How much of the retrieval/graph difference reaches a claim.
 \newcommand{\EFourTextDiffer}{1{,}313}
 \newcommand{\EFourTextDifferPct}{68.1}
@@ -78,9 +94,12 @@
 % 0.08 ms on the delta (0.62 at n=64, 0.70 at n=512); the 1.45 ms reported
 % earlier came from the pilot cache, whose crops carry different detection
 % counts -- a different measurement, not a noisier one.
+% Quoted to three decimals so the difference reconciles with the two values it
+% is derived from: 9.688 - 8.984 = 0.704. At two decimals a reader subtracting
+% the printed numbers gets 0.71 and the quoted delta reads as an error.
 \newcommand{\ESixHeadDelta}{0.70}
-\newcommand{\ESixHeadMs}{9.69}
-\newcommand{\ESixHeuristicMs}{8.98}
+\newcommand{\ESixHeadMs}{9.688}
+\newcommand{\ESixHeuristicMs}{8.984}
 \newcommand{\ESixDetectMs}{6{,}099}
 \newcommand{\ESixDetectShare}{91}
 \newcommand{\ESixPipelineShare}{0.01}

@@ -23,9 +23,11 @@ generate a sentence per image pair, scored with BLEU, METEOR, ROUGE-L and
 CIDEr-D against human references. They are trained on the caption corpus, and
 n-gram overlap rewards phrasing that matches the reference distribution. Our
 concern is orthogonal: a report can score well on overlap while asserting a
-change that did not occur. Retrieval-augmented generation reduces unsupported
-assertions by conditioning on retrieved evidence, and graph-based variants
-aggregate over entities rather than top-$k$ passages. Evaluating the result is
-the harder half, and metrics that use a language model as judge inherit its
-failure modes and can be gamed by the model under test. We take the opposite
+change that did not occur. Retrieval-augmented
+generation~\cite{lewis2020retrieval} reduces unsupported assertions by
+conditioning on retrieved evidence, and graph-based
+variants~\cite{edge2024local} aggregate over entities rather than top-$k$
+passages. Evaluating the result is the harder half, and metrics that use a
+language model as judge~\cite{zheng2023judging} inherit its failure modes and
+can be gamed by the model under test. We take the opposite
 approach in Section~\ref{ssec:cfs}: nothing in the metric is learned.

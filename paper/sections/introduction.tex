@@ -47,8 +47,10 @@ pixels. Because the report is assembled from objects, counting is a property of
 the evidence rather than of the prose.
 
 \textbf{Pairing is the report-level bottleneck.} Holding the report model,
-prompt and graph grounding fixed, replacing only the pairing increases CFS-F1
-by \EFiveGain{} points and lowers unsupported claims from
+prompt and graph grounding fixed, replacing only the pairing increases
+Change-Fact-Score (CFS), the deterministic claim-level metric defined in
+Section~\ref{ssec:cfs}, by \EFiveGain{} F1 points and lowers unsupported
+claims from
 \EFiveHeuristicHal\% to \EFiveLearnedHal\%. By comparison, over
 \EFourNCrops{} crops, adding top-$k$ retrieval or graph aggregation to the same
 structured instance evidence produces a spread below \EFourLadderSpread{}
@@ -68,10 +70,9 @@ Our contributions are as follows.
       \EOnePixelFOne{} and transfers to WHU-CD unchanged at \ETwoPixelFOne,
       cutting instance count error from \ETwoHeuristicCountMAE{} to
       \ETwoCountMAE.
-\item \textbf{Detection-to-report evidence.} With generation and grounding
-      fixed, the learned pairing improves CFS-F1 by \EFiveGain{} points and
-      drops unsupported claims from \EFiveHeuristicHal\% to
-      \EFiveLearnedHal\%, at only \ESixHeadDelta~ms additional latency.
+\item \textbf{Detection-to-report evidence.} That gain is measured with the
+      generation and the grounding held fixed, at \ESixHeadDelta~ms additional
+      latency per tile.
 \item \textbf{Deterministic report evaluation.} We use a domain-specific
       protocol for claim direction and object class, with CountMAE for counts
       and no language model inside the evaluator.

@@ -59,6 +59,16 @@ pdflatex main.tex
 pdflatex main.tex
 ```
 
+**The Python environment must be complete before any re-run.** `decode_mask`
+reaches the RLE decoder through `src.pairing`, whose import chain pulls in
+`src.database` and therefore `sqlalchemy`. With that dependency missing the
+import used to be swallowed silently, every detection fell back to
+bounding-box rasterisation, and pixel metrics came out several points low
+(WHU-CD by up to 9 F1) while the run still recorded
+`pixel_scoring: sam3_masks`. `run_cd_eval` now refuses to start in that state;
+`--bbox-pixels` remains the way to ask for the bounding-box measurement on
+purpose. Install `requirements.txt` in full, not a subset.
+
 Minimal TeX Live packages for a bare environment:
 
 ```bash
@@ -78,8 +88,14 @@ are ever requested, include the generated `main.bbl` as well.
   marked `FINAL`.
 - Tables emitted by the evaluation harness are included directly from
   `results/`.
-- `paper/make_tables.py` builds three cross-run or compacted tables:
-  `detection.tex`, `e5_pairing.tex`, and `e7_scene.tex`.
+- `paper/make_tables.py` builds five cross-run, compacted or re-columned
+  tables: `detection.tex`, `factuality.tex`, `e5_pairing.tex`, `e7_scene.tex`
+  and `example.tex`. `detection.tex` and `factuality.tex` replace tables the
+  harness also writes, because both needed a column the harness does not emit:
+  a per-tile Count MAE on detection, and the crop-level CountMAE that
+  `report_results_caption.json` has always carried but no table printed.
+  `example.tex` is one worked crop, read from the generation dumps and the
+  LEVIR-CC reference captions rather than transcribed.
 - Generated table comments record the run directory, checkpoint and sample
   count. Missing inputs cause generation to stop rather than invent a row.
 
@@ -100,17 +116,19 @@ rebuild the PDF.
 There is no separate Conclusion section; the concluding interpretation and
 future work are folded into Discussion to stay within six pages.
 
-Five tables remain. The detection table combines pixel- and instance-level
+Six tables remain. The detection table combines pixel- and instance-level
 results on LEVIR-CD and WHU-CD. E5 is intentionally placed immediately after
 the detection result because it connects upstream pairing to the final report.
-The efficiency table is expressed in prose.
+The efficiency table is expressed in prose. The sixth is the worked example of
+the invention failure; it is the only qualitative element in the paper and the
+first thing to cut if the page count moves.
 
 ## Experiment status
 
 | Experiment | Scale | Purpose |
 |---|---:|---|
 | E1: LEVIR-CD | 128 test tiles | in-domain pairing and change detection |
-| E2: WHU-CD | 690 test pairs | transfer without retraining or threshold tuning |
+| E2: WHU-CD | 690 test pairs | transfer without retraining or threshold tuning, and the cross-frame ablation |
 | E3/E4: LEVIR-CC | 1,929 crops | report and grounding conditions |
 | E5: pairing swap | same 1,929 crops | main detection-to-report result |
 | E6: deployment cost | 512 pairs | pairing latency within the full pipeline |
@@ -152,6 +170,10 @@ results are in `results/levir_cc_scene/`. Pilot values remain only in the
 
 - [ ] Complete missing volume, issue and page metadata for older entries in
       `refs.bib` where publisher records are available.
+- [ ] **`lewis2020retrieval`, `edge2024local` and `zheng2023judging` were
+      written from knowledge of the literature and have not been checked
+      against a publisher record.** Verify author lists, venues and pages
+      before submitting; they are flagged in `refs.bib` as well.
 - [ ] Read the rendered author lists for `sam3` and `qwen25vl`; they currently
       use `and others`, which IEEEtran renders as “et al.”
 - [x] LEVIR-CC caption baselines are verified from Chg2Cap Table IX.
@@ -159,6 +181,16 @@ results are in `results/levir_cc_scene/`. Pilot values remain only in the
       supervision-matched baseline.
 - [x] WHU-CD is reported as transfer without an unverified published baseline;
       differing WHU splits are not mixed into the table.
+
+### Known measurement caveats
+
+- **Hungarian assignment does not reproduce bit-for-bit.** Re-measuring E2 on
+  2026-08-31 reproduced `geo-only`, the heuristic and the greedy arm exactly,
+  while the two Hungarian arms moved: ours 57.92 -> 57.97 pixel F1, the
+  no-verifier ablation 19.78 -> 20.84. Ties in the assignment are broken
+  non-deterministically. The E2 block is quoted from that single later run so
+  the table has one provenance; the LEVIR-CD block is unchanged and no claim
+  in the paper turns on the difference.
 
 ### Deliberately deferred, not submission blockers
 

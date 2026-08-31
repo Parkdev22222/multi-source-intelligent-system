@@ -34,9 +34,8 @@ thresholds carried over from LEVIR-CD's validation split --- it reaches
 \ETwoPixelFOne{} against \ETwoHeuristicFOne{} for the heuristic it replaces.
 The instance columns state it more usefully: against \ETwoNGT{} ground-truth
 instances the heuristic emits \ETwoHeuristicNPred{} predictions and ours emits
-\ETwoNPred, cutting count error from \ETwoHeuristicCountMAE{} to \ETwoCountMAE.
-For a service that reports how many buildings appeared, that is the difference
-between a usable number and noise. WHU-CD is not the easier dataset: it
+\ETwoNPred. For a service that reports how many buildings appeared, the Count
+MAE column is the difference between a usable number and noise. WHU-CD is not the easier dataset: it
 averages \ETwoGTDensity{} ground-truth instances per tile against LEVIR-CD's
 \EOneGTDensity, so the two F1 values are not comparable as difficulties.
 
@@ -56,19 +55,25 @@ it replaces --- \ESixHeadDelta~ms more, \ESixPipelineShare\% of the pipeline.
 The comparison is within one tile population, since both strategies scale with
 the number of detections.
 
-\input{../results/levir_cc_caption/table_factuality_caption}
+\input{tables/factuality}
+\input{tables/example}
 
 \textbf{The external baseline is unreliable on change presence.}
-\texttt{vlm\_direct} reaches ChgAcc \EFourVLMChgAcc\% while
-producing confident, well-formed prose, at CFS-F1 \EFourVLMFOne{} against
-\EFourGraphRAGFOne{} for the grounded pipeline. This is the failure the
-pipeline exists to avoid, and n-gram overlap alone would not have surfaced it.
+In Table~\ref{tab:factuality_caption} \texttt{vlm\_direct} reaches ChgAcc
+\EFourVLMChgAcc\% while producing confident, well-formed prose, at CFS-F1
+\EFourVLMFOne{} against \EFourGraphRAGFOne{} for the grounded pipeline. The
+error is one-sided: on the \EFourNNoChange{} crops whose references agree that
+nothing changed, it asserts a change anyway in \EFourVLMFalseChange\% of
+cases, against \EFourGraphRAGFalseChange\% for the grounded pipeline.
+Table~\ref{tab:example} shows a typical one. This is the failure the pipeline
+exists to avoid, and n-gram overlap alone would not have surfaced it.
 
 \textbf{We lose on n-gram overlap.} Against RSICC models trained on
 LEVIR-CC's own caption corpus (Table~\ref{tab:levir_cc_caption}) our BLEU-4,
 ROUGE-L and CIDEr-D are all well behind: those models have learned the
 reference phrasing, and these metrics reward phrasing. The one exception is
-METEOR, where every one of our conditions exceeds every trained model, because
+METEOR, where each of our grounded conditions exceeds every trained model
+(\texttt{vlm\_direct}, which uses none of our pipeline, does not), because
 METEOR credits stems and content words rather than exact $n$-grams. Read
 together the two say the pipeline names the right objects and directions in the
 wrong register --- but that reading is an inference from a metric split, not a
@@ -83,7 +88,9 @@ measurement, which is why we score claims directly instead.
 scores \EOneNoVerifierFOne{} on LEVIR-CD --- below geometry-only --- because
 the head proposes matches and something has to reject them. Retrained without
 cross-frame evidence it loses \EOneCrossFrameGain{} pixel F1 and
-\EOneCrossFrameInstGain{} instance F1.
+\EOneCrossFrameInstGain{} instance F1; transferred to
+WHU-CD the same ablated head loses \ETwoCrossFrameGain{} and
+\ETwoCrossFrameInstGain.
 
 \textbf{Aggregation is worth \EFourAggGain{} points; retrieval and graph
 aggregation add little on this crop-level evaluation.} Structuring the raw
@@ -98,9 +105,14 @@ same change inventory for the crop being described, and CFS scores only claims
 about \emph{that} crop, so retrieved history concerns other crops and can move
 wording but rarely a claim. Of \EFourNCrops{} generations,
 \EFourTextDifferPct\% differ in text between the three conditions and only
-\EFourClaimsDifferPct\% differ in extracted claims.
+\EFourClaimsDifferPct\% differ in extracted claims. The CountMAE column of
+Table~\ref{tab:factuality_caption} points the other way and we report it as
+such: at crop level every aggregating condition, the graph included, carries a
+larger count error than the template or the raw detection dump. Aggregation
+costs counts here and earns them back only at the scale of a neighbourhood.
 
-\textbf{At neighbourhood level the comparison becomes decidable.} Generating
+\textbf{At neighbourhood level the comparison becomes decidable}
+(Table~\ref{tab:e7_scene}). Generating
 one report per neighbourhood over every crop of a tile, the conditions stop
 being nested and become three \emph{representations} of the same observations.
 Concatenating every crop's inventory produces a scene count error of
