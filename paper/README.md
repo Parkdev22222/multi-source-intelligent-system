@@ -11,11 +11,9 @@ with its two departures marked in the file.
 
 Two things about the template are worth knowing before submitting:
 
-- **Paper size is unresolved.** The template is `[conference]`, which is US
-  Letter, and that is what this builds as. The conference's submission page
-  says A4. That was read off a search summary of `icce-asia2026.org`, not off
-  the page itself, so confirm it: if A4 is right, `[conference,a4paper]` is the
-  whole change (tried; still 8 pages, still no overfull boxes).
+- **Paper size is A4.** The official ICCE-Asia 2026 submission page requires
+  A4, single-spaced, two-column pages with at least 10pt type; `main.tex` uses
+  `[conference,a4paper]` accordingly.
 - **The template's bibliography is a hand-written `thebibliography`; this paper
   keeps BibTeX.** Every entry in `refs.bib` records the source it was verified
   against, and that trail is worth more than matching the template's example.
@@ -113,8 +111,11 @@ Every `\input` in `experiments.tex` resolves against a file that exists in
 
 - [x] **Six pages.** Builds clean against the vendored class: no errors, no
       undefined references, no overfull or underfull boxes.
-- [ ] Confirm the page limit, the paper size and blinding on the submission
-      page itself -- all three are still second-hand
+- [x] Confirm the page limit and paper size on the official submission page:
+      regular papers are 2--6 pages and must use A4, two-column, single-spaced,
+      at least 10pt formatting
+- [ ] Confirm whether review is blind; the public submission instructions do
+      not state a blinding policy
 - [ ] Fill the author block in `main.tex`
 - [ ] `baselines.json`: WHU-CD still has **no verified rows**. It no longer
       shows as a TODO in the paper, because `tables/detection.tex` prints only

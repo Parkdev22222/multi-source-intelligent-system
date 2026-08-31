@@ -1,9 +1,8 @@
 \section{Introduction}
 
-Satellite revisit intervals over populated areas have fallen to a cadence that
-supports a subscription rather than a commissioned study, and the per-request
-cost of imagery and inference has fallen with it. What was an analyst workflow
-becomes a consumer application: a homeowner watching the plot next door, a
+We consider a change-monitoring application that turns repeated overhead
+imagery into a consumer-facing subscription rather than an analyst-facing
+mask: a homeowner watching the plot next door, a
 small builder tracking three sites, someone deciding whether a district is
 being built up or emptied out. Each pins an area in an app and, after every
 revisit, receives a short message --- \emph{four new buildings on the north
@@ -27,14 +26,14 @@ anything appeared at all. Two product failures follow.
       resolving the right objects.
 \end{enumerate}
 
-\textbf{The obvious build fails on both.} A practitioner asked to ship this
+\textbf{A direct vision--language baseline fails on both.} A practitioner asked to ship this
 today would hand both images to a vision--language model and ask for a
-description. We measure that baseline rather than dismiss it, and it fails in
-the way hardest to notice: it writes fluent, confident prose while deciding at
-chance (\EFourVLMChgAcc\%) whether the scene changed. Its BLEU-4 is
+description. We measure that baseline rather than dismiss it: it writes fluent,
+confident prose while reaching only \EFourVLMChgAcc\% accuracy on whether the
+scene changed. Its BLEU-4 is
 \EFourVLMBleu, which reads as a stylistic mismatch rather than as the symptom
-it is. Such a service would look correct in demos and be wrong half the time in
-production.
+it is. Such a service would look correct in demos while remaining unreliable
+in many evaluated cases.
 
 \textbf{Our approach} grounds the text in explicit instance evidence.
 \DetectorName~\cite{sam3} proposes object instances in each frame
@@ -65,18 +64,20 @@ Our contributions are as follows.
       prose rather than only on segmentation overlap.
 \item \textbf{Learned instance pairing.} Every non-learned strategy we tested
       --- geometry, a hand-tuned CLIP-plus-geometry heuristic, and the
-      strongest published zero-shot method --- lands in the same narrow band
+      published zero-shot reference --- lands in the same narrow band
       (\EOneGeoFOne, \EOneHeuristicFOne, \AnyChangeFOne{} F1) regardless of
-      segmentation quality. A \HeadParamsRound-parameter head, supervised for
-      free from masks benchmarks already publish, leaves it at
+      segmentation quality, although the supervision settings differ. A
+      \HeadParamsRound-parameter head trained without additional correspondence
+      annotations leaves it at
       \EOnePixelFOne{} and transfers to WHU-CD unchanged at \ETwoPixelFOne,
       cutting instance count error from \ETwoHeuristicCountMAE{} to
       \ETwoCountMAE.
-\item \textbf{Change-Fact-Score}, a claim-level factuality metric with no
-      language model inside it, so the system under evaluation cannot optimise
-      against the judge.
+\item \textbf{Change-Fact-Score}, a deterministic metric for claim direction
+      and object class, paired with a separate count-error measure and with no
+      language model inside the evaluator.
 \item \textbf{Where the budget should go.} Retrieval and graph aggregation over
-      the same evidence move CFS-F1 by less than \EFourLadderSpread{} points;
+      the same evidence have an observed CFS-F1 spread of only
+      \EFourLadderSpread{} points;
       improving the upstream pairing moves it by \EFiveGain{} and drops
       unsupported claims from \EFiveHeuristicHal\% to \EFiveLearnedHal\%, at
       \ESixHeadDelta~ms per tile.

@@ -126,10 +126,10 @@ def build_detection() -> str | None:
         "\\centering",
         "\\caption{Change detection. Pixel F1 and IoU are the change class over "
         "the whole test set; instance F1 matches predicted change instances to "
-        "ground-truth connected components at IoU~$\\geq$~0.5. Supervised "
-        "methods trained on these splits reach 86--91 pixel F1 and are omitted "
-        "as out of league; the zero-shot rows are the comparable ones. The head "
-        "is trained only on LEVIR-CD and applied to WHU-CD unchanged.}",
+        "ground-truth connected components at IoU~$\\geq$~0.5. AnyChange "
+        "provides published zero-shot context, not a supervision-matched "
+        "comparison: our head uses LEVIR-CD training masks but no correspondence "
+        "labels. The same head is applied to WHU-CD unchanged.}",
         "\\label{tab:detection}",
         "\\setlength{\\tabcolsep}{4pt}",
         "\\begin{tabular}{lccc}",

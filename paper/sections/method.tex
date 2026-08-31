@@ -58,7 +58,7 @@ parameters. Matching is a greedy assignment over $\mathrm{match}$ scores above
 a threshold; a Hungarian variant changes the result by less than 0.1 F1. Both
 thresholds are selected on the validation split and never on test.
 
-\textbf{Supervision is free.} Change-detection benchmarks publish binary change
+\textbf{No additional correspondence annotation.} Change-detection benchmarks publish binary change
 masks. We convert a mask to instances by connected components, label a
 candidate pair positive when both detections fall outside the change region and
 co-locate, and label an unmatched detection positive when it overlaps a
@@ -100,17 +100,20 @@ sentence is scanned for a direction cue, an object class, and a numeral or
 quantifier; a sentence with no direction cue makes no claim. The same extractor
 is applied to the five human reference captions, and a reference claim is kept
 when at least two annotators support it. Ground-truth counts come from the
-mask's connected components. Precision and recall of the predicted claim set
-against the reference set give CFS-P, CFS-R and CFS-F1. Two further quantities
-are read directly: ChgAcc, whether the report agrees with ground truth on
-whether anything changed at all, and CountMAE, the absolute error in the number
-of instances asserted.
+mask's connected components. CFS matches claims by direction and object class;
+count is excluded from claim identity so a correct change type with a wrong
+number is treated as a counting error rather than a hallucinated event.
+Precision and recall of these claim keys give CFS-P, CFS-R and CFS-F1. Two
+further quantities are reported: ChgAcc, whether the report agrees with ground
+truth on whether anything changed at all, and CountMAE, the absolute error in
+the asserted number of instances. Crop-level CountMAE is computed only when a
+numeric count is extracted.
 
 Two properties matter for review. First, \textbf{no language model sits inside
 the metric}, so the model under evaluation cannot optimise against the judge.
 Second, \textbf{hallucination rate is not independent}: we define it as
-$1 - \text{CFS-P}$, so we report CFS-P/R/F1 in tables and quote the
-hallucination rate only in prose.
+$1 - \text{CFS-P}$. We retain it in tables only as an interpretable complement
+to precision, not as an additional measurement.
 
 \subsection{Grounding Conditions}
 

@@ -27,10 +27,10 @@ files, not of the prose.
 not ours. Geometry-only pairing (\EOneGeoFOne), the production heuristic
 (\EOneHeuristicFOne) and AnyChange (\AnyChangeFOne) all land within two points
 of each other, at precision 13--16 with high recall. Methods that do not learn
-to pair converge on the same place regardless of segmentation quality, and the
-\HeadParamsRound-parameter head is what leaves that cluster: \EOnePixelFOne{}
-pixel F1, $2.3\times$ AnyChange's, above even its human-assisted three-point
-setting (\AnyChangeHFOne). Applied to WHU-CD unchanged --- no retraining, with
+to pair converge on the same place regardless of segmentation quality. The
+AnyChange rows provide published zero-shot context rather than a controlled
+comparison because our pairing head uses LEVIR-CD training masks. The head
+reaches \EOnePixelFOne{} pixel F1. Applied to WHU-CD unchanged --- no retraining, with
 thresholds carried over from LEVIR-CD's validation split --- it reaches
 \ETwoPixelFOne{} against \ETwoHeuristicFOne{} for the heuristic it replaces.
 The instance columns state it more usefully: against \ETwoNGT{} ground-truth
@@ -41,8 +41,8 @@ between a usable number and noise. WHU-CD is not the easier dataset: it
 averages \ETwoGTDensity{} ground-truth instances per tile against LEVIR-CD's
 \EOneGTDensity, so the two F1 values are not comparable as difficulties.
 
-\textbf{The external baseline decides at chance.} \texttt{vlm\_direct} reaches
-ChgAcc \EFourVLMChgAcc\% --- it is guessing whether anything changed --- while
+\textbf{The external baseline is unreliable on change presence.}
+\texttt{vlm\_direct} reaches ChgAcc \EFourVLMChgAcc\% while
 producing confident, well-formed prose, at CFS-F1 \EFourVLMFOne{} against
 \EFourGraphRAGFOne{} for the grounded pipeline. This is the failure the
 pipeline exists to avoid, and n-gram overlap alone would not have surfaced it.
@@ -86,13 +86,14 @@ cross-frame evidence it loses \EOneCrossFrameGain{} pixel F1 and
 \EOneCrossFrameInstGain{} instance F1.
 
 \textbf{Aggregation is worth \EFourAggGain{} points; retrieval and graph
-aggregation on top of it are worth nothing measurable.} Structuring the raw
+aggregation add little on this crop-level evaluation.} Structuring the raw
 detection dump into a change inventory moves CFS-F1 from \EFourRawFOne{}
 (\texttt{llm\_raw}) to \EFourStructFOne{} (\texttt{llm\_struct}). Adding
 top-$k$ retrieval (\EFourFlatRagFOne) or graph aggregation
 (\EFourGraphRAGFOne) moves it by less than \EFourLadderSpread{} points, and not
-consistently in the graph's favour. We read the three as indistinguishable
-rather than ranked. The reason is structural: all three conditions receive the
+consistently in the graph's favour. Because we do not report paired confidence
+intervals for these generations, we treat this as a small observed spread and
+do not infer a ranking. The reason is structural: all three conditions receive the
 same change inventory for the crop being described, and CFS scores only claims
 about \emph{that} crop, so retrieved history concerns other crops and can move
 wording but rarely a claim. Of \EFourNCrops{} generations,

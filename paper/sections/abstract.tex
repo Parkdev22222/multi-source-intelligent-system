@@ -1,4 +1,4 @@
-We build a satellite change-monitoring service for consumers --- a subscriber
+We study a consumer-facing satellite change-monitoring service --- a subscriber
 pins a neighbourhood and, after each revisit, receives a short written report of
 what changed --- from the current AI stack: a promptable segmentation
 foundation model (\DetectorName) for open-vocabulary instance detection, CLIP
@@ -10,12 +10,14 @@ construction, and one that miscounts it. Neither is fixed where practitioners
 reach first. Adding retrieval or graph aggregation to the language model's
 context leaves factuality essentially unchanged; what moves it is the upstream
 decision of which detections across two revisits are the same physical object.
-A \HeadParamsRound-parameter pairing head, supervised for free from
-change-detection masks, reaches \EOnePixelFOne{} pixel F1 on LEVIR-CD against
-\AnyChangeFOne{} for the strongest zero-shot peer, and transfers to WHU-CD
-unchanged at \ETwoPixelFOne. To measure reports we introduce Change-Fact-Score,
-which reduces a report to atomic claims with a deterministic extractor, so no
-language model sits inside the metric. It exposes what n-gram overlap hides: a
-vision--language model shown both images writes fluent prose while deciding at
-chance (\EFourVLMChgAcc\%) whether anything changed. Swapping only the pairing
-moves report factuality by \EFiveGain{} points, at \ESixHeadDelta~ms per tile.
+A \HeadParamsRound-parameter pairing head, trained from existing
+change-detection masks without additional correspondence labels, reaches
+\EOnePixelFOne{} pixel F1 on LEVIR-CD and transfers to WHU-CD without
+retraining at \ETwoPixelFOne. To measure reports we introduce Change-Fact-Score,
+which deterministically scores the direction and object class of atomic claims;
+counts are evaluated separately with CountMAE, and no language model sits
+inside either metric. It exposes what n-gram overlap hides: a vision--language
+model shown both images writes fluent prose but reaches only
+\EFourVLMChgAcc\% accuracy in deciding whether anything changed. Swapping only
+the pairing moves report factuality by \EFiveGain{} points, at
+\ESixHeadDelta~ms per tile.
