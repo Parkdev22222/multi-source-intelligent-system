@@ -188,6 +188,19 @@ results are in `results/levir_cc_scene/`. Pilot values remain only in the
 - [x] WHU-CD is reported as transfer without an unverified published baseline;
       differing WHU splits are not mixed into the table.
 
+### Title and keywords
+
+The title must render in **two lines**. A third line costs a seventh page --
+measured, not assumed. Candidates were compiled and counted; at the current
+content, 10--11 words fits and 12--13 does not, depending on the words.
+
+It names the pairing head and the claim-level evaluation, the two contributions
+a reader should be able to cite. It deliberately does not assert the grounding
+null ("pairing, not prompting"): the paper's own position is that the
+crop-level ladder *cannot* decide that question and that graph aggregation
+earns a neighbourhood-level counting claim, so such a title would overstate
+what the experiments support.
+
 ### Known measurement caveats
 
 - **Hungarian assignment does not reproduce bit-for-bit.** Re-measuring E2 on
