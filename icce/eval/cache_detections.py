@@ -50,16 +50,54 @@ def load_mask(path: Optional[Path], shape: Tuple[int, int]) -> Optional[np.ndarr
     return m > 127
 
 
+# The RLE decoder lives in the production package, whose import chain reaches
+# src.database and therefore sqlalchemy. When that dependency is missing the
+# import raises, and a bare `except Exception` here used to turn an environment
+# fault into a silent per-detection None -- every caller then rasterised
+# bounding boxes instead of masks, pixel metrics came out several points low,
+# and the run still recorded `pixel_scoring: sam3_masks`. A wrong number
+# wearing a right label is the one outcome this module must not produce, so the
+# import failure is now separated from "this detection has no usable mask" and
+# reported once, loudly.
+_DECODER_UNAVAILABLE: Optional[str] = None
+
+
+def _rle_decoder():
+    """The pipeline's RLE decoder, or None with a single loud warning."""
+    global _DECODER_UNAVAILABLE
+    try:
+        from src.pairing.temporal_pairing import _decode_rle
+        return _decode_rle
+    except Exception as exc:
+        if _DECODER_UNAVAILABLE is None:
+            _DECODER_UNAVAILABLE = f"{type(exc).__name__}: {exc}"
+            logger.error(
+                "instance-mask decoding is UNAVAILABLE (%s). Pixel metrics "
+                "would fall back to bounding-box rasterisation and read "
+                "several points low; this is an environment fault, not a "
+                "property of the method. Install the missing dependency from "
+                "requirements.txt and re-run.", _DECODER_UNAVAILABLE)
+        return None
+
+
+def decoder_unavailable() -> Optional[str]:
+    """Why mask decoding is unavailable, or None when it works."""
+    _rle_decoder()
+    return _DECODER_UNAVAILABLE
+
+
 def decode_mask(mask_rle: Optional[str], shape: Tuple[int, int]) -> Optional[np.ndarray]:
     """Decode the pipeline's RLE mask; returns None when unavailable."""
     if not mask_rle:
         return None
+    decode = _rle_decoder()
+    if decode is None:
+        return None
     try:
-        from src.pairing.temporal_pairing import _decode_rle
-        m = _decode_rle(mask_rle)
-        return m.astype(bool) if m is not None and m.shape == shape else None
+        m = decode(mask_rle)
     except Exception:
         return None
+    return m.astype(bool) if m is not None and m.shape == shape else None
 
 
 def coverage_of(

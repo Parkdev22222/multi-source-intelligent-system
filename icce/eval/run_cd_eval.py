@@ -233,9 +233,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ).raise_if_dirty(allow=args.allow_leakage)
 
     gt_masks = load_gt_masks(args.dataset, args.split, samples)
-    use_masks = not args.bbox_pixels and any(d.mask_rle for s in samples for d in s.current)
+
+    # Whether masks *exist* in the cache and whether they *decode* are different
+    # questions, and only the second one decides what the pixel metrics mean.
+    # Asking the first was how a run with a broken decoder wrote bbox numbers
+    # under `pixel_scoring: sam3_masks`. A cache that carries masks we cannot
+    # decode is an environment fault: refuse rather than silently report a
+    # lower bound as the result. `--bbox-pixels` remains the way to ask for the
+    # bounding-box measurement on purpose.
+    from icce.eval.cache_detections import decode_mask as _decode, decoder_unavailable
+    has_rle = any(d.mask_rle for s in samples for d in s.current)
+    decodes = has_rle and any(
+        _decode(d.mask_rle, (s.image_size[1], s.image_size[0])) is not None
+        for s in samples[:8] for d in s.current)
+    if has_rle and not decodes and not args.bbox_pixels:
+        raise SystemExit(
+            "the cache carries instance masks but none of them decode "
+            f"({decoder_unavailable() or 'unknown cause'}). Pixel metrics would "
+            "silently degrade to bounding-box rasterisation and read several "
+            "points low. Fix the environment (requirements.txt), or pass "
+            "--bbox-pixels to request the bounding-box measurement on purpose.")
+    use_masks = not args.bbox_pixels and decodes
     if not use_masks:
-        logger.warning("no cached instance masks -- pixel metrics use bbox rasterisation "
+        logger.warning("no usable instance masks -- pixel metrics use bbox rasterisation "
                        "and are a lower bound")
 
     rows = []
