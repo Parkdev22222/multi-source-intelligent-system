@@ -115,7 +115,8 @@ def build() -> None:
     # ---- detections and cross-frame evidence ------------------------------
     y_f, h_f = 0.757, 0.095
     lw_ = 0.46
-    box(ax, L, y_f, lw_, h_f, "SAM3 detections", fs=7.2)
+    box(ax, L, y_f, lw_, h_f, "SAM3 detections",
+        sub="past $P$, current $C$ · geo-referenced", fs=7.2)
     box(ax, R - lw_, y_f, lw_, h_f, "cross-frame evidence",
         sub="same footprint, both frames", fill=FILL_EVID, edge=EDGE_EVID,
         fs=7.2)
@@ -160,18 +161,27 @@ def build() -> None:
     ty, th = 0.215, 0.155
     n, gap = 4, 0.028
     bw = (W - gap * (n - 1)) / n
-    tail = [("change\ninstances", FILL_STAGE, EDGE_STAGE, "-"),
-            ("knowledge\ngraph", FILL_STAGE, EDGE_STAGE, "-"),
-            ("LLM\nreport", FILL_STAGE, EDGE_STAGE, "-"),
-            ("Change-\nFact-Score", FILL_EVAL, EDGE_EVAL, (0, (2.5, 2)))]
-    for i, (label, fill, edge, ls) in enumerate(tail):
+    # (label, sub): the label may wrap, and only `sub` is set in muted type, so
+    # a wrapped label is never mistaken for a label plus a caption.
+    tail = [(("change\ninstances", None), FILL_STAGE, EDGE_STAGE, "-"),
+            (("knowledge graph", "optional context"), FILL_STAGE, EDGE_STAGE, "-"),
+            (("LLM\nreport", None), FILL_STAGE, EDGE_STAGE, "-"),
+            (("Change-\nFact-Score", None), FILL_EVAL, EDGE_EVAL, (0, (2.5, 2)))]
+    for i, ((label, sub), fill, edge, ls) in enumerate(tail):
         x = L + i * (bw + gap)
         ax.add_patch(FancyBboxPatch((x, ty), bw, th,
                                     boxstyle="round,pad=0.008,rounding_size=0.018",
                                     linewidth=0.9, facecolor=fill,
                                     edgecolor=edge, linestyle=ls, zorder=2))
-        ax.text(x + bw / 2, ty + th / 2, label, ha="center", va="center",
-                fontsize=6.9, color=INK, zorder=3, linespacing=1.35)
+        if sub:
+            ax.text(x + bw / 2, ty + th * 0.60, label, ha="center",
+                    va="center", fontsize=6.9, color=INK, zorder=3,
+                    linespacing=1.35)
+            ax.text(x + bw / 2, ty + th * 0.28, sub, ha="center", va="center",
+                    fontsize=5.9, color=MUTED, zorder=3)
+        else:
+            ax.text(x + bw / 2, ty + th / 2, label, ha="center", va="center",
+                    fontsize=6.9, color=INK, zorder=3, linespacing=1.35)
         if i:
             arrow(ax, x - gap, ty + th / 2, x, ty + th / 2,
                   ls=(0, (2.5, 2)) if i == n - 1 else "-", zorder=5)

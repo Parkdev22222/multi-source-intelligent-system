@@ -3,10 +3,12 @@
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{../docs/method_figure.pdf}
-\caption{Pipeline overview. The learned head matches detections and verifies
-unmatched instances from co-located evidence; its inventory may be augmented
-with graph context before report generation. The auxiliary state output is
-shown for completeness but is not evaluated on the binary benchmarks.}
+\caption{Pipeline. Detections from both revisits enter the learned head, which
+matches them and verifies the unmatched ones against evidence sampled from the
+same footprint in both frames. The state branch labels matched pairs, and its
+modified outputs are scored as change instances; only the stationary/moved
+distinction is unverifiable under binary benchmark labels. The graph supplies
+context to one of the grounding conditions compared, not to all of them.}
 \label{fig:architecture}
 \end{figure}
 
