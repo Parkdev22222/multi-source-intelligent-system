@@ -3,11 +3,10 @@
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{../docs/method_figure.pdf}
-\caption{The pipeline. The learned head matches instances across two revisits
-and verifies the unmatched ones, with cross-frame evidence feeding the
-verifier. The annotations are the paper's central result: the head is worth
-\EOnePairingGain{} pixel F1, the grounding conditions less than
-\EFourLadderSpread{} CFS-F1.}
+\caption{Pipeline overview. The learned head matches detections and verifies
+unmatched instances from co-located evidence; its inventory may be augmented
+with graph context before report generation. The auxiliary state output is
+shown for completeness but is not evaluated on the binary benchmarks.}
 \label{fig:architecture}
 \end{figure}
 

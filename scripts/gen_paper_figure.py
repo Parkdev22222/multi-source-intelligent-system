@@ -22,8 +22,8 @@ Design constraints, in order:
   * It shows the mechanism and where the paper's gain comes from, not the
     software architecture.
 
-The two callouts are read from the result JSON, not typed, so the figure cannot
-drift from the tables the way a hand-drawn one would.
+The report gain and latency callout is read from the result JSON, not typed, so
+the figure cannot drift from the tables the way a hand-drawn one would.
 
     python scripts/gen_paper_figure.py
 """
@@ -66,29 +66,31 @@ def _load(rel: str) -> dict | None:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def read_callouts() -> tuple[str, str]:
-    """Gain at the pairing head, and spread across grounding conditions."""
-    cd = _load("results/levir_cd_test/cd_results.json")
-    if cd:
-        by = {r["name"]: r for r in cd["results"]}
-        gain = (by["learned head (ours)"]["f1"]
-                - by["heuristic (production)"]["f1"]) * 100
-        head = f"+{gain:.1f} pixel F1"
-    else:
-        head = "pixel F1"
-        print("warning: no LEVIR-CD results; head callout left unquantified")
+def read_callout() -> str:
+    """Controlled pairing-to-report gain and incremental pairing latency."""
+    learned = _load("results/levir_cc_caption/report_results_caption.json")
+    heuristic = _load(
+        "results/levir_cc_caption_heuristic_pairing/report_results_caption.json"
+    )
+    efficiency = _load("results/efficiency/efficiency.json")
 
-    rp = _load("results/levir_cc_caption/report_results_caption.json")
-    if rp:
-        f1 = {r["name"]: r["cfs_f1"] for r in rp["results"]}
-        ladder = [f1[k] for k in ("llm_struct", "llm_flat_rag", "llm_graphrag")
-                  if k in f1]
-        spread = (max(ladder) - min(ladder)) * 100
-        ground = f"$<${spread + 0.05:.1f} CFS-F1"
-    else:
-        ground = "CFS-F1"
-        print("warning: no report results; grounding callout left unquantified")
-    return head, ground
+    gain = None
+    if learned and heuristic:
+        def graph_f1(blob):
+            rows = {r["name"]: r for r in blob["results"]}
+            return rows["llm_graphrag"]["cfs_f1"]
+        gain = (graph_f1(learned) - graph_f1(heuristic)) * 100
+
+    latency = None
+    if efficiency:
+        stages = {r["stage"]: r for r in efficiency["stages"]}
+        latency = (stages["pairing: learned head (ours)"]["per_item_ms"]
+                   - stages["pairing: heuristic (production)"]["per_item_ms"])
+
+    if gain is None or latency is None:
+        print("warning: incomplete E5/E6 results; callout left unquantified")
+        return "pairing changes report factuality at negligible cost"
+    return f"Pairing swap: +{gain:.2f} CFS-F1  ·  +{latency:.2f} ms/tile"
 
 
 def box(ax, x, y, w, h, label, sub=None, fill=FILL_STAGE, edge=EDGE_STAGE,
@@ -121,7 +123,7 @@ def arrow(ax, x1, y1, x2, y2, color=LINE, lw=0.9, ls="-", zorder=1, shrink=0.0):
 
 
 def build() -> None:
-    head_gain, ground_spread = read_callouts()
+    result_callout = read_callout()
 
     fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
     ax.set_xlim(0, 1)
@@ -132,72 +134,92 @@ def build() -> None:
     W = R - L
     cx = (L + R) / 2
 
-    # ---- detection --------------------------------------------------------
-    y_det, h_det = 0.868, 0.098
-    box(ax, L, y_det, W, h_det, "SAM3  open-vocabulary detection  ($t_0$, $t_1$)",
-        sub="never trained on either benchmark  ·  geo-referenced", fs=7.0)
+    # ---- inputs and feature preparation ----------------------------------
+    y_in, h_in = 0.910, 0.060
+    box(ax, 0.18, y_in, 0.64, h_in, "TWO CO-REGISTERED REVISITS",
+        sub="past image $t_0$  ·  current image $t_1$", fs=5.8)
 
-    ax.text(cx + 0.035, 0.828, "detections  $P$, $C$", ha="left", va="center",
-            fontsize=6.0, color=MUTED, style="italic")
+    y_feat, h_feat = 0.770, 0.095
+    left_x, left_w = L, 0.545
+    right_x, right_w = 0.605, R - 0.605
+    box(ax, left_x, y_feat, left_w, h_feat,
+        "SAM3 DETECTIONS + PAIR FEATURES",
+        sub="past $P$ · current $C$  |  CLIP · geometry · context",
+        fill=FILL_STAGE, edge=EDGE_STAGE, fs=5.2)
+    box(ax, right_x, y_feat, right_w, h_feat,
+        "CO-LOCATED CROSS-FRAME EVIDENCE",
+        sub="same footprint in both images",
+        fill=FILL_EVID, edge=EDGE_EVID, fs=4.8)
+    arrow(ax, 0.41, y_in, 0.30, y_feat + h_feat)
+    arrow(ax, 0.59, y_in, 0.79, y_feat + h_feat)
 
     # ---- the learned head, emphasised ------------------------------------
-    hy, hh = 0.372, 0.394
+    hy, hh = 0.305, 0.420
     ax.add_patch(FancyBboxPatch((L, hy), W, hh,
                                 boxstyle="round,pad=0.008,rounding_size=0.018",
                                 linewidth=1.6, facecolor=FILL_HEAD,
                                 edgecolor=EDGE_HEAD, zorder=2))
     ax.text(cx, hy + hh - 0.040, "LEARNED PAIRING HEAD", ha="center",
-            va="center", fontsize=7.5, color=EDGE_HEAD, fontweight="bold",
+            va="center", fontsize=7.3, color=EDGE_HEAD, fontweight="bold",
             zorder=3)
-    ax.text(cx, hy + hh - 0.078, "20k parameters  ·  supervised from CD masks",
-            ha="center", va="center", fontsize=6.0, color=MUTED, zorder=3)
-    ax.text(R - 0.020, hy + 0.028, head_gain, ha="right", va="center",
-            fontsize=6.8, color=EDGE_HEAD, fontweight="bold", zorder=4)
+    ax.text(cx, hy + hh - 0.078, "19.8k parameters  ·  trained from change masks",
+            ha="center", va="center", fontsize=5.8, color=MUTED, zorder=3)
 
-    iw, ih = 0.415, 0.092
-    r1 = hy + 0.176
-    r2 = hy + 0.068
-    box(ax, L + 0.022, r1, iw, ih, "match", sub="one-to-one assignment",
-        fill="#ffffff", edge=EDGE_HEAD, fs=6.9, lw=0.8)
-    box(ax, R - 0.022 - iw, r1, iw, ih, "state", sub="stationary / moved",
-        fill="#ffffff", edge=EDGE_HEAD, fs=6.9, lw=0.8)
-    box(ax, L + 0.022, r2, iw, ih, "verify", sub="is it real change?",
-        fill="#ffffff", edge=EDGE_HEAD, fs=6.9, lw=0.8)
-    box(ax, R - 0.022 - iw, r2, iw, ih, "cross-frame evidence",
-        sub="same footprint, both frames", fill=FILL_EVID, edge=EDGE_EVID,
-        fs=6.9, lw=0.8)
-    arrow(ax, R - 0.024 - iw, r2 + ih / 2, L + 0.024 + iw, r2 + ih / 2,
-          color=EDGE_EVID, lw=1.1, zorder=5)
+    iw, ih = 0.520, 0.092
+    ix = L + 0.045
+    r_match = hy + 0.205
+    r_verify = hy + 0.065
+    box(ax, ix, r_match, iw, ih, "MATCH + AUXILIARY STATE",
+        sub="same object? · stationary / moved / modified",
+        fill="#ffffff", edge=EDGE_HEAD, fs=5.8, lw=0.8)
+    box(ax, ix, r_verify, iw, ih, "VERIFY UNMATCHED INSTANCES",
+        sub="real change or detection miss?",
+        fill="#ffffff", edge=EDGE_HEAD, fs=5.8, lw=0.8)
+    arrow(ax, ix + iw / 2, r_match, ix + iw / 2, r_verify + ih,
+          color=LINE, lw=0.9, zorder=5)
+    ax.text(ix + iw / 2 + 0.020, (r_match + r_verify + ih) / 2,
+            "unmatched only", ha="left", va="center", fontsize=4.6,
+            color=MUTED, style="italic", zorder=6)
 
-    arrow(ax, cx, y_det, cx, hy + hh)
+    # Pair features feed matching; image-derived co-located evidence feeds
+    # only the unmatched verifier.
+    arrow(ax, left_x + left_w / 2, y_feat, ix + iw / 2, r_match + ih,
+          color=LINE, lw=0.9, zorder=5)
+    elbow_x = R - 0.045
+    target_y = r_verify + ih / 2
+    ax.plot([right_x + right_w / 2, elbow_x, elbow_x],
+            [y_feat, y_feat - 0.025, target_y], color=EDGE_EVID,
+            linewidth=1.0, zorder=4)
+    arrow(ax, elbow_x, target_y, ix + iw, target_y,
+          color=EDGE_EVID, lw=1.0, zorder=5)
+
+    ax.text(cx + 0.10, hy + 0.019, result_callout,
+            ha="center", va="center", fontsize=5.0, color=EDGE_HEAD,
+            fontweight="bold", zorder=4,
+            bbox=dict(boxstyle="round,pad=0.18", facecolor="#ffffff",
+                      edgecolor=EDGE_HEAD, linewidth=0.7))
 
     # ---- tail as a strip, not a stack ------------------------------------
-    ty, th = 0.150, 0.132
+    ty, th = 0.070, 0.145
     n = 4
     gap = 0.030
     bw = (W - gap * (n - 1)) / n
-    tail = [("change\ninstances", FILL_STAGE, EDGE_STAGE, "-"),
-            ("knowledge\ngraph", FILL_STAGE, EDGE_STAGE, "-"),
-            ("LLM\nreport", FILL_STAGE, EDGE_STAGE, "-"),
-            ("Change-\nFact-Score", FILL_EVAL, EDGE_EVAL, (0, (2.5, 2)))]
-    for i, (label, fill, edge, ls) in enumerate(tail):
+    tail = [("PAIRING RESULTS", "matched · moved · modified\nappeared · disappeared",
+             FILL_STAGE, EDGE_STAGE, "-"),
+            ("GROUNDED\nEVIDENCE", "current inventory\noptional graph context",
+             FILL_STAGE, EDGE_STAGE, "-"),
+            ("GROUNDED LLM\nREPORT", None, FILL_STAGE, EDGE_STAGE, "-"),
+            ("DETERMINISTIC\nEVALUATION", "references + GT masks\nCFS · ChgAcc · CountMAE",
+             FILL_EVAL, EDGE_EVAL, (0, (2.5, 2)))]
+    for i, (label, sub, fill, edge, ls) in enumerate(tail):
         x = L + i * (bw + gap)
-        ax.add_patch(FancyBboxPatch((x, ty), bw, th,
-                                    boxstyle="round,pad=0.008,rounding_size=0.018",
-                                    linewidth=0.9, facecolor=fill,
-                                    edgecolor=edge, linestyle=ls, zorder=2))
-        ax.text(x + bw / 2, ty + th / 2, label, ha="center", va="center",
-                fontsize=6.5, color=INK, zorder=3, linespacing=1.35)
+        box(ax, x, ty, bw, th, label, sub=sub, fill=fill, edge=edge,
+            fs=4.6, lw=0.9, ls=ls)
         if i:
             arrow(ax, x - gap, ty + th / 2, x, ty + th / 2,
                   ls=(0, (2.5, 2)) if i == n - 1 else "-", zorder=5)
 
-    arrow(ax, cx, hy, cx, ty + th)
-    ax.text(R - 0.010, ty - 0.055, ground_spread, ha="right", va="center",
-            fontsize=6.5, color=MUTED, fontweight="bold")
-
-    ax.text(L, ty - 0.055, "the accuracy lever is upstream of the LLM",
-            ha="left", va="center", fontsize=6.4, color=INK, style="italic")
+    arrow(ax, L + bw / 2, hy, L + bw / 2, ty + th)
 
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
     OUT_PDF.parent.mkdir(parents=True, exist_ok=True)
@@ -207,7 +229,7 @@ def build() -> None:
     plt.close(fig)
     print(f"wrote {OUT_PDF.relative_to(ROOT)}")
     print(f"wrote {OUT_PNG.relative_to(ROOT)}  (preview only; the paper uses the PDF)")
-    print(f"callouts: head={head_gain!r}  grounding={ground_spread!r}")
+    print(f"callout: {result_callout!r}")
 
 
 if __name__ == "__main__":
