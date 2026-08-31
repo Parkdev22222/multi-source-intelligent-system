@@ -3,11 +3,11 @@
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{../docs/method_figure.pdf}
-\caption{Pipeline. Cross-frame evidence is computed on the detection
-footprints, sampled from both images, so it follows detection rather than
-running beside it. The state branch's modified output is scored like any other
-change instance; only its stationary/moved distinction is unverifiable under
-binary labels. The graph feeds one grounding condition, not all.}
+\caption{Pipeline. Cross-frame evidence crops the detection footprints from
+both images, so it follows detection rather than running beside it. The state
+branch's modified output is scored like any other change instance; only
+stationary/moved is unverifiable under binary labels. The graph feeds one
+grounding condition, not all.}
 \label{fig:architecture}
 \end{figure}
 
