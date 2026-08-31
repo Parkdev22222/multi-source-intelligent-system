@@ -121,7 +121,7 @@ def build() -> None:
 
     # ---- detections and cross-frame evidence ------------------------------
     y_f, h_f = 0.757, 0.095
-    lw_ = 0.46
+    lw_ = 0.445
     box(ax, L, y_f, lw_, h_f, "SAM3 detections",
         sub="one set per image · geo-referenced", fs=7.2)
     box(ax, R - lw_, y_f, lw_, h_f, "cross-frame evidence",
@@ -136,6 +136,9 @@ def build() -> None:
                 zorder=1)
     arrow(ax, x_det, y_bus, x_det, y_f + h_f)
     arrow(ax, x_xf, y_bus, x_xf, y_f + h_f)
+    # cross_frame.compute(frames[own], frames[other], boxes[own]) takes the
+    # detection footprints, so it runs after detection rather than beside it.
+    arrow(ax, L + lw_, y_f + h_f / 2, R - lw_, y_f + h_f / 2, zorder=5)
 
     # ---- the learned head -------------------------------------------------
     # Wiring matters here. `match` splits its candidates two ways: matched
