@@ -41,6 +41,10 @@ exactly two timepoints, so what we exercise is spatial aggregation over the
 crops of one tile, not history over time. The design's main hypothesis is
 therefore not evaluated here.
 
+\textbf{Co-registration is assumed.} Cross-frame evidence compares the same
+footprint in both acquisitions, so misregistration degrades it; both
+benchmarks ship registered pairs and the tolerance is untested.
+
 \textbf{Claim extraction is rule-based and not independently validated.} This
 is what keeps a language model out of the metric, but the extractor sees only
 the direction cues, object classes and quantifiers it encodes, and is tuned to

@@ -55,7 +55,7 @@ EDGE_EVID = "#c8802a"
 FILL_EVAL = "#ffffff"
 EDGE_EVAL = "#7a8492"
 
-FIG_W, FIG_H = 3.5, 2.30
+FIG_W, FIG_H = 3.5, 2.14
 
 
 
@@ -110,7 +110,7 @@ def build() -> None:
     # ---- input ------------------------------------------------------------
     y_in, h_in = 0.895, 0.068
     box(ax, 0.20, y_in, 0.60, h_in,
-        "two co-registered revisits  ($t_0$, $t_1$)", fs=7.2)
+        "two co-registered revisits of a tile", fs=7.2)
 
     # ---- detections and cross-frame evidence ------------------------------
     y_f, h_f = 0.757, 0.095
