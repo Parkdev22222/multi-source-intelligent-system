@@ -108,9 +108,16 @@ def build() -> None:
     chan_x = ix + inner_w + CHANNEL / 2
 
     # ---- input ------------------------------------------------------------
-    y_in, h_in = 0.895, 0.068
-    box(ax, 0.13, y_in, 0.74, h_in,
-        "before and after images of the same place", fs=7.2)
+    # Two boxes rather than one sentence: that there are *two* images is the
+    # premise of the whole task, and a reader should see it rather than parse
+    # it. Both feed both consumers -- detection runs on each image separately,
+    # cross-frame evidence comes from comparing them -- so the four edges meet
+    # at a short bus instead of crossing each other diagonally.
+    y_in, h_in = 0.900, 0.062
+    iw_in = 0.30
+    x_before, x_after = 0.185, 0.515
+    box(ax, x_before, y_in, iw_in, h_in, "before image", fill="#ffffff", fs=7.2)
+    box(ax, x_after, y_in, iw_in, h_in, "after image", fill="#ffffff", fs=7.2)
 
     # ---- detections and cross-frame evidence ------------------------------
     y_f, h_f = 0.757, 0.095
@@ -120,8 +127,15 @@ def build() -> None:
     box(ax, R - lw_, y_f, lw_, h_f, "cross-frame evidence",
         sub="same location in both images", fill=FILL_EVID, edge=EDGE_EVID,
         fs=7.2)
-    arrow(ax, 0.36, y_in, L + lw_ / 2, y_f + h_f)
-    arrow(ax, 0.64, y_in, R - lw_ / 2, y_f + h_f)
+    y_bus = (y_in + y_f + h_f) / 2
+    x_det, x_xf = L + lw_ / 2, R - lw_ / 2
+    ax.plot([x_det, x_xf], [y_bus, y_bus], color=LINE, linewidth=0.9,
+            solid_capstyle="round", zorder=1)
+    for x_src in (x_before + iw_in / 2, x_after + iw_in / 2):
+        ax.plot([x_src, x_src], [y_in, y_bus], color=LINE, linewidth=0.9,
+                zorder=1)
+    arrow(ax, x_det, y_bus, x_det, y_f + h_f)
+    arrow(ax, x_xf, y_bus, x_xf, y_f + h_f)
 
     # ---- the learned head -------------------------------------------------
     # Wiring matters here. `match` splits its candidates two ways: matched
