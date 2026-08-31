@@ -1,38 +1,65 @@
-# Paper source
+# ICCE-Asia 2026 paper
 
-ICCE-Asia 2026 submission.
+Submission title:
 
-This is built on the venue's own template package
-(`Conference-LaTeX-template_10-17-19`, the IEEE conference template ICCE-Asia
-distributes). `IEEEtran.cls` in this directory is that package's copy,
-byte-for-byte, so the build does not depend on whichever IEEEtran a local TeX
-installation carries -- and `main.tex` starts from the template's preamble,
-with its two departures marked in the file.
+> **Lightweight Instance Pairing for Factual LLM Change Reports in Consumer
+> Satellite Monitoring**
 
-Two things about the template are worth knowing before submitting:
+The paper studies a consumer-facing satellite monitoring pipeline that turns
+two revisits into a written change report. Its contribution order is deliberate:
 
-- **Paper size is A4.** The official ICCE-Asia 2026 submission page requires
-  A4, single-spaced, two-column pages with at least 10pt type; `main.tex` uses
-  `[conference,a4paper]` accordingly.
-- **The template's bibliography is a hand-written `thebibliography`; this paper
-  keeps BibTeX.** Every entry in `refs.bib` records the source it was verified
-  against, and that trail is worth more than matching the template's example.
-  `IEEEtran.bst` is not in the template package -- it ships with TeX Live. If
-  the venue wants LaTeX sources rather than a PDF, send the generated
-  `main.bbl` with them.
+1. a 19,781-parameter learned instance-pairing head;
+2. controlled evidence that pairing quality changes final report factuality;
+3. a deterministic, domain-specific report-evaluation protocol;
+4. a secondary analysis of retrieval and graph aggregation.
 
-**Blinding is still unknown**, and it decides how the author block and the
-repository link are handled. The author block is currently the template's, with
-one author and its placeholder fields intact.
+Change-Fact-Score (CFS) is an evaluation protocol, not the primary algorithmic
+contribution. It matches claims by change direction and object class; numerical
+count error is reported separately with CountMAE. The central result is the E5
+controlled swap: with crops, prompt, LLM and GraphRAG fixed, learned pairing
+improves CFS-F1 by 12.97 points and reduces unsupported claims from 65.99% to
+38.28% at 0.70 ms additional latency per tile.
+
+## Venue format
+
+The source starts from the ICCE-Asia conference template and vendors the
+provided `IEEEtran.cls`. ICCE-Asia 2026 requires regular papers to be 2--6
+pages, A4, two-column, single-spaced, and at least 10pt. `main.tex` therefore
+uses:
+
+```tex
+\documentclass[conference,a4paper]{IEEEtran}
+```
+
+The current layout is A4 and six pages in the checked build. The final upload
+must be rebuilt after author information and the bibliography are present;
+that final PDF, rather than an intermediate `pdflatex` pass, is the authority
+for the page count.
+
+The public submission instructions do not state an anonymous-review policy.
+The supplied template contains an author block, but confirm blinding with the
+secretariat if needed before uploading.
 
 ## Build
 
+From the repository root:
+
 ```bash
-python paper/make_tables.py     # builds the two tables the harness does not emit
-cd paper && latexmk -pdf main.tex
+python paper/make_tables.py
+cd paper
+latexmk -pdf main.tex
 ```
 
-On a bare pod that needs a TeX installation first:
+Equivalent manual sequence:
+
+```bash
+pdflatex main.tex
+bibtex main
+pdflatex main.tex
+pdflatex main.tex
+```
+
+Minimal TeX Live packages for a bare environment:
 
 ```bash
 apt-get install -y --no-install-recommends \
@@ -40,103 +67,105 @@ apt-get install -y --no-install-recommends \
     texlive-publishers texlive-fonts-recommended
 ```
 
-`texlive-publishers` is still needed, not for the class -- that one is vendored
-here -- but for `IEEEtran.bst`.
+`texlive-publishers` supplies `IEEEtran.bst`; the repository vendors the class
+but not the bibliography style. A single `pdflatex` pass without the `.bbl`
+produces unresolved citations and is **not submission-ready**. If source files
+are ever requested, include the generated `main.bbl` as well.
 
-The document **compiles clean** against the vendored class: 8 pages, no errors,
-no undefined references, no overfull boxes, no font substitutions. `latexmk`
-runs BibTeX itself; by hand it is pdflatex, bibtex, pdflatex, pdflatex.
+## Reproducible numbers and tables
 
-## How numbers get into the paper
+- Prose values come from macros in `numbers.tex`; all paper-facing macros are
+  marked `FINAL`.
+- Tables emitted by the evaluation harness are included directly from
+  `results/`.
+- `paper/make_tables.py` builds three cross-run or compacted tables:
+  `detection.tex`, `e5_pairing.tex`, and `e7_scene.tex`.
+- Generated table comments record the run directory, checkpoint and sample
+  count. Missing inputs cause generation to stop rather than invent a row.
 
-Nothing is typed by hand, in either direction.
+After rerunning an experiment: regenerate its result files, run
+`paper/make_tables.py`, update the corresponding macros in `numbers.tex`, and
+rebuild the PDF.
 
-- **Tables** are `\input` straight from the directories the harness writes
-  (`../results/...`). Re-run an experiment and the table changes with it.
-- **Numbers in prose** come from macros in `numbers.tex`, one per measurement,
-  each tagged with the run it was read from and marked `FINAL` or
-  `PROVISIONAL`. Prose never contains a literal number that also appears in a
-  table.
-- `make_tables.py` builds the two tables that span runs: E5 compares two run
-  directories, and E7's scene results ship as JSON with no LaTeX writer. It
-  refuses to invent a table whose inputs are missing, and it prints the
-  provenance of every row it does write into the `.tex` as a comment.
+## Paper structure
 
-If you re-run an experiment, the sequence is: re-run, then `make_tables.py`,
-then update the affected macros in `numbers.tex`. The macro block names the
-source run for exactly this reason.
-
-## Structure
-
-Rewritten to follow an accepted ICCE-Asia paper's flow, at six pages:
-
-| Section | Contents |
+| Section | Role |
 |---|---|
-| I. Introduction | the product, the two product failures, contributions |
-| II. Related Work | change detection (supervised ceiling + zero-shot peer), captioning and grounding |
-| III. Proposed Method | 5-step procedure, then A. Learned Pairing, B. Cross-Frame Evidence, C. Change-Fact-Score, D. Grounding Conditions |
-| IV. Experiment | A. Setup, B. Main Result, C. Ablation Study |
-| V. Discussion | A. Why grounding did not move factuality, B. Limitations, C. Future Work |
+| I. Introduction | consumer-facing failure modes and contribution order |
+| II. Related Work | supervised ceiling, zero-shot context, captioning and grounding |
+| III. Proposed Method | pipeline, learned pairing, cross-frame evidence, deterministic evaluation, grounding conditions |
+| IV. Experiment | setup; detection; pairing-to-report result; cost; VLM/caption baselines; ablations |
+| V. Discussion | where factuality is determined; narrower GraphRAG result; limitations and future work |
 
-There is no separate Conclusion: the accepted paper ends on Discussion and so
-does this one. `cfs.tex` was folded into the method, `limitations.tex` and
-`conclusion.tex` into the discussion.
+There is no separate Conclusion section; the concluding interpretation and
+future work are folded into Discussion to stay within six pages.
 
-Five tables, down from nine. `tables/detection.tex` folds what the harness
-emits as four tables (pixel and instance, on each of two datasets) into one;
-the efficiency table was dropped and its three numbers moved into prose.
+Five tables remain. The detection table combines pixel- and instance-level
+results on LEVIR-CD and WHU-CD. E5 is intentionally placed immediately after
+the detection result because it connects upstream pairing to the final report.
+The efficiency table is expressed in prose.
 
 ## Experiment status
 
-Every experiment now runs at the scale the paper reports, and `numbers.tex`
-carries no `PROVISIONAL` macro.
+| Experiment | Scale | Purpose |
+|---|---:|---|
+| E1: LEVIR-CD | 128 test tiles | in-domain pairing and change detection |
+| E2: WHU-CD | 690 test pairs | transfer without retraining or threshold tuning |
+| E3/E4: LEVIR-CC | 1,929 crops | report and grounding conditions |
+| E5: pairing swap | same 1,929 crops | main detection-to-report result |
+| E6: deployment cost | 512 pairs | pairing latency within the full pipeline |
+| E7: neighbourhood level | 218 scenes | count preservation across crop aggregation |
 
-| Section | Scale |
-|---|---|
-| E1 (LEVIR-CD) | 128 test tiles |
-| E2 (WHU-CD) | 690 test pairs |
-| E3/E4 (grounding ladder) | 1929 crops, `results/levir_cc_caption/` (+ the Qwen pass merged in from `results/levir_cc_caption_vlm/`) |
-| E5 (pairing swap) | same 1929 crops, heuristic arm in `results/levir_cc_caption_heuristic_pairing/` |
-| E6 (deployment cost) | 512 pairs of the full LEVIR-CC cache |
-| E7 (neighbourhood level) | 218 scenes, `results/levir_cc_scene/` |
+The Qwen VLM pass is merged from `results/levir_cc_caption_vlm/`; the heuristic
+E5 arm is in `results/levir_cc_caption_heuristic_pairing/`; neighbourhood
+results are in `results/levir_cc_scene/`. Pilot values remain only in the
+`Pilot*` macro block and must not be typeset as final results.
 
-The pilot-scale values (128 crops of the 8 largest scenes) survive only in the
-`Pilot*` macro block at the bottom of `numbers.tex`, and only to support the
-sentence that compares the two scales. Do not typeset them as results.
+## Submission checklist
 
-Every `\input` in `experiments.tex` resolves against a file that exists in
-`results/`, so the build no longer depends on an experiment landing first.
+### Required before initial submission
 
-## Before submission
+- [x] Use the ICCE-Asia template with A4, two columns, single spacing and 10pt.
+- [x] Keep the regular paper within the 2--6 page limit in the current layout.
+- [x] Include the 189-word abstract and IEEE keywords.
+- [x] Use embedded fonts and a non-encrypted PDF in the checked build.
+- [ ] Replace all five template author blocks in `main.tex` with the actual
+      authors, affiliations, cities/countries, emails or ORCIDs; remove unused
+      blocks and confirm author order.
+- [ ] Use the first author's email for the ICCE-Asia submission account.
+- [ ] Confirm whether the review is anonymous; if it is, anonymise the author
+      block and any repository-identifying material.
+- [ ] Run the complete BibTeX build and confirm that there are no `[?]`,
+      undefined citations/references, or missing bibliography pages.
+- [ ] Confirm that the **bibliography-inclusive, author-complete PDF** is still
+      A4 and no more than six pages.
+- [ ] Visually inspect the final PDF at 100%: title/author layout, architecture
+      figure text, table width, page breaks, and the final reference list.
+- [ ] Enter title, abstract, keywords, authors and author order in the portal
+      exactly as they appear in the PDF.
+- [ ] Select the closest AI/ML-for-consumer-electronics track; use the image/
+      video or miscellaneous CE track only if the portal taxonomy differs.
+- [ ] Upload the final PDF, complete submission, and retain the confirmation
+      page and email.
 
-- [x] **Six pages.** Builds clean against the vendored class: no errors, no
-      undefined references, no overfull or underfull boxes.
-- [x] Confirm the page limit and paper size on the official submission page:
-      regular papers are 2--6 pages and must use A4, two-column, single-spaced,
-      at least 10pt formatting
-- [ ] Confirm whether review is blind; the public submission instructions do
-      not state a blinding policy
-- [ ] Fill the author block in `main.tex`
-- [ ] `baselines.json`: WHU-CD still has **no verified rows**. It no longer
-      shows as a TODO in the paper, because `tables/detection.tex` prints only
-      the zero-shot tier and LEVIR-CD is the dataset that has one. Verify the
-      WHU rows or leave the transfer result without a published comparison --
-      WHU-CD has no standard split, so rows from different papers are often
-      not comparable anyway.
-- [ ] `refs.bib`: the model and recent-paper entries have been checked against
-      a primary source (each names its source in a comment above it), but the
-      older entries still lack volume, issue and page numbers -- these were
-      omitted rather than guessed. Add them from the publisher's record.
-- [ ] LEVIR-CC baselines are **done**: five verified rows from one table
-      (Chg2Cap Table IX), same 1929-pair split and same CIDEr-D as ours
-- [ ] Compile once and read the reference list: `sam3` and `qwen25vl` are
-      deliberately abbreviated to `and others`, which IEEEtran renders as
-      "et al."; confirm the venue accepts that for a 38-author paper rather
-      than requiring the full list.
+### Bibliography and comparison checks
 
-Done since the first draft, kept here so it is not re-checked:
+- [ ] Complete missing volume, issue and page metadata for older entries in
+      `refs.bib` where publisher records are available.
+- [ ] Read the rendered author lists for `sam3` and `qwen25vl`; they currently
+      use `and others`, which IEEEtran renders as “et al.”
+- [x] LEVIR-CC caption baselines are verified from Chg2Cap Table IX.
+- [x] AnyChange is presented as zero-shot context, not as a
+      supervision-matched baseline.
+- [x] WHU-CD is reported as transfer without an unverified published baseline;
+      differing WHU splits are not mixed into the table.
 
-- `numbers.tex` is fully `FINAL`
-- `docs/architecture.png` is included by the `figure` environment at the top of
-  `method.tex`, so `fig:architecture` resolves
-- every entry in `refs.bib` is cited, and every `\cite` key resolves to an entry
+### Deliberately deferred, not submission blockers
+
+- Independent manual validation of the rule-based claim extractor.
+- Rescoring released outputs from an external specialist captioning model.
+- Paired confidence intervals or repeated stochastic generation passes.
+- Evaluation on true multi-revisit histories and change types beyond buildings.
+
+These are stated as limitations or future work and should not be presented as
+completed experiments.
