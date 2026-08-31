@@ -124,34 +124,48 @@ def build() -> None:
     arrow(ax, 0.64, y_in, R - lw_ / 2, y_f + h_f)
 
     # ---- the learned head -------------------------------------------------
-    hy, hh = 0.408, 0.307
+    # Wiring matters here. `match` splits its candidates two ways: matched
+    # pairs go to `state`, whose `modified` label becomes a change instance,
+    # and unmatched detections go to `verify`, which either keeps them
+    # (appeared / disappeared) or drops them. An earlier draft drew `state` as
+    # a box with no input and no output, which made it unreadable, and drew
+    # `verify` as a pass-through, which hid the discard that the whole
+    # contribution rests on.
+    hy, hh = 0.408, 0.300
     ax.add_patch(FancyBboxPatch((L, hy), W, hh,
                                 boxstyle="round,pad=0.008,rounding_size=0.018",
                                 linewidth=1.6, facecolor=FILL_HEAD,
                                 edgecolor=EDGE_HEAD, zorder=2))
-    ax.text(cx, hy + hh - 0.040, "learned pairing head", ha="center",
+    ax.text(cx, hy + hh - 0.038, "learned pairing head", ha="center",
             va="center", fontsize=7.8, color=EDGE_HEAD, fontweight="bold",
             zorder=3)
 
-    ih = 0.076
-    r1, r2 = 0.565, 0.441
-    bw2 = (inner_w - 0.028) / 2
-    box(ax, ix, r1, bw2, ih, "match", fill="#ffffff", edge=EDGE_HEAD,
-        fs=7.2, lw=0.8)
-    box(ax, ix + bw2 + 0.028, r1, bw2, ih, "state", fill="#ffffff",
-        edge=EDGE_HEAD, fs=7.2, lw=0.8)
-    box(ax, ix, r2, inner_w, ih, "verify", fill="#ffffff", edge=EDGE_HEAD,
+    mw, mh, my = 0.42, 0.058, 0.586
+    box(ax, cx - mw / 2, my, mw, mh, "match", fill="#ffffff", edge=EDGE_HEAD,
         fs=7.2, lw=0.8)
 
-    arrow(ax, ix + bw2 / 2, r1, ix + bw2 / 2, r2 + ih, color=EDGE_HEAD,
+    ih, ry = 0.076, 0.462
+    bw2 = (inner_w - 0.028) / 2
+    x_state, x_verify = ix, ix + bw2 + 0.028
+    box(ax, x_state, ry, bw2, ih, "state", sub="modified = change",
+        fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
+    box(ax, x_verify, ry, bw2, ih, "verify", sub="keep or discard",
+        fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
+
+    arrow(ax, cx - mw / 4, my, x_state + bw2 / 2, ry + ih, color=EDGE_HEAD,
           zorder=5)
-    ax.text(ix + bw2 / 2 + 0.016, (r1 + r2 + ih) / 2, "unmatched only",
+    arrow(ax, cx + mw / 4, my, x_verify + bw2 / 2, ry + ih, color=EDGE_HEAD,
+          zorder=5)
+    ax.text(x_state + bw2 / 2 - 0.010, (my + ry + ih) / 2, "matched",
+            ha="right", va="center", fontsize=6.2, color=MUTED, style="italic",
+            zorder=5)
+    ax.text(x_verify + bw2 / 2 + 0.010, (my + ry + ih) / 2, "unmatched",
             ha="left", va="center", fontsize=6.2, color=MUTED, style="italic",
             zorder=5)
 
     arrow(ax, L + lw_ / 2, y_f, L + lw_ / 2, hy + hh)
-    ax.add_patch(FancyArrowPatch((chan_x, y_f), (ix + inner_w + 0.002,
-                                                 r2 + ih / 2),
+    ax.add_patch(FancyArrowPatch((chan_x, y_f), (x_verify + bw2 + 0.002,
+                                                 ry + ih / 2),
                                  arrowstyle="-|>", mutation_scale=7,
                                  linewidth=1.1, color=EDGE_EVID,
                                  connectionstyle="angle,angleA=-90,angleB=0,rad=4",
@@ -187,6 +201,9 @@ def build() -> None:
                   ls=(0, (2.5, 2)) if i == n - 1 else "-", zorder=5)
 
     arrow(ax, L + bw / 2, hy, L + bw / 2, ty + th)
+    ax.text(L + bw / 2 + 0.014, (hy + ty + th) / 2,
+            "modified · appeared · disappeared", ha="left", va="center",
+            fontsize=6.0, color=MUTED, style="italic")
 
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
     OUT_PDF.parent.mkdir(parents=True, exist_ok=True)

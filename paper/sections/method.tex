@@ -3,12 +3,11 @@
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{../docs/method_figure.pdf}
-\caption{Pipeline. Detections from both revisits enter the learned head, which
-matches them and verifies the unmatched ones against evidence sampled from the
-same footprint in both frames. The state branch labels matched pairs, and its
-modified outputs are scored as change instances; only the stationary/moved
-distinction is unverifiable under binary benchmark labels. The graph supplies
-context to one of the grounding conditions compared, not to all of them.}
+\caption{Pipeline. The figure shows the routing; two things it cannot show are
+that only the stationary/moved distinction in the state branch is unverifiable
+under binary benchmark labels --- its modified output is scored like any other
+change instance --- and that the graph supplies context to one of the grounding
+conditions compared, not to all of them.}
 \label{fig:architecture}
 \end{figure}
 
