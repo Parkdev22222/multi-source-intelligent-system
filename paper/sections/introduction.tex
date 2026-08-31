@@ -36,16 +36,14 @@ it is. Such a service would look correct in demos while remaining unreliable
 in many evaluated cases.
 
 \textbf{Our approach} generates reports from object instances detected and
-matched across the two images.
-\DetectorName~\cite{sam3} generates object-instance proposals for each frame
-using open-vocabulary text prompts, without being trained on either benchmark;
-CLIP~\cite{radford2021learning} embeddings describe appearance; a learned head
-decides which detections across revisits are the same object and which
-unmatched detections are genuine change; survivors accumulate in a
-spatio-temporal knowledge graph keyed by location; and
-\LLMName~\cite{exaone4} writes the report from that structure rather than from
-pixels. Because the report is assembled from objects, counting is a property of
-the evidence rather than of the prose.
+matched across two images. \DetectorName~\cite{sam3} generates object-instance
+proposals using open-vocabulary text prompts, and CLIP~\cite{radford2021learning}
+encodes their appearance. A lightweight pairing head then matches proposals
+across revisits and verifies whether unmatched instances represent genuine
+changes. The resulting object-level evidence, augmented with location-based
+graph context, is provided to \LLMName~\cite{exaone4} for report generation.
+Consequently, building counts are derived from explicit object instances rather
+than unconstrained language generation.
 
 \textbf{Pairing is the report-level bottleneck.} Holding the report model,
 prompt and graph grounding fixed, replacing only the pairing increases
