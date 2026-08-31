@@ -46,22 +46,18 @@ spatio-temporal knowledge graph keyed by location; and
 pixels. Because the report is assembled from objects, counting is a property of
 the evidence rather than of the prose.
 
-\textbf{Where factuality is won was not where we expected.} The
-retrieval-augmented generation literature encourages the assumption that the
-language model's context is the lever. Over \EFourNCrops{} crops we find
-otherwise: aggregating raw detections into a change inventory is worth
-\EFourAggGain{} CFS-F1, but adding top-$k$ retrieval or graph aggregation on
-top moves factuality by less than \EFourLadderSpread{} points, in both
-directions. What moves it, by \EFiveGain{} points, is improving the pairing
-that produced the evidence. The design implication is direct: spend the
-engineering budget upstream of the language model, not on its prompt.
+\textbf{Pairing is the report-level bottleneck.} Holding the report model,
+prompt and graph grounding fixed, replacing only the pairing increases CFS-F1
+by \EFiveGain{} points and lowers unsupported claims from
+\EFiveHeuristicHal\% to \EFiveLearnedHal\%. By comparison, over
+\EFourNCrops{} crops, adding top-$k$ retrieval or graph aggregation to the same
+structured instance evidence produces a spread below \EFourLadderSpread{}
+CFS-F1 points. The central result is therefore not that a larger context makes
+the writer safer, but that better correspondence makes its evidence reliable.
 
 Our contributions are as follows.
 
 \begin{itemize}
-\item An LLM change-reporting pipeline built on segmentation and
-      vision--language foundation models, evaluated on the factuality of its
-      prose rather than only on segmentation overlap.
 \item \textbf{Learned instance pairing.} Every non-learned strategy we tested
       --- geometry, a hand-tuned CLIP-plus-geometry heuristic, and the
       published zero-shot reference --- lands in the same narrow band
@@ -72,21 +68,23 @@ Our contributions are as follows.
       \EOnePixelFOne{} and transfers to WHU-CD unchanged at \ETwoPixelFOne,
       cutting instance count error from \ETwoHeuristicCountMAE{} to
       \ETwoCountMAE.
-\item \textbf{Change-Fact-Score}, a deterministic metric for claim direction
-      and object class, paired with a separate count-error measure and with no
-      language model inside the evaluator.
-\item \textbf{Where the budget should go.} Retrieval and graph aggregation over
-      the same evidence have an observed CFS-F1 spread of only
-      \EFourLadderSpread{} points;
-      improving the upstream pairing moves it by \EFiveGain{} and drops
-      unsupported claims from \EFiveHeuristicHal\% to \EFiveLearnedHal\%, at
-      \ESixHeadDelta~ms per tile.
+\item \textbf{Detection-to-report evidence.} With generation and grounding
+      fixed, the learned pairing improves CFS-F1 by \EFiveGain{} points and
+      drops unsupported claims from \EFiveHeuristicHal\% to
+      \EFiveLearnedHal\%, at only \ESixHeadDelta~ms additional latency.
+\item \textbf{Deterministic report evaluation.} We use a domain-specific
+      protocol for claim direction and object class, with CountMAE for counts
+      and no language model inside the evaluator.
+\item \textbf{Grounding analysis.} Retrieval and graph aggregation over fixed
+      crop-level evidence show only a \EFourLadderSpread-point observed spread;
+      graph aggregation instead contributes to neighbourhood-level count
+      preservation.
 \end{itemize}
 
 We are explicit about scope. We evaluate on public benchmarks, not a live
 subscriber base; the consumer setting motivates the design and the metrics
 rather than supplying the data. We do not claim state-of-the-art pixel-level
 change detection --- models trained on these benchmarks' own splits reach
-86--91 F1 and we do not approach that. Our comparisons are against methods that
-have not been trained on the benchmark, and against the build a practitioner
-would try first.
+86--91 F1 and we do not approach that. AnyChange supplies zero-shot context
+rather than a supervision-matched comparison; our controlled baselines are the
+pairing strategies evaluated with the same detections and data.

@@ -1,23 +1,19 @@
-We study a consumer-facing satellite change-monitoring service --- a subscriber
-pins a neighbourhood and, after each revisit, receives a short written report of
-what changed --- from the current AI stack: a promptable segmentation
-foundation model (\DetectorName) for open-vocabulary instance detection, CLIP
-embeddings for appearance, a spatio-temporal knowledge graph for history, and a
-large language model (\LLMName) for the report. Because the deliverable is
-prose, we evaluate what it writes, not only what it segments. Two failures that
-segmentation metrics cannot see become product failures: a report that invents
-construction, and one that miscounts it. Neither is fixed where practitioners
-reach first. Adding retrieval or graph aggregation to the language model's
-context leaves factuality essentially unchanged; what moves it is the upstream
-decision of which detections across two revisits are the same physical object.
-A \HeadParamsRound-parameter pairing head, trained from existing
-change-detection masks without additional correspondence labels, reaches
-\EOnePixelFOne{} pixel F1 on LEVIR-CD and transfers to WHU-CD without
-retraining at \ETwoPixelFOne. To measure reports we introduce Change-Fact-Score,
-which deterministically scores the direction and object class of atomic claims;
-counts are evaluated separately with CountMAE, and no language model sits
-inside either metric. It exposes what n-gram overlap hides: a vision--language
-model shown both images writes fluent prose but reaches only
-\EFourVLMChgAcc\% accuracy in deciding whether anything changed. Swapping only
-the pairing moves report factuality by \EFiveGain{} points, at
-\ESixHeadDelta~ms per tile.
+We study a consumer-facing satellite monitoring service that converts two
+revisits of a neighbourhood into a short written change report. Such a service
+must not only localise change but also avoid inventing or miscounting changed
+objects. We show that this report-level factuality is determined primarily by
+an upstream decision: which detections across revisits represent the same
+physical object. We therefore introduce a \HeadParamsRound-parameter instance
+pairing head trained from existing change masks without additional
+correspondence labels. It reaches \EOnePixelFOne{} pixel F1 on LEVIR-CD and,
+without retraining or threshold tuning, \ETwoPixelFOne{} on WHU-CD. More
+importantly, replacing only a CLIP--geometry pairing heuristic with the learned
+head improves report factuality by \EFiveGain{} CFS-F1 points and reduces
+unsupported claims from \EFiveHeuristicHal\% to \EFiveLearnedHal\%, while
+adding only \ESixHeadDelta~ms per tile. We evaluate report claims with a
+deterministic protocol that extracts change direction and object class;
+counting is assessed separately with CountMAE, and no language model is used as
+judge. This evaluation reveals that a vision--language baseline shown both
+images reaches only \EFourVLMChgAcc\% change-presence accuracy despite fluent
+prose. In contrast, retrieval and graph aggregation over fixed instance
+evidence have an observed CFS-F1 spread below \EFourLadderSpread{} points.

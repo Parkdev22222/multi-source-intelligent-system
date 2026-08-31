@@ -21,7 +21,6 @@ files, not of the prose.
 \subsection{Main Result}
 
 \input{tables/detection}
-\input{../results/levir_cc_caption/table_factuality_caption}
 
 \textbf{Detection.} In Table~\ref{tab:detection} the row worth pointing at is
 not ours. Geometry-only pairing (\EOneGeoFOne), the production heuristic
@@ -41,6 +40,24 @@ between a usable number and noise. WHU-CD is not the easier dataset: it
 averages \ETwoGTDensity{} ground-truth instances per tile against LEVIR-CD's
 \EOneGTDensity, so the two F1 values are not comparable as difficulties.
 
+\textbf{Pairing determines report factuality.} Holding grounding pinned at
+\texttt{llm\_graphrag} and swapping only the pairing moves report factuality by
+\EFiveGain{} CFS-F1 (Table~\ref{tab:e5_pairing}). Unsupported claims fall from
+\EFiveHeuristicHal\% to \EFiveLearnedHal\%, while ChgAcc rises from
+\EFiveHeuristicChgAcc{} to \EFiveLearnedChgAcc. Because the crops, prompt,
+language model and grounding are fixed, this directly connects upstream
+correspondence quality to the final report.
+
+\input{tables/e5_pairing}
+
+\textbf{Cost.} Segmentation is \ESixDetectShare\% of the per-tile budget. The
+learned head costs \ESixHeadMs~ms against \ESixHeuristicMs~ms for the heuristic
+it replaces --- \ESixHeadDelta~ms more, \ESixPipelineShare\% of the pipeline.
+The comparison is within one tile population, since both strategies scale with
+the number of detections.
+
+\input{../results/levir_cc_caption/table_factuality_caption}
+
 \textbf{The external baseline is unreliable on change presence.}
 \texttt{vlm\_direct} reaches ChgAcc \EFourVLMChgAcc\% while
 producing confident, well-formed prose, at CFS-F1 \EFourVLMFOne{} against
@@ -58,23 +75,6 @@ wrong register --- but that reading is an inference from a metric split, not a
 measurement, which is why we score claims directly instead.
 
 \input{../results/levir_cc_caption/table_levir_cc_caption}
-
-\textbf{Pairing determines report factuality.} Holding grounding pinned at
-\texttt{llm\_graphrag} and swapping only the pairing moves report factuality by
-\EFiveGain{} CFS-F1 (Table~\ref{tab:e5_pairing}). Two of every three claims the
-heuristic-fed report makes are unsupported (\EFiveHeuristicHal\%), against one
-in four (\EFiveLearnedHal\%) for the learned head; ChgAcc rises from
-\EFiveHeuristicChgAcc{} to \EFiveLearnedChgAcc. This is the measurement that
-connects detection quality to the product.
-
-\input{tables/e5_pairing}
-
-\textbf{Cost.} Segmentation is \ESixDetectShare\% of the per-tile budget. The
-learned head costs \ESixHeadMs~ms against \ESixHeuristicMs~ms for the heuristic
-it replaces --- \ESixHeadDelta~ms more, \ESixPipelineShare\% of the pipeline,
-which is what makes the accuracy free in practice. The comparison is only
-meaningful within one tile population, since both pairing strategies scale with
-the detection count per tile.
 
 \subsection{Ablation Study}
 \label{ssec:ablation}

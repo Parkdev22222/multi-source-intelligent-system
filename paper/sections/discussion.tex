@@ -1,17 +1,21 @@
 \section{Discussion}
 
-\subsection{Why Grounding Did Not Move Factuality}
+\subsection{Where Report Factuality Is Determined}
 
-We set out expecting the knowledge graph to reduce unsupported claims and it
-does not, at crop level, by any margin we can measure. The reason is not that
-the graph fails but that the question was posed at the wrong unit. A crop-level
-ladder gives every condition the same inventory for the crop under description
-and then scores only claims about that crop; the retrieved history is about
-other crops, so it has almost nothing to act on. Reported as an ablation it
-would be noise presented as a result. At neighbourhood level, where the
-conditions become genuinely different representations of the same observations,
-the graph earns a claim --- and it is a counting claim, not a factuality one.
-We state it that way rather than the way we intended to.
+The controlled pairing swap provides the main system result. When the language
+model, prompt, crops and graph grounding are identical, changing only the
+object correspondence raises report CFS-F1 by \EFiveGain{} points. The gain
+therefore enters before generation: the language model cannot recover an
+object that was incorrectly paired or remove a false change already admitted
+to its inventory.
+
+The knowledge graph answers a narrower question. At crop level every grounding
+condition receives the same current-crop inventory, while retrieved history
+mostly concerns other crops; retrieval and graph aggregation therefore have
+little opportunity to change a scored claim. At neighbourhood level the
+representations genuinely differ, and graph aggregation preserves counts
+better than concatenation or top-$k$ retrieval. This is a counting result, not
+evidence that GraphRAG generally improves report factuality.
 
 A second null belongs here for the same reason. On our data a deterministic
 template is indistinguishable from a language model on CFS, and at
