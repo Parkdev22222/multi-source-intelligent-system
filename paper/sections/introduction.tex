@@ -21,10 +21,9 @@ anything appeared at all. Two product failures follow.
       it is computed against a mask the user never sees.
 \item \textbf{Miscounting.} A report may detect new construction correctly but
       claim that several buildings appeared when only one did, undermining its
-      reliability for operational monitoring. A model can score
-      well on IoU while the instance count derived from it is off by an order of
-      magnitude, because IoU rewards covering the right pixels rather than
-      resolving the right objects.
+      reliability for operational monitoring. Pixel-level IoU may remain high even when the model predicts the wrong
+      number of buildings, because IoU measures spatial overlap rather than
+      instance separation or counting accuracy.
 \end{enumerate}
 
 \textbf{A direct vision--language baseline fails on both.} A practitioner asked to ship this
