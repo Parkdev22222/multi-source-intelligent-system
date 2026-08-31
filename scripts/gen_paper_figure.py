@@ -109,14 +109,14 @@ def build() -> None:
 
     # ---- input ------------------------------------------------------------
     y_in, h_in = 0.895, 0.068
-    box(ax, 0.20, y_in, 0.60, h_in,
-        "same area, two dates", fs=7.2)
+    box(ax, 0.13, y_in, 0.74, h_in,
+        "before and after images of the same place", fs=7.2)
 
     # ---- detections and cross-frame evidence ------------------------------
     y_f, h_f = 0.757, 0.095
     lw_ = 0.46
     box(ax, L, y_f, lw_, h_f, "SAM3 detections",
-        sub="past and current · geo-referenced", fs=7.2)
+        sub="one set per image · geo-referenced", fs=7.2)
     box(ax, R - lw_, y_f, lw_, h_f, "cross-frame evidence",
         sub="same location in both images", fill=FILL_EVID, edge=EDGE_EVID,
         fs=7.2)
