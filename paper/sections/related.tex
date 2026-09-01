@@ -1,11 +1,13 @@
 \section{Related Work}
 
-\textbf{Change detection.} Siamese encoders and their transformer successors
-dominate benchmark tables: FC-Siam-Diff~\cite{daudt2018fully},
-STANet~\cite{chen2020spatial}, SNUNet~\cite{fang2021snunet},
-BIT~\cite{chen2021remote}, ChangeFormer~\cite{bandara2022transformer} and
-TinyCD~\cite{codegoni2023tinycd} reach 86--91 F1 on LEVIR-CD, trained on that
-dataset's own split and predicting a binary mask. Neither property suits a
+\textbf{Supervised change detection.} Remote-sensing change detection has been
+studied extensively using Siamese CNNs and transformer-based architectures.
+Representative methods include STANet~\cite{chen2020spatial},
+SNUNet~\cite{fang2021snunet}, BIT~\cite{chen2021remote},
+ChangeFormer~\cite{bandara2022transformer}, and
+TinyCD~\cite{codegoni2023tinycd}, which report 86--91 F1 on LEVIR-CD when
+trained on its designated training split and predict a binary change mask.
+Neither property suits a
 service that must name and count objects in a neighborhood it was never
 trained on, so we treat them as a reference ceiling rather than as competitors.
 AnyChange~\cite{zheng2024segment} instead adapts SAM to change detection
