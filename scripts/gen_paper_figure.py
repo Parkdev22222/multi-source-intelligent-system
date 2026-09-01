@@ -93,7 +93,7 @@ def build() -> None:
     ax.set_xlim(0, 1)
     # The drawing occupies 0.22 upwards; cropping to it removes a band of empty
     # canvas that bbox_inches alone does not reclaim from an invisible axes.
-    ax.set_ylim(0.205, 0.975)
+    ax.set_ylim(0.188, 0.975)
     ax.axis("off")
 
     L, R = 0.03, 0.97
@@ -156,7 +156,7 @@ def build() -> None:
     # which detections are left over (so verify's decision applies). Drawing
     # that as arrows would put control flow and data flow in the same notation,
     # which is what made earlier versions read wrongly; the subs carry it.
-    hy, hh = 0.408, 0.300
+    hy, hh = 0.398, 0.310
     ax.add_patch(FancyBboxPatch((L, hy), W, hh,
                                 boxstyle="round,pad=0.008,rounding_size=0.018",
                                 linewidth=1.6, facecolor=FILL_HEAD,
@@ -165,8 +165,8 @@ def build() -> None:
             va="center", fontsize=7.8, color=EDGE_HEAD, fontweight="bold",
             zorder=3)
 
-    ih = 0.072
-    r1, r2 = 0.548, 0.436
+    ih = 0.070
+    r1, r2 = 0.534, 0.422
     bw2 = (inner_w - 0.028) / 2
     x_match, x_state = ix, ix + bw2 + 0.028
     c_match, c_state = x_match + bw2 / 2, x_state + bw2 / 2
@@ -182,7 +182,7 @@ def build() -> None:
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
 
     # one input, fanned to all three branches
-    y_hb = r1 + ih + 0.022
+    y_hb = r1 + ih + 0.046
     ax.plot([c_match, c_state], [y_hb, y_hb], color=EDGE_HEAD, linewidth=0.9,
             solid_capstyle="round", zorder=4)
     ax.plot([x_det_c, x_det_c], [hy + hh, y_hb], color=EDGE_HEAD,
@@ -190,6 +190,16 @@ def build() -> None:
     arrow(ax, c_match, y_hb, c_match, r1 + ih, color=EDGE_HEAD, zorder=5)
     arrow(ax, c_state, y_hb, c_state, r1 + ih, color=EDGE_HEAD, zorder=5)
     arrow(ax, x_gap, y_hb, x_gap, r2 + ih, color=EDGE_HEAD, zorder=5)
+    # Detections reach all three branches, but in two different shapes: pair
+    # features are per candidate pair and feed match and state, unary features
+    # are per detection and feed verify. Without these labels the fan reads as
+    # a router picking one branch, which is what it was mistaken for.
+    ax.text((c_match + x_gap) / 2, y_hb - 0.016, "pair features",
+            ha="center", va="center", fontsize=6.0, color=MUTED,
+            style="italic", zorder=5)
+    ax.text(x_gap + 0.014, r1 - 0.020, "unary features",
+            ha="left", va="center", fontsize=6.0, color=MUTED,
+            style="italic", zorder=5)
 
     arrow(ax, x_det_c, y_f, x_det_c, hy + hh)
     ax.add_patch(FancyArrowPatch((chan_x, y_f), (ix + inner_w + 0.002,
@@ -200,7 +210,7 @@ def build() -> None:
                                  shrinkA=0, shrinkB=0, zorder=5))
 
     # ---- tail -------------------------------------------------------------
-    ty, th = 0.215, 0.155
+    ty, th = 0.198, 0.155
     n, gap = 4, 0.028
     bw = (W - gap * (n - 1)) / n
     # (label, sub): the label may wrap, and only `sub` is set in muted type, so
