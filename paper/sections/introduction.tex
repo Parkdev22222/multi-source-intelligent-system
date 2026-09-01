@@ -59,16 +59,14 @@ evidence reliable.
 Our contributions are as follows.
 
 \begin{itemize}
-\item \textbf{Learned instance pairing.} Every non-learned strategy we tested
-      --- geometry, a hand-tuned CLIP-plus-geometry heuristic, and the
-      published zero-shot reference --- lands in the same narrow band
-      (\EOneGeoFOne, \EOneHeuristicFOne, \AnyChangeFOne{} F1) regardless of
-      segmentation quality, although the supervision settings differ. A
-      \HeadParamsRound-parameter head trained without additional correspondence
-      annotations leaves it at
-      \EOnePixelFOne{} and transfers to WHU-CD unchanged at \ETwoPixelFOne,
-      cutting instance count error from \ETwoHeuristicCountMAE{} to
-      \ETwoCountMAE.
+\item \textbf{Learned instance pairing.} On LEVIR-CD, the geometry-only,
+      CLIP--geometry heuristic, and published zero-shot baseline achieve pixel
+      F1 scores of \EOneGeoFOne, \EOneHeuristicFOne, and \AnyChangeFOne,
+      respectively, although their supervision settings differ. Our
+      \HeadParamsRound-parameter pairing head, trained without additional
+      correspondence annotations, raises pixel F1 to \EOnePixelFOne. When
+      applied to WHU-CD without retraining, it achieves \ETwoPixelFOne{} pixel
+      F1 and reduces CountMAE from \ETwoHeuristicCountMAE{} to \ETwoCountMAE.
 \item \textbf{Detection-to-report evidence.} That gain is measured with the
       generation and the grounding held fixed, at \ESixHeadDelta~ms additional
       latency per tile.
