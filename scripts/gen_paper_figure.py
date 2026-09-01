@@ -55,7 +55,7 @@ EDGE_EVID = "#c8802a"
 FILL_EVAL = "#ffffff"
 EDGE_EVAL = "#7a8492"
 
-FIG_W, FIG_H = 3.5, 2.14
+FIG_W, FIG_H = 3.5, 2.018
 
 
 
@@ -68,10 +68,14 @@ def box(ax, x, y, w, h, label, sub=None, fill=FILL_STAGE, edge=EDGE_STAGE,
                                 linewidth=lw, facecolor=fill, edgecolor=edge,
                                 linestyle=ls, mutation_aspect=1.0, zorder=2))
     if sub:
-        ax.text(x + w / 2, y + h * 0.63, label, ha="center", va="center",
-                fontsize=fs, color=INK, zorder=3)
-        ax.text(x + w / 2, y + h * 0.26, sub, ha="center", va="center",
-                fontsize=fs - 1.4, color=MUTED, zorder=3)
+        # A wrapped sub needs the label lifted and its own block dropped, or
+        # the second line runs into the bottom border.
+        two = "\n" in sub
+        ax.text(x + w / 2, y + h * (0.71 if two else 0.63), label, ha="center",
+                va="center", fontsize=fs, color=INK, zorder=3)
+        ax.text(x + w / 2, y + h * (0.30 if two else 0.26), sub, ha="center",
+                va="center", fontsize=fs - 1.4, color=MUTED, zorder=3,
+                linespacing=1.30)
     else:
         ax.text(x + w / 2, y + h / 2, label, ha="center", va="center",
                 fontsize=fs, color=INK, zorder=3)
@@ -93,7 +97,7 @@ def build() -> None:
     ax.set_xlim(0, 1)
     # The drawing occupies 0.22 upwards; cropping to it removes a band of empty
     # canvas that bbox_inches alone does not reclaim from an invisible axes.
-    ax.set_ylim(0.188, 0.975)
+    ax.set_ylim(0.233, 0.975)
     ax.axis("off")
 
     L, R = 0.03, 0.97
@@ -156,81 +160,79 @@ def build() -> None:
     # which detections are left over (so verify's decision applies). Drawing
     # that as arrows would put control flow and data flow in the same notation,
     # which is what made earlier versions read wrongly; the subs carry it.
-    hy, hh = 0.377, 0.347
+    hy, hh = 0.422, 0.302
     ax.add_patch(FancyBboxPatch((L, hy), W, hh,
                                 boxstyle="round,pad=0.008,rounding_size=0.018",
                                 linewidth=1.6, facecolor=FILL_HEAD,
                                 edgecolor=EDGE_HEAD, zorder=2))
-    ax.text(cx, hy + hh - 0.028, "learned pairing head", ha="center",
+    ax.text(cx, hy + hh - 0.024, "learned pairing head", ha="center",
             va="center", fontsize=7.8, color=EDGE_HEAD, fontweight="bold",
             zorder=3)
 
-    ih = 0.068
-    r1, r2 = 0.556, 0.400
-    # The gap between match and state is wide enough for the unary drop to run
-    # down it with visible clearance on both sides; a narrower gap made the
-    # line look like it was grazing the borders.
-    BGAP = 0.050
-    bw2 = (inner_w - BGAP) / 2
-    x_match, x_state = ix, ix + bw2 + BGAP
-    x_gap = x_match + bw2 + BGAP / 2
+    # The three branches sit on one line off one bus. Stacking them, as an
+    # earlier version did, read as a sequence -- match, then state, then
+    # verify -- when in fact all three are computed from the same detections
+    # and none waits on another's output.
+    BGAP = 0.030
+    bw3 = (inner_w - 2 * BGAP) / 3
+    by, bh = 0.444, 0.140
+    cols = [(ix + i * (bw3 + BGAP)) for i in range(3)]
+    ctr = [x + bw3 / 2 for x in cols]
 
-    box(ax, x_match, r1, bw2, ih, "match", sub="same object?",
+    box(ax, cols[0], by, bw3, bh, "match",
+        sub="candidate pairs\nsame object?",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
-    box(ax, x_state, r1, bw2, ih, "state",
-        sub="matched pairs · modified = change",
+    box(ax, cols[1], by, bw3, bh, "state",
+        sub="matched pairs\nmoved or modified",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
-    box(ax, ix, r2, inner_w, ih, "verify",
-        sub="unmatched detections · keep or discard",
+    box(ax, cols[2], by, bw3, bh, "verify",
+        sub="unmatched ones\nkeep or discard",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
 
-    # One detection bus, fanned to all three branches. The drops are pulled in
-    # from the box centres towards the outer edges so the band between them is
-    # clear for the labels that say which feature vector each edge carries.
-    y_hb = 0.666
-    x_dm = x_match + 0.072
-    x_ds = x_state + bw2 - 0.072
-    ax.plot([x_dm, x_ds], [y_hb, y_hb], color=EDGE_HEAD, linewidth=0.9,
+    y_hb = 0.672
+    y_tip = 0.624
+    ax.plot([ctr[0], ctr[2]], [y_hb, y_hb], color=EDGE_HEAD, linewidth=0.9,
             solid_capstyle="round", zorder=4)
     ax.plot([x_det_c, x_det_c], [hy + hh, y_hb], color=EDGE_HEAD,
             linewidth=0.9, zorder=4)
-    arrow(ax, x_dm, y_hb, x_dm, r1 + ih, color=EDGE_HEAD, zorder=5)
-    arrow(ax, x_ds, y_hb, x_ds, r1 + ih, color=EDGE_HEAD, zorder=5)
-    # The unary vector is 14 values: 10 built from the detection and 4 appended
-    # from cross-frame evidence (see unary_features). They merge when the
-    # vector is constructed, not at the verifier's input, so the two legs meet
-    # at a junction and a single edge continues into verify.
-    y_merge = r2 + ih + 0.064
-    ax.plot([x_gap, x_gap], [y_hb, y_merge], color=EDGE_HEAD, linewidth=0.9,
+
+    # Cross-frame evidence is not a fourth input to verify: its four values are
+    # appended to the unary vector when that vector is built (unary_features),
+    # so the two legs meet at a junction on verify's own edge and one arrow
+    # continues down.
+    y_merge = 0.652
+    ax.plot([ctr[2], ctr[2]], [y_hb, y_merge], color=EDGE_HEAD, linewidth=0.9,
             zorder=4)
     ax.plot([chan_x, chan_x], [y_f, y_merge], color=EDGE_EVID, linewidth=1.1,
             zorder=4)
-    ax.plot([chan_x, x_gap], [y_merge, y_merge], color=EDGE_EVID,
+    ax.plot([chan_x, ctr[2]], [y_merge, y_merge], color=EDGE_EVID,
             linewidth=1.1, solid_capstyle="round", zorder=4)
-    ax.plot([x_gap], [y_merge], marker="o", markersize=2.6,
+    ax.plot([ctr[2]], [y_merge], marker="o", markersize=2.6,
             color=EDGE_HEAD, zorder=6)
-    arrow(ax, x_gap, y_merge, x_gap, r2 + ih, color=EDGE_HEAD, zorder=5)
 
-    # Which vector each edge carries. Every label is set against the arrow it
-    # describes, never on a stretch of the shared bus: a label centred on a bus
-    # segment reads as belonging to whichever drop is nearest, which put
-    # "unary" on the edge into state in an earlier version. match and state are
-    # therefore labelled twice rather than once between them.
-    y_lab = (y_hb + r1 + ih) / 2
-    for x_edge, side in ((x_dm + 0.012, "left"), (x_ds - 0.012, "right")):
-        ax.text(x_edge, y_lab, "pair features (16)", ha=side, va="center",
-                fontsize=5.9, color=MUTED, style="italic", zorder=5)
-    y_u = (y_merge + r2 + ih) / 2
-    ax.text(x_gap - 0.014, y_u, "unary features (14)", ha="right",
-            va="center", fontsize=5.9, color=MUTED, style="italic", zorder=5)
-    ax.text(chan_x - 0.022, y_u, "incl. 4 cross-frame", ha="right",
-            va="center", fontsize=5.6, color=EDGE_EVID, style="italic",
-            zorder=5)
+    arrow(ax, ctr[0], y_hb, ctr[0], y_tip, color=EDGE_HEAD, zorder=5)
+    arrow(ax, ctr[1], y_hb, ctr[1], y_tip, color=EDGE_HEAD, zorder=5)
+    arrow(ax, ctr[2], y_merge, ctr[2], y_tip, color=EDGE_HEAD, zorder=5)
+
+    # Each label is centred on its own column, directly under the arrowhead it
+    # belongs to and directly over the box it feeds. Nothing sits on a shared
+    # stretch of bus, where it would read as belonging to the nearest drop.
+    for c, tag in zip(ctr, ("pair features (16)", "pair features (16)",
+                            "unary features (14)")):
+        ax.text(c, 0.610, tag, ha="center", va="center", fontsize=5.4,
+                color=MUTED, style="italic", zorder=5)
+    # Set over the horizontal run inside the head, not over the vertical one
+    # outside it: the strip between the evidence box and the head is 0.017 of
+    # clear space once both rounded borders are drawn, and the label crossed
+    # them both.
+    ax.text((chan_x + ctr[2]) / 2, y_merge + 0.030, "4 cross-frame",
+            ha="center", va="center", fontsize=5.6, color=EDGE_EVID,
+            style="italic", zorder=5)
 
     arrow(ax, x_det_c, y_f, x_det_c, hy + hh)
 
     # ---- tail -------------------------------------------------------------
-    ty, th = 0.198, 0.132
+    ty, th = 0.243, 0.132
     n, gap = 4, 0.028
     bw = (W - gap * (n - 1)) / n
     # (label, sub): the label may wrap, and only `sub` is set in muted type, so
