@@ -279,19 +279,29 @@ def build() -> None:
 
     # ---- tail -------------------------------------------------------------
     ty, th = 0.220, 0.124
-    n, gap = 4, 0.028
+    n, gap = 3, 0.028
     bw = (W - gap * (n - 1)) / n
     # (label, sub): the label may wrap, and only `sub` is set in muted type, so
     # a wrapped label is never mistaken for a label plus a caption.
     # "change inventory", not "change instances". change_instances() returns
     # the three change types and feeds the instance/CD metrics; the report path
     # runs on ChangeEvidence, which from_pairing_result() fills from ALL of
-    # result.outcomes, and which build_contexts()/prompts.py then read. The
-    # box on this path is the inventory: three change types in detail plus the
-    # unchanged total. The old name belonged to the other consumer.
+    # result.outcomes, and which prompts.py then reads. The box on this path is
+    # the inventory: three change types in detail plus the unchanged total. The
+    # old name belonged to the other consumer.
+    #
+    # No knowledge-graph box. Drawn in this strip it claimed the inventory
+    # reaches the LLM through the graph, and it does not: user_prompt() appends
+    # render_inventory(ev) for every llm_* mode and appends graph_context as an
+    # ADDITIONAL block for llm_graphrag alone, so the graph sits beside the
+    # inventory in one condition of six, never carrying it. A bypass edge would
+    # say that, but there is no room to route one above, below or through this
+    # row, and the row cannot grow without costing a seventh page. So the strip
+    # draws the path that is always taken, and the grounding conditions --
+    # graph included -- are enumerated in the text where they can be stated
+    # exactly.
     tail = [(("change\ninventory", None), FILL_STAGE, EDGE_STAGE, "-"),
-            (("knowledge graph", "optional context"), FILL_STAGE, EDGE_STAGE, "-"),
-            (("LLM\nreport", None), FILL_STAGE, EDGE_STAGE, "-"),
+            (("LLM report", None), FILL_STAGE, EDGE_STAGE, "-"),
             (("Change-\nFact-Score", None), FILL_EVAL, EDGE_EVAL, (0, (2.5, 2)))]
     for i, ((label, sub), fill, edge, ls) in enumerate(tail):
         x = L + i * (bw + gap)

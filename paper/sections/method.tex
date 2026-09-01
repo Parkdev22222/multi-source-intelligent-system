@@ -11,8 +11,8 @@ assignment then splits the detections into paired and leftover, deciding which
 scores count. The dashed edge leaving verify is suppression: a detection below
 its threshold is never emitted, and that is where the cross-frame gain
 appears. Matched and moved pairs are not changes; they reach the prompt only
-as a count. In one condition the graph adds a block beside the inventory,
-never replacing it.}
+as a count. What the report is conditioned on varies by grounding condition
+(Section~\ref{ssec:grounding}).}
 \label{fig:architecture}
 \end{figure}
 
@@ -125,6 +125,7 @@ $1 - \text{CFS-P}$. We retain it in tables only as an interpretable complement
 to precision, not as an additional measurement.
 
 \subsection{Grounding Conditions}
+\label{ssec:grounding}
 
 Report generation is conditioned on progressively more of the pipeline's
 structure, giving the ablation of Section~\ref{ssec:ablation}:
