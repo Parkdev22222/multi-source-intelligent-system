@@ -69,7 +69,7 @@ pdflatex main.tex
 reaches the RLE decoder through `src.pairing`, whose import chain pulls in
 `src.database` and therefore `sqlalchemy`. With that dependency missing the
 import used to be swallowed silently, every detection fell back to
-bounding-box rasterisation, and pixel metrics came out several points low
+bounding-box rasterization, and pixel metrics came out several points low
 (WHU-CD by up to 9 F1) while the run still recorded
 `pixel_scoring: sam3_masks`. `run_cd_eval` now refuses to start in that state;
 `--bbox-pixels` remains the way to ask for the bounding-box measurement on
@@ -138,10 +138,10 @@ first thing to cut if the page count moves.
 | E3/E4: LEVIR-CC | 1,929 crops | report and grounding conditions |
 | E5: pairing swap | same 1,929 crops | main detection-to-report result |
 | E6: deployment cost | 512 pairs | pairing latency within the full pipeline |
-| E7: neighbourhood level | 218 scenes | count preservation across crop aggregation |
+| E7: neighborhood level | 218 scenes | count preservation across crop aggregation |
 
 The Qwen VLM pass is merged from `results/levir_cc_caption_vlm/`; the heuristic
-E5 arm is in `results/levir_cc_caption_heuristic_pairing/`; neighbourhood
+E5 arm is in `results/levir_cc_caption_heuristic_pairing/`; neighborhood
 results are in `results/levir_cc_scene/`. Pilot values remain only in the
 `Pilot*` macro block and must not be typeset as final results.
 
@@ -157,7 +157,7 @@ results are in `results/levir_cc_scene/`. Pilot values remain only in the
       authors, affiliations, cities/countries, emails or ORCIDs; remove unused
       blocks and confirm author order.
 - [ ] Use the first author's email for the ICCE-Asia submission account.
-- [ ] Confirm whether the review is anonymous; if it is, anonymise the author
+- [ ] Confirm whether the review is anonymous; if it is, anonymize the author
       block and any repository-identifying material.
 - [ ] Run the complete BibTeX build and confirm that there are no `[?]`,
       undefined citations/references, or missing bibliography pages.
@@ -199,7 +199,7 @@ consumer-facing use case remains explicit in the abstract and Introduction.
 
 The title deliberately does not assert the grounding null ("pairing, not
 prompting"): the paper's own position is that the crop-level ladder *cannot*
-decide that question and that graph aggregation earns a neighbourhood-level
+decide that question and that graph aggregation earns a neighborhood-level
 counting claim. Such a title would overstate what the experiments support.
 
 Rebuild the author-complete PDF and verify the rendered title and six-page limit

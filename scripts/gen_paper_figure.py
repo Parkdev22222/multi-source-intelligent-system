@@ -16,7 +16,7 @@ Design constraints, in order:
   * It has to be no taller than the figure it replaces. The draft is exactly
     six pages with no slack, and a first attempt at a tall vertical chain cost
     a seventh. The pipeline tail is therefore a horizontal strip rather than a
-    stack, which buys back the height the emphasised head needs.
+    stack, which buys back the height the emphasized head needs.
   * Light background. A near-black figure prints as a solid block.
   * Vector output (PDF) so it stays sharp at any zoom.
   * It shows the mechanism and where the paper's gain comes from, not the
@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT_PDF = ROOT / "docs" / "method_figure.pdf"
 OUT_PNG = ROOT / "docs" / "method_figure.png"
 
-# --- palette: light, print-safe, distinguishable in greyscale -------------
+# --- palette: light, print-safe, distinguishable in grayscale -------------
 INK = "#1a1d23"
 MUTED = "#6b7280"
 LINE = "#9aa2af"
@@ -95,7 +95,7 @@ def arrow(ax, x1, y1, x2, y2, color=LINE, lw=0.9, ls="-", zorder=1, shrink=0.0):
 def build() -> None:
     fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
     ax.set_xlim(0, 1)
-    # The drawing occupies 0.22 upwards; cropping to it removes a band of empty
+    # The drawing occupies 0.22 upward; cropping to it removes a band of empty
     # canvas that bbox_inches alone does not reclaim from an invisible axes.
     ax.set_ylim(0.210, 0.975)
     ax.axis("off")
@@ -214,7 +214,7 @@ def build() -> None:
     arrow(ax, ctr[1], y_hb, ctr[1], y_tip, color=EDGE_HEAD, zorder=5)
     arrow(ax, ctr[2], y_merge, ctr[2], y_tip, color=EDGE_HEAD, zorder=5)
 
-    # Each label is centred on its own column, directly under the arrowhead it
+    # Each label is centered on its own column, directly under the arrowhead it
     # belongs to and directly over the box it feeds. Nothing sits on a shared
     # stretch of bus, where it would read as belonging to the nearest drop.
     for c, tag in zip(ctr, ("pair features (16)", "pair features (16)",
@@ -230,7 +230,7 @@ def build() -> None:
             style="italic", zorder=5)
 
     # The suppressed detections leave sideways, not downwards. Down is the
-    # flow axis here, so a dashed edge dropping towards the tail read as "goes
+    # flow axis here, so a dashed edge dropping toward the tail read as "goes
     # on to the next stage" no matter where its head stopped. Right is
     # orthogonal to the flow and cannot be misread as continuation. The label
     # is set vertically because the margin outside verify is 0.09 wide and the
@@ -314,7 +314,7 @@ def build() -> None:
     # which is precisely the failure cross-frame evidence exists to prevent.
     y_out = ((ty + th + 0.008) + (hy - 0.008)) / 2
     arrow(ax, L + bw / 2, hy, L + bw / 2, ty + th)
-    # Centred on the clear band between the two rounded borders, not on the
+    # Centered on the clear band between the two rounded borders, not on the
     # raw gap: the boxstyle pad puts the drawn edges 0.008 outside the given
     # coordinates, and centring on the gap ran the text over both of them.
     ax.text(L + bw / 2 + 0.014, y_out,

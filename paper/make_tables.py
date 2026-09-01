@@ -134,7 +134,7 @@ def build_detection() -> str | None:
         "the whole test set; instance F1 matches predicted change instances to "
         "ground-truth connected components at IoU~$\\geq$~0.5; Count MAE is the "
         "mean absolute error in the number of change instances per tile, in "
-        "instances rather than per cent. AnyChange "
+        "instances rather than a percentage. AnyChange "
         "provides published zero-shot context, not a supervision-matched "
         "comparison: our head uses LEVIR-CD training masks but no correspondence "
         "labels. The same head is applied to WHU-CD unchanged.}",
@@ -213,8 +213,8 @@ def build_e7() -> str | None:
     # what the conditions were given, and on a single-crop scene the three
     # representations are trivially identical, so the spread is worth printing.
     cps = payload.get("crops_per_scene") or {}
-    caption = ("Neighbourhood-level grounding (E7): one report per "
-               "neighbourhood, over every crop of a tile the split provides. "
+    caption = ("Neighborhood-level grounding (E7): one report per "
+               "neighborhood, over every crop of a tile the split provides. "
                "The conditions are three representations of the same "
                "observations, not an additive ladder.")
     if n_scenes is not None:

@@ -42,10 +42,10 @@ Two co-registered revisits of a tile enter and a report leaves
 Let $P$ and $C$ be the detections in the past and current frames. Candidate
 pairs are formed within a geographic radius. For each candidate we compute
 \NPairFeatures{} pair features: CLIP cosine between mask-cropped patches,
-geodesic centre distance normalised by the match radius, IoU of the
+geodesic center distance normalized by the match radius, IoU of the
 geo-referenced boxes, log area ratio, aspect difference, both confidences,
-class agreement, signed centre offsets, mutual-best-match indicators for CLIP
-and geometry, normalised candidate ranks, and candidate densities on both
+class agreement, signed center offsets, mutual-best-match indicators for CLIP
+and geometry, normalized candidate ranks, and candidate densities on both
 sides. The rank and density features matter more than they look: they let the
 head condition on how contested a match is, which a pairwise similarity alone
 cannot express. For each detection we compute \NUnaryFeatures{} unary features:
@@ -61,7 +61,7 @@ unmatched detection is genuine change. State carries three labels but only two
 occur: the IoU gate that admits a pair rules out the centroid shift that would
 label it moved. Its \emph{modified} output enters the change inventory and is
 scored like any other claim. Each has two hidden layers of width 64
-with layer normalisation, GELU and dropout; features are standardised with
+with layer normalization, GELU and dropout; features are standardized with
 statistics fitted on the training split. The whole head is \HeadParams{}
 parameters. Matching is a greedy assignment over $\mathrm{match}$ scores above
 a threshold; a Hungarian variant changes the result by less than 0.1 F1. Both
@@ -87,11 +87,11 @@ frame's pixels, not in its detections.
 For every detection we therefore crop \emph{the same geographic footprint} from
 both frames --- regardless of whether the detector fired in the other frame ---
 and compute four quantities: CLIP cosine between the crops, mean absolute pixel
-difference, normalised cross-correlation, and signed edge-density change, which
+difference, normalized cross-correlation, and signed edge-density change, which
 rises sharply when a roof appears. These are handed to $\mathrm{verify}$ as
 features rather than compared against a fixed threshold. Ablating this evidence
 requires \emph{retraining} without it, not zeroing it at inference: after
-standardisation, zero is not a neutral input, so zeroing measures a broken
+standardization, zero is not a neutral input, so zeroing measures a broken
 model rather than the feature's contribution.
 
 \subsection{Change-Fact-Score}
@@ -119,7 +119,7 @@ the asserted number of instances. Crop-level CountMAE is computed only when a
 numeric count is extracted.
 
 Two properties matter for review. First, \textbf{no language model sits inside
-the metric}, so the model under evaluation cannot optimise against the judge.
+the metric}, so the model under evaluation cannot optimize against the judge.
 Second, \textbf{hallucination rate is not independent}: we define it as
 $1 - \text{CFS-P}$. We retain it in tables only as an interpretable complement
 to precision, not as an additional measurement.

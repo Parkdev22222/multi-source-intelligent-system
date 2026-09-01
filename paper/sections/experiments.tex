@@ -98,7 +98,7 @@ detection dump into a change inventory moves CFS-F1 from \EFourRawFOne{}
 (\texttt{llm\_raw}) to \EFourStructFOne{} (\texttt{llm\_struct}). Adding
 top-$k$ retrieval (\EFourFlatRagFOne) or graph aggregation
 (\EFourGraphRAGFOne) moves it by less than \EFourLadderSpread{} points, and not
-consistently in the graph's favour. Because we do not report paired confidence
+consistently in the graph's favor. Because we do not report paired confidence
 intervals for these generations, we treat this as a small observed spread and
 do not infer a ranking. The reason is structural: all three conditions receive the
 same change inventory for the crop being described, and CFS scores only claims
@@ -109,11 +109,11 @@ wording but rarely a claim. Of \EFourNCrops{} generations,
 Table~\ref{tab:factuality_caption} points the other way and we report it as
 such: at crop level every aggregating condition, the graph included, carries a
 larger count error than the template or the raw detection dump. Aggregation
-costs counts here and earns them back only at the scale of a neighbourhood.
+costs counts here and earns them back only at the scale of a neighborhood.
 
-\textbf{At neighbourhood level the comparison becomes decidable}
+\textbf{At neighborhood level the comparison becomes decidable}
 (Table~\ref{tab:e7_scene}). Generating
-one report per neighbourhood over every crop of a tile, the conditions stop
+one report per neighborhood over every crop of a tile, the conditions stop
 being nested and become three \emph{representations} of the same observations.
 Concatenating every crop's inventory produces a scene count error of
 \ESevenStructCountMAE{} instances; top-$k$ retrieval, which drops crops by

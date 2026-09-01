@@ -5,7 +5,7 @@
 %%   WHU-CD (690 pairs, no retraining): results/whu_cd_test/cd_results.json (n=690, integrity clean=True)
 \begin{table}[t]
 \centering
-\caption{Change detection. Pixel F1 and IoU are the change class over the whole test set; instance F1 matches predicted change instances to ground-truth connected components at IoU~$\geq$~0.5; Count MAE is the mean absolute error in the number of change instances per tile, in instances rather than per cent. AnyChange provides published zero-shot context, not a supervision-matched comparison: our head uses LEVIR-CD training masks but no correspondence labels. The same head is applied to WHU-CD unchanged.}
+\caption{Change detection. Pixel F1 and IoU are the change class over the whole test set; instance F1 matches predicted change instances to ground-truth connected components at IoU~$\geq$~0.5; Count MAE is the mean absolute error in the number of change instances per tile, in instances rather than a percentage. AnyChange provides published zero-shot context, not a supervision-matched comparison: our head uses LEVIR-CD training masks but no correspondence labels. The same head is applied to WHU-CD unchanged.}
 \label{tab:detection}
 \setlength{\tabcolsep}{3pt}
 \scriptsize

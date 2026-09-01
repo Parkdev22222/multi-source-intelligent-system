@@ -1,9 +1,10 @@
 We study a consumer-facing satellite monitoring service that converts two
-revisits of a neighbourhood into a short written change report. Such a service
-must not only localise change but also avoid inventing or miscounting changed
-objects. We show that this report-level factuality is determined primarily by
-an upstream decision: which detections across revisits represent the same
-physical object. We therefore introduce a \HeadParamsRound-parameter instance
+revisits of a neighborhood into a short written change report. Such a service
+must not only identify where changes occurred but also avoid inventing or
+miscounting changed objects. We show that this report-level factuality is
+determined primarily by an upstream decision: which detections across revisits
+represent the same physical object. We therefore introduce a
+\HeadParamsRound-parameter instance
 pairing head trained from existing change masks without additional
 correspondence labels. It reaches \EOnePixelFOne{} pixel F1 on LEVIR-CD and,
 without retraining or threshold tuning, \ETwoPixelFOne{} on WHU-CD. We evaluate LLM-generated
