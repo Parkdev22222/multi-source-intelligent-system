@@ -48,11 +48,13 @@ prompt and graph grounding fixed, replacing only the pairing increases
 Change-Fact-Score (CFS), the deterministic claim-level metric defined in
 Section~\ref{ssec:cfs}, by \EFiveGain{} F1 points and lowers unsupported
 claims from
-\EFiveHeuristicHal\% to \EFiveLearnedHal\%. By comparison, over
-\EFourNCrops{} crops, adding top-$k$ retrieval or graph aggregation to the same
-structured instance evidence produces a spread below \EFourLadderSpread{}
-CFS-F1 points. The central result is therefore not that a larger context makes
-the writer safer, but that better correspondence makes its evidence reliable.
+\EFiveHeuristicHal\% to \EFiveLearnedHal\%. With instance evidence fixed,
+structured reporting, top-$k$ retrieval, and graph aggregation achieve CFS-F1
+scores of \EFourStructFOne{}, \EFourFlatRagFOne{}, and \EFourGraphRAGFOne{},
+respectively, on \EFourNCrops{} crops---a maximum difference of only
+\EFourLadderExactSpread{} points. The central result is therefore not that a
+larger context makes the writer safer, but that better correspondence makes its
+evidence reliable.
 
 Our contributions are as follows.
 
