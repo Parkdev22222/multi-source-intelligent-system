@@ -6,10 +6,11 @@ determined primarily by an upstream decision: which detections across revisits
 represent the same physical object. We therefore introduce a
 \HeadParamsRound-parameter instance
 pairing head trained from existing change masks without additional
-correspondence labels. It reaches \EOnePixelFOne{} pixel F1 on LEVIR-CD and,
-without retraining or threshold tuning, \ETwoPixelFOne{} on WHU-CD. We evaluate LLM-generated
-reports with Change-Fact-Score (CFS), a deterministic protocol that extracts
-change direction and object class; counting is assessed separately with
+correspondence labels. Using the same SAM3 proposals, the learned head improves
+pixel F1 from \EOneHeuristicFOne{} to \EOnePixelFOne{} on LEVIR-CD and, without
+retraining or threshold tuning, achieves \ETwoPixelFOne{} on WHU-CD. We evaluate
+LLM-generated reports with Change-Fact-Score (CFS), a deterministic protocol
+that extracts change direction and object class; counting is assessed separately with
 CountMAE, and no language model is used as judge. Replacing only a
 CLIP--geometry pairing heuristic with the learned head improves report
 factuality by \EFiveGain{} CFS-F1 points and reduces unsupported claims from
