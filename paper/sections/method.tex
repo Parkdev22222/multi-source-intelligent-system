@@ -10,8 +10,8 @@ Dotted is selection, not data: all three are scored in one pass, and match's
 assignment then splits the detections into paired and leftover, deciding which
 scores count. The dashed edge leaving verify is suppression: a detection below
 its threshold is never emitted, and that is where the cross-frame gain
-appears. Matched and moved pairs are not changes; they reach the prompt only
-as a count. What the report is conditioned on varies by grounding condition
+appears. The unchanged count is the matched and moved pairs. What the report
+is conditioned on varies by grounding condition
 (Section~\ref{ssec:grounding}).}
 \label{fig:architecture}
 \end{figure}

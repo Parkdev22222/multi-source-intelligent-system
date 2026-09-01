@@ -322,6 +322,15 @@ def build() -> None:
             arrow(ax, x - gap, ty + th / 2, x, ty + th / 2,
                   ls=(0, (2.5, 2)) if i == n - 1 else "-", zorder=5)
 
+    # This edge is the ChangeEvidence branch: from_pairing_result() copies all
+    # of result.outcomes, and the inventory reports three change categories in
+    # detail plus an unchanged total. change_instances() is a second, separate
+    # consumer of the same result -- the three change types alone, feeding the
+    # instance and CD metrics -- and is not drawn. The two share a vocabulary
+    # (evidence.py's appeared/disappeared/modified properties rename the same
+    # statuses change_instances() renames), so a three-item label here read as
+    # the other branch. The fourth item settles which one this is.
+    #
     # Two ways out of the head, and the second one is the paper's result. A
     # detection the verifier scores below threshold is never emitted as an
     # outcome at all -- pair() only counts it, as n_suppressed -- so the
@@ -334,7 +343,8 @@ def build() -> None:
     # raw gap: the boxstyle pad puts the drawn edges 0.008 outside the given
     # coordinates, and centring on the gap ran the text over both of them.
     ax.text(L + bw / 2 + 0.014, y_out,
-            "modified · appeared · disappeared", ha="left", va="center",
+            "appeared · disappeared · modified · unchanged count",
+            ha="left", va="center",
             fontsize=5.8, color=MUTED, style="italic")
 
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
