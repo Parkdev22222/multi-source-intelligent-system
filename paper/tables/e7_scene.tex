@@ -2,7 +2,7 @@
 % source: results/levir_cc_scene (checkpoint=data/checkpoints/pairing_head.pt)
 \begin{table}[t]
 \centering
-\caption{Neighborhood-level grounding (E7): one report per neighborhood, over every crop of a tile the split provides. The conditions are three representations of the same observations, not an additive ladder. $n=218$, 1--16 crops each (mean 8.8; 129 scenes with more than one crop), mean 37.7 ground-truth instances per scene.}
+\caption{Neighborhood-level grounding results (E7).}
 \label{tab:e7_scene}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{lccc}
@@ -15,4 +15,6 @@ top-$k$ retrieval & 18.54 & 78.57 & 167.87 \\
 graph aggregate & 27.55 & 72.28 & 18.50 \\
 \bottomrule
 \end{tabular}
+\vspace{1pt}
+\parbox{\columnwidth}{\scriptsize\textit{Note:} One report is generated per neighborhood from every crop of a tile available in the split; rows are alternative representations of the same observations. $n=218$; 1--16 crops per scene (mean 8.8; 129 multi-crop scenes); mean 37.7 ground-truth instances per scene.}
 \end{table}

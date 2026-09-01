@@ -281,9 +281,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         cols = ["BLEU-1", "BLEU-4", "METEOR", "ROUGE-L", "CIDEr-D"]
         print_console_table("LEVIR-CC caption metrics", cols, rows)
         save_latex(latex_table(
-            "Change captioning on LEVIR-CC. Baselines are trained on the LEVIR-CC "
-            "training split; our conditions are zero-shot apart from the "
-            "pairing head.",
+            "Captioning performance on LEVIR-CC.",
             "tab:levir_cc_caption", cols, rows, baseline_group="levir_cc",
             mono_rows=True,
         ), out / "table_levir_cc_caption.tex")

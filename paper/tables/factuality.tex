@@ -2,7 +2,7 @@
 % source: results/levir_cc_caption (n=1929, checkpoint=data/checkpoints/pairing_head.pt)
 \begin{table}[t]
 \centering
-\caption{Report factuality by grounding condition, over 1929 LEVIR-CC test crops. CFS-P/R/F1 are claim-level against the human references; ChgAcc is agreement on whether anything changed; CountMAE is the crop-level absolute error in the asserted instance count, in instances. Hallucination rate is $1-\text{CFS-P}$ and is not printed as a separate column.}
+\caption{Report factuality across grounding conditions on LEVIR-CC.}
 \label{tab:factuality_caption}
 \setlength{\tabcolsep}{3pt}
 \small
@@ -18,4 +18,6 @@ Condition & CFS-P & CFS-R & CFS-F1 & ChgAcc & CountMAE \\
 \textbf{\texttt{llm\_graphrag}} & \textbf{61.72} & \textbf{39.70} & \textbf{48.32} & \textbf{76.52} & \textbf{2.9} \\
 \bottomrule
 \end{tabular}
+\vspace{1pt}
+\parbox{\columnwidth}{\scriptsize\textit{Note:} $n=1929$ test crops. CFS-P/R/F1 are claim-level against human references; ChgAcc is change-presence agreement; CountMAE is the absolute asserted-count error per crop.}
 \end{table}

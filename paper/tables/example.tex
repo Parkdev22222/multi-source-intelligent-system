@@ -2,7 +2,7 @@
 % crop test_002021; reference from data/benchmarks/LEVIR-CC/LevirCCcaptions.json
 \begin{table}[t]
 \centering
-\caption{The invention failure on one test crop (\texttt{test\_002021}), whose five human references all state that nothing changed. The vision--language baseline names a specific object and a specific event; the grounded pipeline, having no surviving change instance to report, does not.}
+\caption{Example of an unsupported change claim.}
 \label{tab:example}
 \small
 \begin{tabular}{@{}p{0.30\columnwidth}p{0.64\columnwidth}@{}}
@@ -14,4 +14,6 @@ vlm\_direct & A new road has been constructed. \\
 llm\_graphrag (ours) & the scene is the same as before. \\
 \bottomrule
 \end{tabular}
+\vspace{1pt}
+\parbox{\columnwidth}{\scriptsize\textit{Note:} Crop \texttt{test\_002021}; all five human references state that nothing changed.}
 \end{table}

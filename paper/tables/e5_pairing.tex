@@ -3,7 +3,7 @@
 % learned head (ours): results/levir_cc_caption (n=1929, checkpoint=data/checkpoints/pairing_head.pt)
 \begin{table}[t]
 \centering
-\caption{Report factuality with grounding held fixed at \texttt{llm\_graphrag} and only the pairing swapped (E5). Identical crops, style examples and language model.}
+\caption{Effect of instance pairing on report factuality (E5).}
 \label{tab:e5_pairing}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{lccccc}
@@ -14,4 +14,6 @@ production heuristic & 34.01 & 36.79 & 35.35 & 65.99 & 65.01 \\
 \textbf{learned head (ours)} & \textbf{61.72} & \textbf{39.70} & \textbf{48.32} & \textbf{38.28} & \textbf{76.52} \\
 \bottomrule
 \end{tabular}
+\vspace{1pt}
+\parbox{\columnwidth}{\scriptsize\textit{Note:} Grounding is fixed at \texttt{llm\_graphrag}; crops, style examples and the language model are identical across rows.}
 \end{table}

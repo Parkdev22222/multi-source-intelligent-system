@@ -149,6 +149,11 @@ The efficiency table is expressed in prose. The sixth is the worked example of
 the invention failure; it is the only qualitative element in the paper and the
 first thing to cut if the page count moves.
 
+Table formatting follows the supplied IEEE conference template: concise table
+heads appear above each table, while metric definitions, fixed conditions and
+sample-size details appear as compact notes below the tabular body. Result
+interpretation and comparison caveats remain in the surrounding prose.
+
 ## Experiment status
 
 | Experiment | Scale | Purpose |
