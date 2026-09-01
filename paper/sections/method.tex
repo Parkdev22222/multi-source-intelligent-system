@@ -7,12 +7,12 @@
 verify reads a 14-dimensional unary feature whose last four entries are
 cross-frame evidence, measured on each detected footprint in both images.
 Dotted is selection, not data: all three are scored in one pass, and match's
-one-to-one assignment then splits the detections into paired and leftover,
-deciding which scores count. The dashed edge leaving verify is
-suppression --- a detection below its threshold is never emitted --- and that
-is where the cross-frame gain appears. Matched and moved pairs are not
-changes; they reach the prompt only as a count. The graph feeds one grounding
-condition, not all.}
+assignment then splits the detections into paired and leftover, deciding which
+scores count. The dashed edge leaving verify is suppression: a detection below
+its threshold is never emitted, and that is where the cross-frame gain
+appears. Matched and moved pairs are not changes; they reach the prompt only
+as a count. In one condition the graph adds a block beside the inventory,
+never replacing it.}
 \label{fig:architecture}
 \end{figure}
 
