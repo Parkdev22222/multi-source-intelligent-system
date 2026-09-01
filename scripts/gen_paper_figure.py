@@ -35,6 +35,10 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+# IEEE PDF eXpress rejects Type 3 fonts. Matplotlib's PDF backend uses them by
+# default, so embed TrueType glyphs as Type 42 instead.
+matplotlib.rcParams["pdf.fonttype"] = 42
+matplotlib.rcParams["ps.fonttype"] = 42
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 

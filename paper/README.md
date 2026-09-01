@@ -31,13 +31,33 @@ uses:
 \documentclass[conference,a4paper]{IEEEtran}
 ```
 
-The current layout is A4 and six pages in the checked build. The final upload
-must be rebuilt after author information and the bibliography are present;
-that final PDF, rather than an intermediate `pdflatex` pass, is the authority
-for the page count.
+The checked, author-complete and bibliography-inclusive build is A4 and six
+pages. The upload PDF must always come from the complete `latexmk` build;
+an intermediate `pdflatex` pass is not authoritative because it may omit the
+bibliography or contain unresolved references.
 
 The current initial-submission copy is prepared for single-blind review and
 therefore retains the complete author and affiliation information.
+
+## Official timeline and links
+
+Checked against the conference website on 2026-09-01:
+
+| Milestone | Official date |
+|---|---|
+| Full-paper submission | **September 4, 2026** |
+| Acceptance notification | September 18, 2026 |
+| Camera-ready submission | September 30, 2026 |
+| Conference | October 28--30, 2026 |
+
+- [Initial-paper instructions and online-submission link](https://www.icce-asia2026.org/2026/pages/submission_info.vm)
+- [Topics](https://www.icce-asia2026.org/2026/pages/topic.vm)
+- [Camera-ready instructions](https://www.icce-asia2026.org/2026/pages/final.vm)
+
+The public instructions do not state an anonymous or double-blind requirement.
+This repository follows the authors' selected single-blind format. If the live
+submission form displays a conflicting anonymity instruction, follow that
+instruction before upload and contact the secretariat if it is ambiguous.
 
 ## Build
 
@@ -51,7 +71,8 @@ latexmk -pdf main.tex
 ```
 
 The figure is generated, not drawn: its two annotations are read from
-`results/*.json`, so it cannot drift from the tables. The old
+`results/*.json`, so it cannot drift from the tables. The generator embeds
+TrueType text rather than PDF Type 3 fonts for IEEE compatibility. The old
 `docs/architecture.png` is the repository's deployment diagram and stays in
 the top-level README; the paper uses `docs/method_figure.pdf`.
 
@@ -148,39 +169,66 @@ results are in `results/levir_cc_scene/`. Pilot values remain only in the
 
 ### Required before initial submission
 
+The public initial-submission instructions require a full paper through the
+online submission system. They do not ask authors to run PDF eXpress at this
+stage; that step belongs to the camera-ready workflow after acceptance.
+
 - [x] Use the ICCE-Asia template with A4, two columns, single spacing and 10pt.
 - [x] Keep the regular paper within the 2--6 page limit in the current layout.
 - [x] Include the 189-word abstract and IEEE keywords.
 - [x] Use embedded fonts and a non-encrypted PDF in the checked build.
+- [x] Eliminate Type 3 fonts from the generated method figure; the checked PDF
+      uses embedded Type 1 or CID TrueType fonts only.
 - [x] Replace all five template author blocks in `main.tex` with the confirmed
       authors, affiliations, cities/countries and email addresses, in author
       order.
 - [ ] Use the first author's email for the ICCE-Asia submission account.
+- [ ] Confirm the submission portal's cutoff time and timezone; the public
+      homepage currently gives the date but not a cutoff time.
 - [x] Prepare the initial manuscript for single-blind review, retaining the
       complete author block.
-- [ ] Run the complete BibTeX build and confirm that there are no `[?]`,
+- [x] Run the complete BibTeX build and confirm that there are no `[?]`,
       undefined citations/references, or missing bibliography pages.
-- [ ] Confirm that the **bibliography-inclusive, author-complete PDF** is still
+- [x] Confirm that the **bibliography-inclusive, author-complete PDF** is still
       A4 and no more than six pages.
-- [ ] Visually inspect the final PDF at 100%: title/author layout, architecture
+- [x] Visually inspect the final PDF at 100%: title/author layout, architecture
       figure text, table width, page breaks, and the final reference list.
+- [ ] Obtain all coauthors' approval of the spelling and order of names,
+      affiliations, email addresses and final manuscript content.
+- [ ] Complete any LIG Defense & Aerospace internal publication, security and
+      export-control review required before external submission; confirm that
+      no customer-restricted or company-confidential material is included.
 - [ ] Enter title, abstract, keywords, authors and author order in the portal
       exactly as they appear in the PDF.
-- [ ] Select the closest AI/ML-for-consumer-electronics track; use the image/
-      video or miscellaneous CE track only if the portal taxonomy differs.
+- [ ] Select the Artificial Intelligence and Machine Learning (AIM) track if
+      the portal offers the topic names published on the conference site; use
+      the closest image/video or miscellaneous CE track only if its taxonomy
+      differs.
 - [ ] Upload the final PDF, complete submission, and retain the confirmation
       page and email.
 
+### After acceptance: camera-ready only
+
+- [ ] Reconcile the final author list and order with EDAS exactly; do not add or
+      remove authors silently between the accepted and final versions.
+- [ ] Remove any conference-name, copyright-notice, header/footer or page-number
+      text that the final-paper instructions prohibit.
+- [ ] Validate the final PDF through IEEE PDF eXpress using Conference ID
+      `73472X`.
+- [ ] Upload the PDF eXpress-approved file through EDAS by the camera-ready
+      deadline and complete the electronic IEEE copyright form in EDAS.
+
 ### Bibliography and comparison checks
 
-- [ ] Complete missing volume, issue and page metadata for older entries in
-      `refs.bib` where publisher records are available.
-- [ ] **`lewis2020retrieval`, `edge2024local` and `zheng2023judging` were
-      written from knowledge of the literature and have not been checked
-      against a publisher record.** Verify author lists, venues and pages
-      before submitting; they are flagged in `refs.bib` as well.
-- [ ] Read the rendered author lists for `sam3` and `qwen25vl`; they currently
-      use `and others`, which IEEEtran renders as “et al.”
+- [x] Check citation-critical author lists, titles and venues against official
+      publication or project records; add compact archival metadata where it
+      fits without breaking the six-page limit.
+- [x] Verify the complete GraphRAG author list against the Microsoft Research
+      record; retain arXiv because the official record identifies it as a
+      preprint.
+- [x] Confirm the intentional abbreviated author lists for references with
+      long author lists (`sam3`, RAG, GraphRAG, LLM-as-a-judge and
+      `qwen25vl`); IEEEtran renders `and others` as “et al.”
 - [x] LEVIR-CC caption baselines are verified from Chg2Cap Table IX.
 - [x] AnyChange is presented as zero-shot context, not as a
       supervision-matched baseline.
@@ -201,8 +249,7 @@ prompting"): the paper's own position is that the crop-level ladder *cannot*
 decide that question and that graph aggregation earns a neighborhood-level
 counting claim. Such a title would overstate what the experiments support.
 
-Rebuild the author-complete PDF and verify the rendered title and six-page limit
-before submission.
+The author-complete title and six-page limit are verified in the checked build.
 
 ### Known measurement caveats
 
