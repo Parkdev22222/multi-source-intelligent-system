@@ -7,10 +7,10 @@
 vector: match and state share one 16-dimensional pair feature, while verify
 reads a 14-dimensional unary feature whose last four entries are the
 cross-frame evidence measured on each detected footprint in both images. The
-dashed edge is suppression: a detection scored below the verify threshold is
-never emitted at all, and that is where the cross-frame gain appears. Matched
-and moved pairs are not changes and reach the prompt only as an unchanged
-count. The graph feeds one grounding condition, not all.}
+dashed edge leaving verify is suppression: a detection scored below its
+threshold is never emitted at all, and that is where the cross-frame gain
+appears. Matched and moved pairs are not changes and reach the prompt only as
+an unchanged count. The graph feeds one grounding condition, not all.}
 \label{fig:architecture}
 \end{figure}
 

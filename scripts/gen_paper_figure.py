@@ -55,7 +55,7 @@ EDGE_EVID = "#c8802a"
 FILL_EVAL = "#ffffff"
 EDGE_EVAL = "#7a8492"
 
-FIG_W, FIG_H = 3.5, 2.100
+FIG_W, FIG_H = 3.5, 2.018
 
 
 
@@ -97,7 +97,7 @@ def build() -> None:
     ax.set_xlim(0, 1)
     # The drawing occupies 0.22 upwards; cropping to it removes a band of empty
     # canvas that bbox_inches alone does not reclaim from an invisible axes.
-    ax.set_ylim(0.203, 0.975)
+    ax.set_ylim(0.233, 0.975)
     ax.axis("off")
 
     L, R = 0.03, 0.97
@@ -229,10 +229,22 @@ def build() -> None:
             ha="center", va="center", fontsize=5.6, color=EDGE_EVID,
             style="italic", zorder=5)
 
+    # The suppressed detections leave sideways, not downwards. Down is the
+    # flow axis here, so a dashed edge dropping towards the tail read as "goes
+    # on to the next stage" no matter where its head stopped. Right is
+    # orthogonal to the flow and cannot be misread as continuation. The label
+    # is set vertically because the margin outside verify is 0.09 wide and the
+    # word needs 0.13 lying down.
+    y_disc = by + bh / 2
+    arrow(ax, cols[2] + bw3 + 0.008, y_disc, 0.918, y_disc,
+          ls=(0, (2.5, 2)), zorder=5)
+    ax.text(0.940, y_disc, "discarded", ha="center", va="center",
+            fontsize=5.2, color=MUTED, style="italic", rotation=90, zorder=5)
+
     arrow(ax, x_det_c, y_f, x_det_c, hy + hh)
 
     # ---- tail -------------------------------------------------------------
-    ty, th = 0.213, 0.132
+    ty, th = 0.243, 0.132
     n, gap = 4, 0.028
     bw = (W - gap * (n - 1)) / n
     # (label, sub): the label may wrap, and only `sub` is set in muted type, so
@@ -273,13 +285,6 @@ def build() -> None:
     # coordinates, and centring on the gap ran the text over both of them.
     ax.text(L + bw / 2 + 0.014, y_out,
             "modified · appeared · disappeared", ha="left", va="center",
-            fontsize=5.8, color=MUTED, style="italic")
-    # From verify's own border, not the panel's: the discard is that one
-    # branch's decision. It needs zorder above the panel, or the segment
-    # inside the head is painted over by the fill.
-    arrow(ax, ctr[2], by - 0.008, ctr[2], ty + th + 0.023,
-          ls=(0, (2.5, 2)), zorder=5)
-    ax.text(ctr[2] + 0.014, y_out, "discarded", ha="left", va="center",
             fontsize=5.8, color=MUTED, style="italic")
 
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
