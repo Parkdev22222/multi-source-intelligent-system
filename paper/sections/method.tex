@@ -57,10 +57,10 @@ overlapping detections there, distance to the tile edge, and
 Three small multi-layer perceptrons share a class embedding:
 $\mathrm{match}$ scores a candidate pair, $\mathrm{state}$ classifies a matched
 pair as stationary, moved or modified, and $\mathrm{verify}$ scores whether an
-unmatched detection is genuine change. State is not scored as a three-way
-classifier --- a binary mask gives no ground truth for stationary versus moved
---- but its \emph{modified} output enters the change inventory and is judged by
-Change-Fact-Score like any other claim. Each has two hidden layers of width 64
+unmatched detection is genuine change. State carries three labels but only two
+occur: the IoU gate that admits a pair rules out the centroid shift that would
+label it moved. Its \emph{modified} output enters the change inventory and is
+scored like any other claim. Each has two hidden layers of width 64
 with layer normalisation, GELU and dropout; features are standardised with
 statistics fitted on the training split. The whole head is \HeadParams{}
 parameters. Matching is a greedy assignment over $\mathrm{match}$ scores above

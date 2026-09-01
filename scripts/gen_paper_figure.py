@@ -183,7 +183,7 @@ def build() -> None:
         sub="candidate pairs\nsame object?",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
     box(ax, cols[1], by, bw3, bh, "state",
-        sub="matched pairs\nmoved or modified",
+        sub="matched pairs\nmodified = change",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
     box(ax, cols[2], by, bw3, bh, "verify",
         sub="unmatched ones\nkeep or discard",
