@@ -36,9 +36,8 @@ must be rebuilt after author information and the bibliography are present;
 that final PDF, rather than an intermediate `pdflatex` pass, is the authority
 for the page count.
 
-The public submission instructions do not state an anonymous-review policy.
-The supplied template contains an author block, but confirm blinding with the
-secretariat if needed before uploading.
+The current initial-submission copy is prepared for single-blind review and
+therefore retains the complete author and affiliation information.
 
 ## Build
 
@@ -153,12 +152,12 @@ results are in `results/levir_cc_scene/`. Pilot values remain only in the
 - [x] Keep the regular paper within the 2--6 page limit in the current layout.
 - [x] Include the 189-word abstract and IEEE keywords.
 - [x] Use embedded fonts and a non-encrypted PDF in the checked build.
-- [ ] Replace all five template author blocks in `main.tex` with the actual
-      authors, affiliations, cities/countries, emails or ORCIDs; remove unused
-      blocks and confirm author order.
+- [x] Replace all five template author blocks in `main.tex` with the confirmed
+      authors, affiliations, cities/countries and email addresses, in author
+      order.
 - [ ] Use the first author's email for the ICCE-Asia submission account.
-- [ ] Confirm whether the review is anonymous; if it is, anonymize the author
-      block and any repository-identifying material.
+- [x] Prepare the initial manuscript for single-blind review, retaining the
+      complete author block.
 - [ ] Run the complete BibTeX build and confirm that there are no `[?]`,
       undefined citations/references, or missing bibliography pages.
 - [ ] Confirm that the **bibliography-inclusive, author-complete PDF** is still
