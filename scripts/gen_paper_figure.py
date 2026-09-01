@@ -283,7 +283,13 @@ def build() -> None:
     bw = (W - gap * (n - 1)) / n
     # (label, sub): the label may wrap, and only `sub` is set in muted type, so
     # a wrapped label is never mistaken for a label plus a caption.
-    tail = [(("change\ninstances", None), FILL_STAGE, EDGE_STAGE, "-"),
+    # "change inventory", not "change instances". change_instances() returns
+    # the three change types and feeds the instance/CD metrics; the report path
+    # runs on ChangeEvidence, which from_pairing_result() fills from ALL of
+    # result.outcomes, and which build_contexts()/prompts.py then read. The
+    # box on this path is the inventory: three change types in detail plus the
+    # unchanged total. The old name belonged to the other consumer.
+    tail = [(("change\ninventory", None), FILL_STAGE, EDGE_STAGE, "-"),
             (("knowledge graph", "optional context"), FILL_STAGE, EDGE_STAGE, "-"),
             (("LLM\nreport", None), FILL_STAGE, EDGE_STAGE, "-"),
             (("Change-\nFact-Score", None), FILL_EVAL, EDGE_EVAL, (0, (2.5, 2)))]
