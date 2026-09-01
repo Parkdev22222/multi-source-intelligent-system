@@ -55,7 +55,7 @@ EDGE_EVID = "#c8802a"
 FILL_EVAL = "#ffffff"
 EDGE_EVAL = "#7a8492"
 
-FIG_W, FIG_H = 3.5, 2.018
+FIG_W, FIG_H = 3.5, 2.100
 
 
 
@@ -97,7 +97,7 @@ def build() -> None:
     ax.set_xlim(0, 1)
     # The drawing occupies 0.22 upwards; cropping to it removes a band of empty
     # canvas that bbox_inches alone does not reclaim from an invisible axes.
-    ax.set_ylim(0.233, 0.975)
+    ax.set_ylim(0.203, 0.975)
     ax.axis("off")
 
     L, R = 0.03, 0.97
@@ -232,7 +232,7 @@ def build() -> None:
     arrow(ax, x_det_c, y_f, x_det_c, hy + hh)
 
     # ---- tail -------------------------------------------------------------
-    ty, th = 0.243, 0.132
+    ty, th = 0.213, 0.132
     n, gap = 4, 0.028
     bw = (W - gap * (n - 1)) / n
     # (label, sub): the label may wrap, and only `sub` is set in muted type, so
@@ -260,12 +260,26 @@ def build() -> None:
             arrow(ax, x - gap, ty + th / 2, x, ty + th / 2,
                   ls=(0, (2.5, 2)) if i == n - 1 else "-", zorder=5)
 
+    # Two ways out of the head, and the second one is the paper's result. A
+    # detection the verifier scores below threshold is never emitted as an
+    # outcome at all -- pair() only counts it, as n_suppressed -- so the
+    # suppression path is a dashed edge that stops in open space. Drawn as a
+    # single outgoing arrow, the figure implied every detection survives,
+    # which is precisely the failure cross-frame evidence exists to prevent.
+    y_out = ((ty + th + 0.008) + (hy - 0.008)) / 2
     arrow(ax, L + bw / 2, hy, L + bw / 2, ty + th)
     # Centred on the clear band between the two rounded borders, not on the
     # raw gap: the boxstyle pad puts the drawn edges 0.008 outside the given
     # coordinates, and centring on the gap ran the text over both of them.
-    ax.text(L + bw / 2 + 0.014, ((ty + th + 0.008) + (hy - 0.008)) / 2,
+    ax.text(L + bw / 2 + 0.014, y_out,
             "modified · appeared · disappeared", ha="left", va="center",
+            fontsize=5.8, color=MUTED, style="italic")
+    # From verify's own border, not the panel's: the discard is that one
+    # branch's decision. It needs zorder above the panel, or the segment
+    # inside the head is painted over by the fill.
+    arrow(ax, ctr[2], by - 0.008, ctr[2], ty + th + 0.023,
+          ls=(0, (2.5, 2)), zorder=5)
+    ax.text(ctr[2] + 0.014, y_out, "discarded", ha="left", va="center",
             fontsize=5.8, color=MUTED, style="italic")
 
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
