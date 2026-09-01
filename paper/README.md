@@ -2,8 +2,8 @@
 
 Submission title:
 
-> **Vision-Grounded LLM Reports for Satellite Change Monitoring: Learned
-> Instance Pairing and Claim-Level Evaluation**
+> **Vision-Grounded LLM Change Reports: Learned Instance Pairing and
+> Claim-Level Evaluation**
 
 The paper studies a consumer-facing satellite monitoring pipeline that turns
 two revisits into a written change report. Its contribution order is deliberate:
