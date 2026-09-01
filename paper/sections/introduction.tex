@@ -1,17 +1,14 @@
 \section{Introduction}
 
-We consider a consumer satellite-monitoring service in which subscribers
-select an area and receive a short written report after each new observation,
-rather than a pixel-level change mask intended for expert analysts. Potential
-subscribers include a homeowner watching the plot next door, a small builder
-tracking three sites, or someone deciding whether a district is being built up
-or emptied out. Each pins an area in an app and, after every
-revisit, receives a short message --- \emph{four new buildings on the north
-edge; the lot behind the school has been cleared}. Nobody in this audience
-wants a segmentation mask, and nobody will open one.
+We consider a consumer satellite-monitoring service in which users select an
+area and receive a short written report after each new observation. Unlike
+conventional change-detection systems that produce pixel-level masks for expert
+analysis, this service must describe detected changes as accessible object-level
+statements, such as ``four new buildings appeared on the northern edge'' or
+``the lot behind the school was cleared.''
 
-That shift changes which errors matter, in a way segmentation metrics cannot
-express. The deliverable is a sentence, and a sentence makes commitments a mask
+This shift changes which errors matter in ways that conventional segmentation
+metrics cannot express. The deliverable is a sentence, and a sentence makes commitments a mask
 does not: it says \emph{how many} buildings appeared, and \emph{whether}
 anything appeared at all. Two product failures follow.
 
