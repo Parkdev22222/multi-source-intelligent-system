@@ -143,48 +143,57 @@ def build() -> None:
     arrow(ax, L + lw_, y_f + h_f / 2, R - lw_, y_f + h_f / 2, zorder=5)
 
     # ---- the learned head -------------------------------------------------
-    # Wiring matters here. `match` splits its candidates two ways: matched
-    # pairs go to `state`, whose `modified` label becomes a change instance,
-    # and unmatched detections go to `verify`, which either keeps them
-    # (appeared / disappeared) or drops them. An earlier draft drew `state` as
-    # a box with no input and no output, which made it unreadable, and drew
-    # `verify` as a pass-through, which hid the discard that the whole
-    # contribution rests on.
+    # Data flow, verified against infer.py and model.py:
+    #   detections -> pair features(16)  -> forward_pair -> match AND state
+    #   detections -> unary features(10) -\
+    #   cross-frame evidence(4) ----------+-> forward_unary -> verify
+    # match and state are siblings on one input, not a chain: forward_pair
+    # computes h once and returns self.match(h), self.state(h). And verify
+    # reads detection-derived features directly, not match's output.
+    #
+    # What match contributes to the other two is *selection*, not data: the
+    # assignment decides which pairs are matched (so state's label applies) and
+    # which detections are left over (so verify's decision applies). Drawing
+    # that as arrows would put control flow and data flow in the same notation,
+    # which is what made earlier versions read wrongly; the subs carry it.
     hy, hh = 0.408, 0.300
     ax.add_patch(FancyBboxPatch((L, hy), W, hh,
                                 boxstyle="round,pad=0.008,rounding_size=0.018",
                                 linewidth=1.6, facecolor=FILL_HEAD,
                                 edgecolor=EDGE_HEAD, zorder=2))
-    ax.text(cx, hy + hh - 0.038, "learned pairing head", ha="center",
+    ax.text(cx, hy + hh - 0.030, "learned pairing head", ha="center",
             va="center", fontsize=7.8, color=EDGE_HEAD, fontweight="bold",
             zorder=3)
 
-    mw, mh, my = 0.42, 0.058, 0.586
-    box(ax, cx - mw / 2, my, mw, mh, "match", fill="#ffffff", edge=EDGE_HEAD,
-        fs=7.2, lw=0.8)
-
-    ih, ry = 0.076, 0.462
+    ih = 0.072
+    r1, r2 = 0.548, 0.436
     bw2 = (inner_w - 0.028) / 2
-    x_state, x_verify = ix, ix + bw2 + 0.028
-    box(ax, x_state, ry, bw2, ih, "state", sub="modified = change",
+    x_match, x_state = ix, ix + bw2 + 0.028
+    c_match, c_state = x_match + bw2 / 2, x_state + bw2 / 2
+    x_gap = x_match + bw2 + 0.014
+
+    box(ax, x_match, r1, bw2, ih, "match", sub="same object?",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
-    box(ax, x_verify, ry, bw2, ih, "verify", sub="keep or discard",
+    box(ax, x_state, r1, bw2, ih, "state",
+        sub="matched pairs · modified = change",
+        fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
+    box(ax, ix, r2, inner_w, ih, "verify",
+        sub="unmatched detections · keep or discard",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
 
-    arrow(ax, cx - mw / 4, my, x_state + bw2 / 2, ry + ih, color=EDGE_HEAD,
-          zorder=5)
-    arrow(ax, cx + mw / 4, my, x_verify + bw2 / 2, ry + ih, color=EDGE_HEAD,
-          zorder=5)
-    ax.text(x_state + bw2 / 2 - 0.010, (my + ry + ih) / 2, "matched",
-            ha="right", va="center", fontsize=6.2, color=MUTED, style="italic",
-            zorder=5)
-    ax.text(x_verify + bw2 / 2 + 0.010, (my + ry + ih) / 2, "unmatched",
-            ha="left", va="center", fontsize=6.2, color=MUTED, style="italic",
-            zorder=5)
+    # one input, fanned to all three branches
+    y_hb = r1 + ih + 0.022
+    ax.plot([c_match, c_state], [y_hb, y_hb], color=EDGE_HEAD, linewidth=0.9,
+            solid_capstyle="round", zorder=4)
+    ax.plot([x_det_c, x_det_c], [hy + hh, y_hb], color=EDGE_HEAD,
+            linewidth=0.9, zorder=4)
+    arrow(ax, c_match, y_hb, c_match, r1 + ih, color=EDGE_HEAD, zorder=5)
+    arrow(ax, c_state, y_hb, c_state, r1 + ih, color=EDGE_HEAD, zorder=5)
+    arrow(ax, x_gap, y_hb, x_gap, r2 + ih, color=EDGE_HEAD, zorder=5)
 
-    arrow(ax, L + lw_ / 2, y_f, L + lw_ / 2, hy + hh)
-    ax.add_patch(FancyArrowPatch((chan_x, y_f), (x_verify + bw2 + 0.002,
-                                                 ry + ih / 2),
+    arrow(ax, x_det_c, y_f, x_det_c, hy + hh)
+    ax.add_patch(FancyArrowPatch((chan_x, y_f), (ix + inner_w + 0.002,
+                                                 r2 + ih / 2),
                                  arrowstyle="-|>", mutation_scale=7,
                                  linewidth=1.1, color=EDGE_EVID,
                                  connectionstyle="angle,angleA=-90,angleB=0,rad=4",
