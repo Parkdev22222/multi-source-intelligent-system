@@ -3,13 +3,14 @@
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{../docs/method_figure.pdf}
-\caption{Pipeline. All three branches read the detections; verify
-additionally reads cross-frame evidence, which crops each detected footprint
-from both images. Which subset a branch applies to is stated in its box rather
-than drawn, being selection rather than data flow. Only stationary/moved is
-unverifiable under binary labels; the state branch's modified output is scored
-like any other change instance. The graph feeds one grounding condition, not
-all.}
+\caption{Pipeline. All three branches read the detections, but not the same
+vector: match and state share one 16-dimensional pair feature, while verify
+reads a 14-dimensional unary feature whose last four entries are the
+cross-frame evidence measured on each detected footprint in both images. Which
+subset a branch applies to is stated in its box rather than drawn, being
+selection rather than data flow. Only stationary/moved is unverifiable under
+binary labels; the state branch's modified output is scored like any other
+change instance. The graph feeds one grounding condition, not all.}
 \label{fig:architecture}
 \end{figure}
 
@@ -54,10 +55,10 @@ overlapping detections there, distance to the tile edge, and
 Three small multi-layer perceptrons share a class embedding:
 $\mathrm{match}$ scores a candidate pair, $\mathrm{state}$ classifies a matched
 pair as stationary, moved or modified, and $\mathrm{verify}$ scores whether an
-unmatched detection is genuine change. The state head is carried by the
-pipeline but not evaluated here: both change-detection benchmarks label change
-as a binary mask, so no ground truth for the moved/modified distinction
-exists. Each has two hidden layers of width 64
+unmatched detection is genuine change. State is not scored as a three-way
+classifier --- a binary mask gives no ground truth for stationary versus moved
+--- but its \emph{modified} output enters the change inventory and is judged by
+Change-Fact-Score like any other claim. Each has two hidden layers of width 64
 with layer normalisation, GELU and dropout; features are standardised with
 statistics fitted on the training split. The whole head is \HeadParams{}
 parameters. Matching is a greedy assignment over $\mathrm{match}$ scores above

@@ -156,21 +156,24 @@ def build() -> None:
     # which detections are left over (so verify's decision applies). Drawing
     # that as arrows would put control flow and data flow in the same notation,
     # which is what made earlier versions read wrongly; the subs carry it.
-    hy, hh = 0.398, 0.310
+    hy, hh = 0.377, 0.347
     ax.add_patch(FancyBboxPatch((L, hy), W, hh,
                                 boxstyle="round,pad=0.008,rounding_size=0.018",
                                 linewidth=1.6, facecolor=FILL_HEAD,
                                 edgecolor=EDGE_HEAD, zorder=2))
-    ax.text(cx, hy + hh - 0.030, "learned pairing head", ha="center",
+    ax.text(cx, hy + hh - 0.028, "learned pairing head", ha="center",
             va="center", fontsize=7.8, color=EDGE_HEAD, fontweight="bold",
             zorder=3)
 
-    ih = 0.070
-    r1, r2 = 0.534, 0.422
-    bw2 = (inner_w - 0.028) / 2
-    x_match, x_state = ix, ix + bw2 + 0.028
-    c_match, c_state = x_match + bw2 / 2, x_state + bw2 / 2
-    x_gap = x_match + bw2 + 0.014
+    ih = 0.068
+    r1, r2 = 0.556, 0.400
+    # The gap between match and state is wide enough for the unary drop to run
+    # down it with visible clearance on both sides; a narrower gap made the
+    # line look like it was grazing the borders.
+    BGAP = 0.050
+    bw2 = (inner_w - BGAP) / 2
+    x_match, x_state = ix, ix + bw2 + BGAP
+    x_gap = x_match + bw2 + BGAP / 2
 
     box(ax, x_match, r1, bw2, ih, "match", sub="same object?",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
@@ -181,36 +184,53 @@ def build() -> None:
         sub="unmatched detections · keep or discard",
         fill="#ffffff", edge=EDGE_HEAD, fs=7.2, lw=0.8)
 
-    # one input, fanned to all three branches
-    y_hb = r1 + ih + 0.046
-    ax.plot([c_match, c_state], [y_hb, y_hb], color=EDGE_HEAD, linewidth=0.9,
+    # One detection bus, fanned to all three branches. The drops are pulled in
+    # from the box centres towards the outer edges so the band between them is
+    # clear for the labels that say which feature vector each edge carries.
+    y_hb = 0.666
+    x_dm = x_match + 0.072
+    x_ds = x_state + bw2 - 0.072
+    ax.plot([x_dm, x_ds], [y_hb, y_hb], color=EDGE_HEAD, linewidth=0.9,
             solid_capstyle="round", zorder=4)
     ax.plot([x_det_c, x_det_c], [hy + hh, y_hb], color=EDGE_HEAD,
             linewidth=0.9, zorder=4)
-    arrow(ax, c_match, y_hb, c_match, r1 + ih, color=EDGE_HEAD, zorder=5)
-    arrow(ax, c_state, y_hb, c_state, r1 + ih, color=EDGE_HEAD, zorder=5)
-    arrow(ax, x_gap, y_hb, x_gap, r2 + ih, color=EDGE_HEAD, zorder=5)
-    # Detections reach all three branches, but in two different shapes: pair
-    # features are per candidate pair and feed match and state, unary features
-    # are per detection and feed verify. Without these labels the fan reads as
-    # a router picking one branch, which is what it was mistaken for.
-    ax.text((c_match + x_gap) / 2, y_hb - 0.016, "pair features",
-            ha="center", va="center", fontsize=6.0, color=MUTED,
-            style="italic", zorder=5)
-    ax.text(x_gap + 0.014, r1 - 0.020, "unary features",
-            ha="left", va="center", fontsize=6.0, color=MUTED,
-            style="italic", zorder=5)
+    arrow(ax, x_dm, y_hb, x_dm, r1 + ih, color=EDGE_HEAD, zorder=5)
+    arrow(ax, x_ds, y_hb, x_ds, r1 + ih, color=EDGE_HEAD, zorder=5)
+    # The unary vector is 14 values: 10 built from the detection and 4 appended
+    # from cross-frame evidence (see unary_features). They merge when the
+    # vector is constructed, not at the verifier's input, so the two legs meet
+    # at a junction and a single edge continues into verify.
+    y_merge = r2 + ih + 0.064
+    ax.plot([x_gap, x_gap], [y_hb, y_merge], color=EDGE_HEAD, linewidth=0.9,
+            zorder=4)
+    ax.plot([chan_x, chan_x], [y_f, y_merge], color=EDGE_EVID, linewidth=1.1,
+            zorder=4)
+    ax.plot([chan_x, x_gap], [y_merge, y_merge], color=EDGE_EVID,
+            linewidth=1.1, solid_capstyle="round", zorder=4)
+    ax.plot([x_gap], [y_merge], marker="o", markersize=2.6,
+            color=EDGE_HEAD, zorder=6)
+    arrow(ax, x_gap, y_merge, x_gap, r2 + ih, color=EDGE_HEAD, zorder=5)
+
+    # Which vector each edge carries. Every label is set against the arrow it
+    # describes, never on a stretch of the shared bus: a label centred on a bus
+    # segment reads as belonging to whichever drop is nearest, which put
+    # "unary" on the edge into state in an earlier version. match and state are
+    # therefore labelled twice rather than once between them.
+    y_lab = (y_hb + r1 + ih) / 2
+    for x_edge, side in ((x_dm + 0.012, "left"), (x_ds - 0.012, "right")):
+        ax.text(x_edge, y_lab, "pair features (16)", ha=side, va="center",
+                fontsize=5.9, color=MUTED, style="italic", zorder=5)
+    y_u = (y_merge + r2 + ih) / 2
+    ax.text(x_gap - 0.014, y_u, "unary features (14)", ha="right",
+            va="center", fontsize=5.9, color=MUTED, style="italic", zorder=5)
+    ax.text(chan_x - 0.022, y_u, "incl. 4 cross-frame", ha="right",
+            va="center", fontsize=5.6, color=EDGE_EVID, style="italic",
+            zorder=5)
 
     arrow(ax, x_det_c, y_f, x_det_c, hy + hh)
-    ax.add_patch(FancyArrowPatch((chan_x, y_f), (ix + inner_w + 0.002,
-                                                 r2 + ih / 2),
-                                 arrowstyle="-|>", mutation_scale=7,
-                                 linewidth=1.1, color=EDGE_EVID,
-                                 connectionstyle="angle,angleA=-90,angleB=0,rad=4",
-                                 shrinkA=0, shrinkB=0, zorder=5))
 
     # ---- tail -------------------------------------------------------------
-    ty, th = 0.198, 0.155
+    ty, th = 0.198, 0.132
     n, gap = 4, 0.028
     bw = (W - gap * (n - 1)) / n
     # (label, sub): the label may wrap, and only `sub` is set in muted type, so
@@ -239,9 +259,12 @@ def build() -> None:
                   ls=(0, (2.5, 2)) if i == n - 1 else "-", zorder=5)
 
     arrow(ax, L + bw / 2, hy, L + bw / 2, ty + th)
-    ax.text(L + bw / 2 + 0.014, (hy + ty + th) / 2,
+    # Centred on the clear band between the two rounded borders, not on the
+    # raw gap: the boxstyle pad puts the drawn edges 0.008 outside the given
+    # coordinates, and centring on the gap ran the text over both of them.
+    ax.text(L + bw / 2 + 0.014, ((ty + th + 0.008) + (hy - 0.008)) / 2,
             "modified · appeared · disappeared", ha="left", va="center",
-            fontsize=6.0, color=MUTED, style="italic")
+            fontsize=5.8, color=MUTED, style="italic")
 
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
     OUT_PDF.parent.mkdir(parents=True, exist_ok=True)
