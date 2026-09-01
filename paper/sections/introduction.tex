@@ -59,24 +59,28 @@ evidence reliable.
 Our contributions are as follows.
 
 \begin{itemize}
-\item \textbf{Learned instance pairing.} On LEVIR-CD, the geometry-only,
-      CLIP--geometry heuristic, and published zero-shot baseline achieve pixel
-      F1 scores of \EOneGeoFOne, \EOneHeuristicFOne, and \AnyChangeFOne,
-      respectively, although their supervision settings differ. Our
-      \HeadParamsRound-parameter pairing head, trained without additional
-      correspondence annotations, raises pixel F1 to \EOnePixelFOne. When
-      applied to WHU-CD without retraining, it achieves \ETwoPixelFOne{} pixel
-      F1 and reduces CountMAE from \ETwoHeuristicCountMAE{} to \ETwoCountMAE.
-\item \textbf{Detection-to-report evidence.} That gain is measured with the
-      generation and the grounding held fixed, at \ESixHeadDelta~ms additional
-      latency per tile.
-\item \textbf{Deterministic report evaluation.} We use a domain-specific
-      protocol for claim direction and object class, with CountMAE for counts
-      and no language model inside the evaluator.
-\item \textbf{Grounding analysis.} Retrieval and graph aggregation over fixed
-      crop-level evidence show only a \EFourLadderSpread-point observed spread;
-      graph aggregation instead contributes to neighborhood-level count
-      preservation.
+\item \textbf{Learned instance pairing.} We introduce a
+      \HeadParamsRound-parameter pairing head trained from existing change
+      masks without additional correspondence annotations. Using the same SAM3
+      proposals, it improves pixel F1 from \EOneHeuristicFOne{} to
+      \EOnePixelFOne{} on LEVIR-CD and achieves \ETwoPixelFOne{} on WHU-CD
+      without retraining.
+\item \textbf{Controlled detection-to-report attribution.} Holding the LLM,
+      prompt, and grounding context fixed, we show that replacing only
+      heuristic pairing with the learned head improves report factuality by
+      \EFiveGain{} CFS-F1 points and reduces unsupported claims from
+      \EFiveHeuristicHal\% to \EFiveLearnedHal\%, at an additional latency of
+      only \ESixHeadDelta~ms per tile.
+\item \textbf{Deterministic claim-level evaluation.} We introduce
+      Change-Fact-Score (CFS), which deterministically extracts and evaluates
+      claims about change direction and object class without using an LLM as
+      judge; CountMAE separately measures counting accuracy.
+\item \textbf{Scale-dependent grounding analysis.} We show that structured
+      reporting, top-$k$ retrieval, and graph aggregation differ by at most
+      \EFourLadderExactSpread{} CFS-F1 points when crop-level instance evidence
+      is fixed. At the neighborhood level, however, graph aggregation reduces
+      CountMAE to \ESevenGraphCountMAE, compared with \ESevenFlatCountMAE{} for
+      top-$k$ retrieval and \ESevenStructCountMAE{} for full concatenation.
 \end{itemize}
 
 We are explicit about scope. We evaluate on public benchmarks, not a live
