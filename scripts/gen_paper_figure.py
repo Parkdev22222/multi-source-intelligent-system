@@ -55,7 +55,7 @@ EDGE_EVID = "#c8802a"
 FILL_EVAL = "#ffffff"
 EDGE_EVAL = "#7a8492"
 
-FIG_W, FIG_H = 3.5, 2.018
+FIG_W, FIG_H = 3.5, 2.080
 
 
 
@@ -97,7 +97,7 @@ def build() -> None:
     ax.set_xlim(0, 1)
     # The drawing occupies 0.22 upwards; cropping to it removes a band of empty
     # canvas that bbox_inches alone does not reclaim from an invisible axes.
-    ax.set_ylim(0.233, 0.975)
+    ax.set_ylim(0.210, 0.975)
     ax.axis("off")
 
     L, R = 0.03, 0.97
@@ -160,7 +160,7 @@ def build() -> None:
     # which detections are left over (so verify's decision applies). Drawing
     # that as arrows would put control flow and data flow in the same notation,
     # which is what made earlier versions read wrongly; the subs carry it.
-    hy, hh = 0.422, 0.302
+    hy, hh = 0.392, 0.332
     ax.add_patch(FancyBboxPatch((L, hy), W, hh,
                                 boxstyle="round,pad=0.008,rounding_size=0.018",
                                 linewidth=1.6, facecolor=FILL_HEAD,
@@ -175,7 +175,7 @@ def build() -> None:
     # and none waits on another's output.
     BGAP = 0.030
     bw3 = (inner_w - 2 * BGAP) / 3
-    by, bh = 0.444, 0.140
+    by, bh = 0.452, 0.132
     cols = [(ix + i * (bw3 + BGAP)) for i in range(3)]
     ctr = [x + bw3 / 2 for x in cols]
 
@@ -235,6 +235,32 @@ def build() -> None:
     # orthogonal to the flow and cannot be misread as continuation. The label
     # is set vertically because the margin outside verify is 0.09 wide and the
     # word needs 0.13 lying down.
+    # Selection, not data flow, and drawn in a notation that cannot be
+    # confused for it. _scores() computes match, state and both verify passes
+    # in ONE forward call, before assign() is ever reached (infer.py), and
+    # verify is scored for every detection, not just the leftovers -- so no
+    # branch consumes another's output and none of them waits. What match
+    # does produce is the assignment, and the assignment decides which of the
+    # already-computed outputs count: state is read only for matched pairs,
+    # verify's threshold applied only to what is left over. A solid arrow here
+    # would assert a dependency the code does not have; a dotted one carries
+    # the ordering without it.
+    y_sel = 0.404
+    dotted = (0, (1, 1.6))
+    ax.plot([ctr[0], ctr[0]], [by - 0.008, y_sel], color=MUTED, linewidth=0.8,
+            linestyle=dotted, zorder=5)
+    ax.plot([ctr[0], ctr[2]], [y_sel, y_sel], color=MUTED, linewidth=0.8,
+            linestyle=dotted, zorder=5)
+    for c in (ctr[1], ctr[2]):
+        arrow(ax, c, y_sel, c, by - 0.008, color=MUTED, lw=0.8, ls=dotted,
+              zorder=5)
+    # The word rides above the line rather than in a break in it or on a row
+    # of its own: breaking the line left a stub too short to read as a line,
+    # and a row under the head cost a seventh page. The boxes already name the
+    # subsets ("matched pairs", "unmatched ones") the assignment hands them.
+    ax.text((ctr[1] + ctr[2]) / 2, y_sel + 0.020, "assignment", ha="center",
+            va="center", fontsize=5.4, color=MUTED, style="italic", zorder=5)
+
     y_disc = by + bh / 2
     arrow(ax, cols[2] + bw3 + 0.008, y_disc, 0.918, y_disc,
           ls=(0, (2.5, 2)), zorder=5)
@@ -244,7 +270,7 @@ def build() -> None:
     arrow(ax, x_det_c, y_f, x_det_c, hy + hh)
 
     # ---- tail -------------------------------------------------------------
-    ty, th = 0.243, 0.132
+    ty, th = 0.220, 0.124
     n, gap = 4, 0.028
     bw = (W - gap * (n - 1)) / n
     # (label, sub): the label may wrap, and only `sub` is set in muted type, so

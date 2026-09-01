@@ -3,14 +3,15 @@
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{../docs/method_figure.pdf}
-\caption{Pipeline. All three branches read the detections, but not the same
-vector: match and state share one 16-dimensional pair feature, while verify
-reads a 14-dimensional unary feature whose last four entries are the
-cross-frame evidence measured on each detected footprint in both images. The
-dashed edge leaving verify is suppression: a detection scored below its
-threshold is never emitted at all, and that is where the cross-frame gain
-appears. Matched and moved pairs are not changes and reach the prompt only as
-an unchanged count. The graph feeds one grounding condition, not all.}
+\caption{Pipeline. match and state share one 16-dimensional pair feature;
+verify reads a 14-dimensional unary feature whose last four entries are
+cross-frame evidence, measured on each detected footprint in both images.
+Dotted is selection, not data: all three are scored in one pass, and match's
+assignment decides which scores count. The dashed edge leaving verify is
+suppression --- a detection below its threshold is never emitted --- and that
+is where the cross-frame gain appears. Matched and moved pairs are not
+changes; they reach the prompt only as a count. The graph feeds one grounding
+condition, not all.}
 \label{fig:architecture}
 \end{figure}
 
