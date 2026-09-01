@@ -254,12 +254,20 @@ def build() -> None:
     for c in (ctr[1], ctr[2]):
         arrow(ax, c, y_sel, c, by - 0.008, color=MUTED, lw=0.8, ls=dotted,
               zorder=5)
-    # The word rides above the line rather than in a break in it or on a row
-    # of its own: breaking the line left a stub too short to read as a line,
-    # and a row under the head cost a seventh page. The boxes already name the
-    # subsets ("matched pairs", "unmatched ones") the assignment hands them.
-    ax.text((ctr[1] + ctr[2]) / 2, y_sel + 0.020, "assignment", ha="center",
-            va="center", fontsize=5.4, color=MUTED, style="italic", zorder=5)
+    # Named for what it produces, not for the operation. "assignment" alone
+    # was read as match assigning work to the other two branches; what assign()
+    # actually returns is (matches, unmatched_past, unmatched_cur) -- the
+    # detections paired off against each other, and the leftovers. Naming the
+    # split makes the line land on the words already in the boxes it points
+    # at: "matched pairs" and "unmatched ones".
+    #
+    # The words ride above the line rather than in a break in it or on a row
+    # of their own: breaking the line left a stub too short to read as a line,
+    # and a row under the head cost a seventh page. 0.229 wide against the
+    # 0.281 between the two ticks, which nothing may cross.
+    ax.text((ctr[1] + ctr[2]) / 2, y_sel + 0.020, "matched vs unmatched",
+            ha="center", va="center", fontsize=5.4, color=MUTED,
+            style="italic", zorder=5)
 
     y_disc = by + bh / 2
     arrow(ax, cols[2] + bw3 + 0.008, y_disc, 0.918, y_disc,
