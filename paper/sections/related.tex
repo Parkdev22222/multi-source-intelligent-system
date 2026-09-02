@@ -17,16 +17,19 @@ never seen LEVIR-CD, but the head is trained on its training split from
 mask-derived labels, so that number is not zero-shot. The WHU-CD experiment,
 applying the same head without retraining, carries the zero-shot claim.
 
-\textbf{Change captioning and grounding.} RSICC-style
+\textbf{Change captioning and grounded generation.} Remote-sensing
+change-captioning
 models~\cite{hoxha2022change,liu2022remote,liu2023progressive,chang2023changes}
-generate a sentence per image pair, scored with BLEU, METEOR, ROUGE-L and
-CIDEr-D against human references. They are trained on the caption corpus, and
-n-gram overlap rewards phrasing matching the reference distribution. Our concern
-is orthogonal: a report can score well on overlap while asserting a change that
-did not occur. Retrieval-augmented generation~\cite{lewis2020retrieval} reduces
-unsupported assertions by conditioning on retrieved evidence, and graph-based
-variants~\cite{edge2024local} aggregate over entities rather than top-$k$
-passages. Evaluating the result is the harder half, and metrics using a language
-model as judge~\cite{zheng2023judging} inherit its failure modes and can be
-gamed by the model under test. Section~\ref{ssec:cfs} takes the opposite
-approach: nothing in the metric is learned.
+generate textual descriptions from bitemporal image pairs and are commonly
+evaluated against human references using BLEU, METEOR, ROUGE-L, and CIDEr-D.
+These metrics primarily measure similarity to reference wording and do not
+directly evaluate whether the reported change direction, object class, or count
+is correct. Retrieval-augmented generation~\cite{lewis2020retrieval} grounds
+generation in retrieved evidence, while graph-based methods~\cite{edge2024local}
+organize context through entities and their relations. However, additional
+grounding cannot correct inaccurate upstream instance evidence. LLM-as-a-judge
+methods~\cite{zheng2023judging} provide semantic evaluation but introduce
+evaluator dependence and known judge biases. We therefore introduce a
+deterministic claim-level protocol in Section~\ref{ssec:cfs} that evaluates
+change direction and object class without placing a learned model inside the
+metric.
