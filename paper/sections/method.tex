@@ -41,8 +41,8 @@ report comes out (Fig.~\ref{fig:architecture}). The procedure is as follows.
 
 Let $P$ and $C$ be the detections in the past and current frames. Candidate
 pairs are formed within a geographic radius. A pair feature compares two named
-detections; a unary one describes a single detection and summarizes what the
-other frame offers it. The \NPairFeatures{} pair features are CLIP cosine
+detections; a unary one describes a single detection and summarizes the
+evidence the other frame provides about it. The \NPairFeatures{} pair features are CLIP cosine
 between mask-cropped patches,
 geodesic center distance normalized by the match radius, IoU of the
 geo-referenced boxes, log area ratio, aspect difference, both confidences,
