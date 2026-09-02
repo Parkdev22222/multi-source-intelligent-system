@@ -99,9 +99,10 @@ model rather than the feature's contribution.
 \subsection{Change-Fact-Score}
 \label{ssec:cfs}
 
-BLEU rewards phrasing that overlaps the references and is blind to a report
-announcing construction that never happened. A monitoring service is judged on
-the second thing, so we score reports at the level of the claims they make. A
+BLEU rewards phrasing that overlaps the references and cannot see that a report
+announces construction that never happened. A monitoring service is judged on
+whether its claims are true, not on how they are worded, so we score reports at
+the level of the claims they make. A
 deterministic rule-based extractor reduces a report to atomic claims
 \[
   c = (\textit{direction},\ \textit{object class},\ \textit{count}),
