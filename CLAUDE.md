@@ -23,11 +23,18 @@ each fit alone and not together.
 
 ## The figure and tables are generated, not drawn
 
+The figure is a chain, and the `.pptx` is its source:
+
 ```bash
-python scripts/gen_paper_figure.py    # docs/method_figure.{pdf,png}
-node scripts/gen_figure_pptx.js       # docs/method_figure.pptx (needs pptxgenjs)
+node scripts/gen_figure_pptx.js       # docs/method_figure.pptx  <- edit here
+python scripts/figure_from_pptx.py    # docs/method_figure.{pdf,png} <- the paper
 python paper/make_tables.py           # paper/tables/*.tex from results/*.json
 ```
+
+`scripts/gen_paper_figure.py` is the layout of record that the `.pptx`
+transcribes, and the reasoning behind each edge lives in its comments. It
+writes `docs/method_figure_layout.png` under its own name and no longer
+touches what the paper includes.
 
 Edit the generator, never the output. Numbers in the prose come from macros
 in `paper/numbers.tex`, which trace to files under `results/`; do not type a

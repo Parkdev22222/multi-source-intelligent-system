@@ -43,8 +43,14 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT_PDF = ROOT / "docs" / "method_figure.pdf"
-OUT_PNG = ROOT / "docs" / "method_figure.png"
+# The paper's figure is no longer built here. It is rendered from
+# docs/method_figure.pptx by scripts/figure_from_pptx.py, so that the editable
+# PowerPoint and the printed figure cannot disagree. This script stays as the
+# layout of record -- gen_figure_pptx.js transcribes its geometry, and the
+# reasoning behind each edge is in the comments below -- and writes a preview
+# under its own name so that running it can never overwrite what the paper
+# includes.
+OUT_PNG = ROOT / "docs" / "method_figure_layout.png"
 
 # --- palette: light, print-safe, distinguishable in grayscale -------------
 INK = "#1a1d23"
@@ -352,13 +358,12 @@ def build() -> None:
             fontsize=5.8, color=MUTED, style="italic")
 
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
-    OUT_PDF.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUT_PDF, format="pdf", bbox_inches="tight", pad_inches=0.01)
+    OUT_PNG.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT_PNG, format="png", dpi=400, bbox_inches="tight",
                 pad_inches=0.01)
     plt.close(fig)
-    print(f"wrote {OUT_PDF.relative_to(ROOT)}")
-    print(f"wrote {OUT_PNG.relative_to(ROOT)}  (preview only; the paper uses the PDF)")
+    print(f"wrote {OUT_PNG.relative_to(ROOT)}  (layout reference; the paper uses "
+          f"docs/method_figure.pdf, rendered from the .pptx)")
 
 
 if __name__ == "__main__":
