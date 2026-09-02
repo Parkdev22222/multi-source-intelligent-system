@@ -9,8 +9,8 @@ cross-frame evidence, measured on each detected footprint in both images.
 Dotted is selection, not data: all three are scored in one pass, and match's
 assignment then splits the detections into paired and leftover, deciding which
 scores count. The dashed edge leaving verify is suppression: a detection below
-its threshold is never emitted, and that is where the cross-frame gain
-appears. The unchanged count is the matched and moved pairs. What the report
+its threshold is never emitted, and most of the detection gain is there
+(Section~\ref{ssec:ablation}). The unchanged count is the matched and moved pairs. What the report
 is conditioned on varies by grounding condition
 (Section~\ref{ssec:grounding}).}
 \label{fig:architecture}
