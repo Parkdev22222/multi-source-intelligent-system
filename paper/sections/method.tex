@@ -70,13 +70,12 @@ a threshold; a Hungarian variant changes the result by less than 0.1 F1. Both
 thresholds are selected on the validation split and never on test.
 
 \textbf{No additional correspondence annotation.} Change-detection benchmarks publish binary change
-masks. We convert a mask to instances by connected components and label a
-candidate pair positive when its two detections co-locate, stationary if both
-fall outside the change region and modified if either falls inside; an
-unmatched detection is positive when it overlaps a ground-truth change
-instance. No annotation beyond what the benchmark already
-ships is required, which is what makes the head cheap to retrain for a new
-sensor or region.
+masks. We convert a mask to instances by connected components. A candidate pair
+overlapping at IoU~$\geq$~0.5 is positive: stationary when neither detection is
+a quarter covered by the change region, modified when either is half covered,
+dropped when neither test fires. An unmatched detection is positive when it
+overlaps a change instance. Nothing further is annotated, which keeps the head
+cheap to retrain for a new sensor or region.
 
 \subsection{Cross-Frame Co-located Evidence}
 \label{ssec:xf}
