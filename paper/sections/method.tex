@@ -16,17 +16,16 @@ is conditioned on varies by grounding condition
 \label{fig:architecture}
 \end{figure}
 
-Two co-registered revisits of a tile enter and a report leaves
-(Fig.~\ref{fig:architecture}). The procedure is as follows.
+Two aligned images of one area, taken on different dates, go in; a change
+report comes out (Fig.~\ref{fig:architecture}). The procedure is as follows.
 
 \begin{enumerate}
 \item \textbf{Open-vocabulary detection.} \DetectorName{} proposes object
       instances in each frame independently, at three scales, with non-maximum
       suppression across scales.
-\item \textbf{Geo-referencing.} Each detection is mapped through an invertible
-      pixel-to-latitude/longitude transform, so every downstream stage reasons
-      in world coordinates and observations of one place from different tiles
-      or dates coincide.
+\item \textbf{Geo-referencing.} An invertible pixel-to-latitude/longitude
+      transform puts every detection in world coordinates, so observations of
+      one place coincide across tiles and dates.
 \item \textbf{Matching.} The head scores candidate detection pairs across the
       two frames and assigns them one-to-one.
 \item \textbf{Verification.} Detections left unmatched are kept only if the

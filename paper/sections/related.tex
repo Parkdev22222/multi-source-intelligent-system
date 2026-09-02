@@ -18,18 +18,13 @@ mask-derived labels, so that number is not zero-shot. The WHU-CD experiment,
 applying the same head without retraining, carries the zero-shot claim.
 
 \textbf{Change captioning and grounded generation.} Remote-sensing
-change-captioning
-models~\cite{hoxha2022change,liu2022remote,liu2023progressive,chang2023changes}
-generate textual descriptions from bitemporal image pairs and are commonly
-evaluated against human references using BLEU, METEOR, ROUGE-L, and CIDEr-D.
-These metrics primarily measure similarity to reference wording and do not
-directly evaluate whether the reported change direction, object class, or count
-is correct. Retrieval-augmented generation~\cite{lewis2020retrieval} grounds
-generation in retrieved evidence, while graph-based methods~\cite{edge2024local}
-organize context through entities and their relations. However, additional
-grounding cannot correct inaccurate upstream instance evidence. LLM-as-a-judge
-methods~\cite{zheng2023judging} provide semantic evaluation but introduce
-evaluator dependence and known judge biases. We therefore introduce a
-deterministic claim-level protocol in Section~\ref{ssec:cfs} that evaluates
-change direction and object class without placing a learned model inside the
-metric.
+change-captioning models~\cite{hoxha2022change,liu2022remote,liu2023progressive,chang2023changes} describe bitemporal image pairs and are scored against human
+references with BLEU, METEOR, ROUGE-L and CIDEr-D. These measure similarity to
+reference wording, not whether the reported direction, object class or count is
+correct. Retrieval-augmented generation~\cite{lewis2020retrieval} grounds
+generation in retrieved evidence; graph-based
+methods~\cite{edge2024local} organize it through entities and relations. Neither
+can correct inaccurate upstream instance evidence. LLM-as-a-judge
+metrics~\cite{zheng2023judging} add evaluator dependence and known judge biases.
+Section~\ref{ssec:cfs} therefore evaluates direction and object class
+deterministically, with no learned model inside the metric.
