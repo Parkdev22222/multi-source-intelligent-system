@@ -40,19 +40,21 @@ report comes out (Fig.~\ref{fig:architecture}). The procedure is as follows.
 \subsection{Learned Pairing}
 
 Let $P$ and $C$ be the detections in the past and current frames. Candidate
-pairs are formed within a geographic radius. For each candidate we compute
-\NPairFeatures{} pair features: CLIP cosine between mask-cropped patches,
+pairs are formed within a geographic radius. A pair feature compares two named
+detections; a unary one describes a single detection and summarizes what the
+other frame offers it. The \NPairFeatures{} pair features are CLIP cosine
+between mask-cropped patches,
 geodesic center distance normalized by the match radius, IoU of the
 geo-referenced boxes, log area ratio, aspect difference, both confidences,
 class agreement, signed center offsets, mutual-best-match indicators for CLIP
 and geometry, normalized candidate ranks, and candidate densities on both
-sides. The rank and density features matter more than they look: they let the
-head condition on how contested a match is, which a pairwise similarity alone
-cannot express. For each detection we compute \NUnaryFeatures{} unary features:
-confidence, log relative area, aspect, position in the tile, mask fill ratio,
-the best geometric and CLIP agreement found in the other frame, the number of
-overlapping detections there, distance to the tile edge, and
-\NCrossFrameFeatures{} cross-frame features.
+sides. Rank and density let the head condition on how contested a match is,
+which pairwise similarity alone cannot express. The \NUnaryFeatures{} unary
+features are the detection's own confidence, log relative area, aspect,
+position in the tile, mask fill ratio and distance to the tile edge; the best
+geometric and CLIP agreement anywhere in the other frame with the number of
+overlapping detections there; and \NCrossFrameFeatures{} cross-frame
+features.
 
 Three small multi-layer perceptrons share a class embedding:
 $\mathrm{match}$ scores a candidate pair, $\mathrm{state}$ classifies a matched
