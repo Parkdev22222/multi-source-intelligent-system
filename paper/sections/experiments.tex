@@ -14,6 +14,8 @@ measured on one A100 80GB.
 \textbf{The heuristic baseline} is the rule this work replaces rather than a
 published method: a fixed weighted sum of CLIP similarity, size agreement and
 geodesic distance ($0.7/0.2/0.1$), with a hard radius gate and no verifier.
+The geometry-only row is the same rule with the appearance and size terms set
+to zero.
 
 \textbf{Integrity.} Every run asserts and records four properties: train and
 test pair identifiers are disjoint; their parent scenes are disjoint, so two
