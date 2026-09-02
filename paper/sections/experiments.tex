@@ -11,6 +11,10 @@ vLLM. Change detection is evaluated on LEVIR-CD~\cite{chen2020spatial} (test,
 LEVIR-CC~\cite{liu2022remote} (test, \EFourNCrops{} crops). All timings are
 measured on one A100 80GB.
 
+\textbf{The heuristic baseline} is the rule this work replaces rather than a
+published method: a fixed weighted sum of CLIP similarity, size agreement and
+geodesic distance ($0.7/0.2/0.1$), with a hard radius gate and no verifier.
+
 \textbf{Integrity.} Every run asserts and records four properties: train and
 test pair identifiers are disjoint; their parent scenes are disjoint, so two
 crops of one tile cannot straddle the split; all thresholds are selected on the

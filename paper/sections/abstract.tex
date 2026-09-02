@@ -7,7 +7,7 @@ represent the same physical object. We therefore introduce a
 \HeadParamsRound-parameter instance
 pairing head trained from existing change masks without additional
 correspondence labels. Using the same SAM3 proposals, replacing a
-CLIP--geometry pairing heuristic with the learned head raises pixel F1 from
+hand-tuned CLIP-and-geometry pairing rule with the learned head raises pixel F1 from
 \EOneHeuristicFOne{} to \EOnePixelFOne{} on LEVIR-CD, and from
 \ETwoHeuristicFOne{} to \ETwoPixelFOne{} on WHU-CD without retraining or
 threshold tuning. Pixel F1 does not say whether the resulting report is true, so
