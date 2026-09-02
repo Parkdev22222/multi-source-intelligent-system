@@ -30,9 +30,9 @@ report comes out (Fig.~\ref{fig:architecture}). The procedure is as follows.
 \item \textbf{Verification.} Detections left unmatched are kept only if the
       head judges them genuine change, using cross-frame evidence described in
       Section~\ref{ssec:xf}.
-\item \textbf{Inventory and generation.} Survivors are aggregated into a
-      per-tile change inventory, and the report is generated from that
-      structure rather than from pixels.
+\item \textbf{Inventory and generation.} Verified object-level changes are
+      organized into a per-tile inventory, which the LLM uses with graph
+      context to generate the report.
 \end{enumerate}
 
 \subsection{Learned Pairing}
