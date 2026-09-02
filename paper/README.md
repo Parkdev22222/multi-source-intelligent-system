@@ -70,6 +70,17 @@ cd paper
 latexmk -pdf main.tex
 ```
 
+Then check it, every time:
+
+```bash
+scripts/check_paper.sh   # pages / overfull boxes / undefined refs; non-zero on failure
+```
+
+The layout sits exactly at six pages. One added sentence has cost a seventh
+more than once, so the count is not something to check at the end -- it is
+part of the edit. Re-run it after a rebase too: two edits can each fit alone
+and not together.
+
 The figure is generated, not drawn: its two annotations are read from
 `results/*.json`, so it cannot drift from the tables. The generator embeds
 TrueType text rather than PDF Type 3 fonts for IEEE compatibility. The old
