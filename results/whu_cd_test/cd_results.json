@@ -247,6 +247,47 @@
       "inst_precision": 0.4417952314165498,
       "inst_recall": 0.6382978723404256,
       "inst_f1": 0.5221715706589307
+    },
+    {
+      "name": "heuristic matching, learned verifier",
+      "pixel": {
+        "precision": 0.46707260284393215,
+        "recall": 0.44796504962265377,
+        "f1": 0.45731932701644656,
+        "iou": 0.29644458184076966,
+        "oa": 0.962216081481049,
+        "kappa": 0.4377548170250031,
+        "tp": 2879660,
+        "fp": 3285677,
+        "fn": 3548654,
+        "tn": 171165369
+      },
+      "instance": {
+        "precision": 0.18150896722325294,
+        "recall": 0.5947315096251267,
+        "f1": 0.2781331438047856,
+        "tp": 587,
+        "fp": 2647,
+        "fn": 400,
+        "n_pred": 3234,
+        "n_gt": 987,
+        "type_accuracy": null,
+        "count_mae": 3.6942028985507247,
+        "count_rmse": 5.7046891467344265,
+        "per_type": {}
+      },
+      "n_suppressed": 8226,
+      "seconds": 58.22458457946777,
+      "precision": 0.46707260284393215,
+      "recall": 0.44796504962265377,
+      "f1": 0.45731932701644656,
+      "iou": 0.29644458184076966,
+      "inst_precision": 0.18150896722325294,
+      "inst_recall": 0.5947315096251267,
+      "inst_f1": 0.2781331438047856
     }
-  ]
+  ],
+  "provenance_notes": {
+    "heuristic matching, learned verifier": "measured in the --verifier-ablation re-run; the other rows are retained from the original run because the Hungarian arms re-tie non-deterministically (documented in paper/numbers.tex)"
+  }
 }

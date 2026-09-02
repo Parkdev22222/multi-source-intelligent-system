@@ -19,6 +19,17 @@
 \newcommand{\EOneCrossFrameInstGain}{3.72}
 \newcommand{\EOneGTDensity}{54.5}
 
+% Verifier ablation (docs/verifier_ablation.md): `heuristic matching, learned
+% verifier` pairs with the hand-tuned rule and takes state and verify from the
+% trained model, so only the match branch differs from the learned head. It
+% decomposes the 25.59 -> 54.01 headline into suppression and learned matching.
+% Same run as the rows above -- the re-run reproduced all six pre-existing
+% LEVIR rows exactly, so the whole file was adopted.
+\newcommand{\EOneHybridFOne}{49.60}
+\newcommand{\EOneHybridInstFOne}{49.95}
+\newcommand{\EOneSuppressionGain}{24.01}   % hybrid - heuristic, pixel F1
+\newcommand{\EOneMatchGain}{4.41}          % ours - hybrid, pixel F1
+
 % --- E2: WHU-CD test, 690 pairs -- results/whu_cd_test/ --------------------
 % Re-measured on 2026-08-31 in one run that also produces the cross-frame
 % ablation row the original E2 run omitted. geo-only, the heuristic and the
@@ -41,6 +52,15 @@
 \newcommand{\ETwoGTDensity}{1.4}
 \newcommand{\ETwoCrossFrameGain}{9.82}   % 57.97 - 48.15 pixel F1
 \newcommand{\ETwoCrossFrameInstGain}{4.24} % 52.22 - 47.98 instance F1
+
+% Verifier ablation, WHU-CD. Measured in the --verifier-ablation re-run; the
+% other E2 rows are retained from the original run because the three Hungarian
+% arms re-tie non-deterministically (see the note above). Only this row is new,
+% so only it carries the re-run's provenance.
+\newcommand{\ETwoHybridFOne}{45.73}
+\newcommand{\ETwoHybridInstFOne}{27.81}
+\newcommand{\ETwoSuppressionGain}{16.87}   % hybrid - heuristic, pixel F1
+\newcommand{\ETwoMatchGain}{12.24}         % ours - hybrid, pixel F1
 
 % --- Published zero-shot peer (AnyChange, LEVIR-CD) -- baselines.json ------
 \newcommand{\AnyChangeFOne}{23.40}

@@ -27,10 +27,9 @@ any change occurred at all. Two product failures follow.
 baseline is to provide both images to a vision--language model and request a
 description. We measure that baseline rather than dismiss it: it writes fluent,
 confident prose while reaching only \EFourVLMChgAcc\% accuracy on whether the
-scene changed. Its BLEU-4 of
-\EFourVLMBleu{} does not expose that: the score says the wording differs from
-the references, not that the content is false. Such a service would look correct in demos while remaining unreliable
-in many evaluated cases.
+scene changed. Its BLEU-4 of \EFourVLMBleu{} does not expose that, saying only
+that the wording differs from the references. Such a service looks correct in
+demos while remaining unreliable in many evaluated cases.
 
 \textbf{Our approach} generates reports from object instances detected and
 matched across two images. \DetectorName~\cite{sam3} generates object-instance
@@ -45,29 +44,29 @@ than unconstrained language generation.
 \textbf{Pairing is the report-level bottleneck.} Holding the report model,
 prompt and graph grounding fixed, replacing only the pairing increases
 Change-Fact-Score (CFS), the deterministic claim-level metric defined in
-Section~\ref{ssec:cfs}, by \EFiveGain{} F1 points and lowers unsupported
-claims from
-\EFiveHeuristicHal\% to \EFiveLearnedHal\%. With instance evidence fixed,
-structured reporting, top-$k$ retrieval, and graph aggregation achieve CFS-F1
-scores of \EFourStructFOne{}, \EFourFlatRagFOne{}, and \EFourGraphRAGFOne{},
-respectively, on \EFourNCrops{} crops---a maximum difference of only
-\EFourLadderExactSpread{} points. The central result is therefore not that a
-larger context makes the writer safer, but that better correspondence makes its
-evidence reliable.
+Section~\ref{ssec:cfs}, by \EFiveGain{} F1 points and lowers unsupported claims
+from \EFiveHeuristicHal\% to \EFiveLearnedHal\%. With instance evidence fixed,
+structured reporting, top-$k$ retrieval and graph aggregation reach CFS-F1
+\EFourStructFOne{}, \EFourFlatRagFOne{} and \EFourGraphRAGFOne{} on
+\EFourNCrops{} crops---a maximum difference of \EFourLadderExactSpread{}
+points. The central result is therefore not that a larger context makes the
+writer safer, but that better correspondence makes its evidence reliable.
 
 Our contributions are as follows.
 
 \begin{itemize}
-\item \textbf{Learned instance pairing.} We introduce a
-      \HeadParamsRound-parameter pairing head trained from existing change
-      masks without additional correspondence annotations. Using the same SAM3
-      proposals, it improves pixel F1 over our hand-tuned CLIP-and-geometry
-      rule from \EOneHeuristicFOne{} to \EOnePixelFOne{} on LEVIR-CD, and from
+\item \textbf{Learned instance pairing and verification.} We introduce a
+      \HeadParamsRound-parameter head that pairs instances across revisits and
+      verifies unmatched ones, trained from existing change masks without
+      additional correspondence annotations. Using the same SAM3 proposals, it
+      improves pixel F1 over our hand-tuned CLIP-and-geometry rule from
+      \EOneHeuristicFOne{} to \EOnePixelFOne{} on LEVIR-CD, and from
       \ETwoHeuristicFOne{} to \ETwoPixelFOne{} on WHU-CD without retraining.
-      Geometry alone (\EOneGeoFOne) and
-      AnyChange~\cite{zheng2024segment} (\AnyChangeFOne) fall in the same
-      2.2-point band as that rule's \EOneHeuristicFOne, so the comparison is
-      with non-learned pairing generally.
+      Geometry alone (\EOneGeoFOne) and AnyChange~\cite{zheng2024segment}
+      (\AnyChangeFOne) fall in the same 2.2-point band as that rule, so the
+      comparison is with non-learned pairing generally. Separating the branches
+      attributes \EOneSuppressionGain{} of the LEVIR-CD gain to verification
+      and \EOneMatchGain{} to learned matching.
 \item \textbf{Controlled detection-to-report attribution.} Holding the LLM,
       prompt, and grounding context fixed, we show that replacing only
       heuristic pairing with the learned head improves report factuality by
@@ -86,11 +85,10 @@ Our contributions are as follows.
       top-$k$ retrieval and \ESevenStructCountMAE{} for full concatenation.
 \end{itemize}
 
-Our evaluation uses public benchmarks rather than a live subscriber
-deployment. The consumer setting motivates the system design and metrics but
-is not itself evaluated. We do not claim state-of-the-art pixel-level change
-detection: benchmark-specific supervised models report 86--91 F1 on
-LEVIR-CD~\cite{chen2020spatial,fang2021snunet,chen2021remote,
+Our evaluation uses public benchmarks rather than a live deployment; the
+consumer setting motivates the design and metrics but is not itself evaluated.
+We do not claim state-of-the-art pixel-level change detection: supervised models
+report 86--91 F1 on LEVIR-CD~\cite{chen2020spatial,fang2021snunet,chen2021remote,
 bandara2022transformer,codegoni2023tinycd}, whereas our focus is instance
-correspondence and downstream report factuality. AnyChange~\cite{zheng2024segment}
-provides zero-shot context rather than a supervision-matched comparison.
+correspondence and report factuality. AnyChange~\cite{zheng2024segment} provides
+zero-shot context rather than a supervision-matched comparison.

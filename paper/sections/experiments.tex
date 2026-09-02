@@ -19,10 +19,9 @@ to zero.
 
 \textbf{Integrity.} Every run asserts and records four properties: train and
 test pair identifiers are disjoint; their parent scenes are disjoint, so two
-crops of one tile cannot straddle the split; all thresholds are selected on the
-validation split, never on test; and prompt style examples, where used, are
-drawn only from the training split. The assertions are part of the result
-files, not of the prose.
+crops of one tile cannot straddle the split; thresholds are selected on the
+validation split, never on test; and prompt style examples are drawn only from
+the training split. The assertions live in the result files, not the prose.
 
 \subsection{Main Result}
 
@@ -31,35 +30,32 @@ files, not of the prose.
 \textbf{Detection.} In Table~\ref{tab:detection} the row worth pointing at is
 not ours. Geometry-only pairing (\EOneGeoFOne), the production heuristic
 (\EOneHeuristicFOne) and AnyChange (\AnyChangeFOne) span 2.2 F1 points, at
-precision 13--16 with high recall: the two non-learned rules
-we tested and one published zero-shot method sit in the same band. The
-AnyChange rows provide published zero-shot context rather than a controlled
-comparison because our pairing head uses LEVIR-CD training masks. The head
-reaches \EOnePixelFOne{} pixel F1. Applied to WHU-CD unchanged --- no retraining, with
-thresholds carried over from LEVIR-CD's validation split --- it reaches
-\ETwoPixelFOne{} against \ETwoHeuristicFOne{} for the heuristic it replaces.
+precision 13--16 with high recall: the two non-learned rules we tested and one
+published zero-shot method sit in the same band. AnyChange is published
+zero-shot context rather than a controlled comparison, because our head uses
+LEVIR-CD training masks. The head reaches \EOnePixelFOne. Applied to WHU-CD
+unchanged --- no retraining, thresholds carried over from LEVIR-CD's validation
+split --- it reaches \ETwoPixelFOne{} against \ETwoHeuristicFOne.
 The instance columns state it more usefully: against \ETwoNGT{} ground-truth
-instances the heuristic emits \ETwoHeuristicNPred{} predictions and ours emits
-\ETwoNPred. For a service that reports how many buildings appeared, the Count
-MAE column is the difference between a usable number and noise. WHU-CD is not the easier dataset: it
-averages \ETwoGTDensity{} ground-truth instances per tile against LEVIR-CD's
+instances the heuristic emits \ETwoHeuristicNPred{} predictions and ours
+\ETwoNPred, so for a service reporting how many buildings appeared the Count
+MAE column separates a usable number from noise. WHU-CD is not the easier
+dataset: it averages \ETwoGTDensity{} instances per tile against LEVIR-CD's
 \EOneGTDensity, so the two F1 values are not comparable as difficulties.
 
 \textbf{Pairing determines report factuality.} Holding grounding pinned at
 \texttt{llm\_graphrag} and swapping only the pairing moves report factuality by
 \EFiveGain{} CFS-F1 (Table~\ref{tab:e5_pairing}). Unsupported claims fall from
-\EFiveHeuristicHal\% to \EFiveLearnedHal\%, while ChgAcc rises from
-\EFiveHeuristicChgAcc{} to \EFiveLearnedChgAcc. Because the crops, prompt,
-language model and grounding are fixed, this directly connects upstream
-correspondence quality to the final report.
+\EFiveHeuristicHal\% to \EFiveLearnedHal\%, ChgAcc rises from
+\EFiveHeuristicChgAcc{} to \EFiveLearnedChgAcc. With crops, prompt, model and
+grounding fixed, this connects upstream correspondence to the final report.
 
 \input{tables/e5_pairing}
 
 \textbf{Cost.} Segmentation is \ESixDetectShare\% of the per-tile budget. The
 learned head costs \ESixHeadMs~ms against \ESixHeuristicMs~ms for the heuristic
-it replaces --- \ESixHeadDelta~ms more, \ESixPipelineShare\% of the pipeline.
-The comparison is within one tile population, since both strategies scale with
-the number of detections.
+it replaces --- \ESixHeadDelta~ms more, \ESixPipelineShare\% of the pipeline,
+compared within one tile population since both scale with detection count.
 
 \input{tables/factuality}
 \input{tables/example}
@@ -68,22 +64,21 @@ the number of detections.
 In Table~\ref{tab:factuality_caption} \texttt{vlm\_direct} reaches ChgAcc
 \EFourVLMChgAcc\% while producing confident, well-formed prose, at CFS-F1
 \EFourVLMFOne{} against \EFourGraphRAGFOne{} for the grounded pipeline. The
-error is one-sided: on the \EFourNNoChange{} crops whose references agree that
-nothing changed, it asserts a change anyway in \EFourVLMFalseChange\% of
-cases, against \EFourGraphRAGFalseChange\% for the grounded pipeline.
-Table~\ref{tab:example} shows a typical one. This is the failure the pipeline
-exists to avoid, and n-gram overlap alone would not have surfaced it.
+error is one-sided: on the \EFourNNoChange{} crops whose references agree
+nothing changed, it asserts a change anyway in \EFourVLMFalseChange\% of cases,
+against \EFourGraphRAGFalseChange\%. Table~\ref{tab:example} shows a typical
+one --- the failure the pipeline exists to avoid, which n-gram overlap alone
+would not have surfaced.
 
 \textbf{We lose on n-gram overlap.} Against RSICC models trained on
 LEVIR-CC's own caption corpus (Table~\ref{tab:levir_cc_caption}) our BLEU-4,
-ROUGE-L and CIDEr-D are all well behind: those models have learned the
-reference phrasing, and these metrics reward phrasing. The one exception is
-METEOR, where each of our grounded conditions exceeds every trained model
-(\texttt{vlm\_direct}, which uses none of our pipeline, does not), because
-METEOR credits stems and content words rather than exact $n$-grams. Read
-together the two say the pipeline names the right objects and directions in the
-wrong register --- but that reading is an inference from a metric split, not a
-measurement, which is why we score claims directly instead.
+ROUGE-L and CIDEr-D are well behind: those models learned the reference
+phrasing, and these metrics reward phrasing. The exception is METEOR, where
+each grounded condition exceeds every trained model (\texttt{vlm\_direct}, which
+uses none of our pipeline, does not), because METEOR credits stems and content
+words rather than exact $n$-grams. Together they suggest the pipeline names the
+right objects in the wrong register --- an inference from a metric split, not a
+measurement, which is why we score claims directly.
 
 \input{../results/levir_cc_caption/table_levir_cc_caption}
 
@@ -98,40 +93,48 @@ cross-frame evidence it loses \EOneCrossFrameGain{} pixel F1 and
 WHU-CD the same ablated head loses \ETwoCrossFrameGain{} and
 \ETwoCrossFrameInstGain.
 
+\textbf{Most of the headline gain is suppression, not learned matching.} The
+heuristic has no verifier, so it reports every unmatched detection. A row that
+pairs with the hand-tuned rule but takes state and verification from the trained
+model therefore isolates the match branch (Table~\ref{tab:detection}). It reaches
+\EOneHybridFOne{} on LEVIR-CD: of the
+\EOneHeuristicFOne{}~$\rightarrow$~\EOnePixelFOne{} gain,
+\EOneSuppressionGain{} points come from having a verifier at all and only
+\EOneMatchGain{} from learning to match. WHU-CD gives \ETwoHybridFOne, a
+\ETwoSuppressionGain{}/\ETwoMatchGain{} split. Suppression is the larger term on
+both, and it is what the hand-tuned rule lacks entirely.
+
 \textbf{Aggregation is worth \EFourAggGain{} points; retrieval and graph
 aggregation add little on this crop-level evaluation.} Structuring the raw
 detection dump into a change inventory moves CFS-F1 from \EFourRawFOne{}
 (\texttt{llm\_raw}) to \EFourStructFOne{} (\texttt{llm\_struct}). Adding
 top-$k$ retrieval (\EFourFlatRagFOne) or graph aggregation
 (\EFourGraphRAGFOne) moves it by less than \EFourLadderSpread{} points, and not
-consistently in the graph's favor. Because we do not report paired confidence
-intervals for these generations, we treat this as a small observed spread and
-do not infer a ranking. The reason is structural: all three conditions receive the
-same change inventory for the crop being described, and CFS scores only claims
-about \emph{that} crop, so retrieved history concerns other crops and can move
-wording but rarely a claim. Of \EFourNCrops{} generations,
+consistently in the graph's favor. Without paired confidence intervals we treat
+this as a small observed spread and infer no ranking. The reason is structural:
+all three conditions receive the same change inventory for the crop being
+described, and CFS scores only claims about \emph{that} crop, so retrieved
+history can move wording but rarely a claim. Of \EFourNCrops{} generations,
 \EFourTextDifferPct\% differ in text between the three conditions and only
 \EFourClaimsDifferPct\% differ in extracted claims. The CountMAE column of
 Table~\ref{tab:factuality_caption} points the other way and we report it as
 such: at crop level every aggregating condition, the graph included, carries a
-larger count error than the template or the raw detection dump. Aggregation
-costs counts here and earns them back only at the scale of a neighborhood.
+larger count error than the template or the raw dump. Aggregation costs counts
+here and earns them back only at neighborhood scale.
 
 \textbf{At neighborhood level the comparison becomes decidable}
-(Table~\ref{tab:e7_scene}). Generating
-one report per neighborhood over every crop of a tile, the conditions stop
-being nested and become three \emph{representations} of the same observations.
-Concatenating every crop's inventory produces a scene count error of
-\ESevenStructCountMAE{} instances; top-$k$ retrieval, which drops crops by
-construction, reaches \ESevenFlatCountMAE; graph aggregation reaches
-\ESevenGraphCountMAE, better than the deterministic template's
+(Table~\ref{tab:e7_scene}). Generating one report per neighborhood over every
+crop of a tile, the conditions stop being nested and become three
+\emph{representations} of the same observations. Concatenating every crop's
+inventory gives a scene count error of \ESevenStructCountMAE{} instances;
+top-$k$ retrieval, which drops crops by construction, \ESevenFlatCountMAE;
+graph aggregation \ESevenGraphCountMAE, better than the template's
 \ESevenTemplateCountMAE{} and an order of magnitude better than either
 alternative. Handed everything, the language model does not aggregate it, and
-the error grows with the number of observations rather than shrinking.
-Aggregating before generation is what survives. On claim-level factuality graph
-aggregation leads the other generated conditions (\ESevenGraphFOne{} against
-\ESevenStructFOne{} and \ESevenFlatFOne) but still trails the template
-(\ESevenTemplateFOne). We therefore claim that graph aggregation preserves
-counts, not that it improves factuality overall.
+the error grows with the number of observations. On claim-level factuality
+graph aggregation leads the other generated conditions (\ESevenGraphFOne{}
+against \ESevenStructFOne{} and \ESevenFlatFOne) but trails the template
+(\ESevenTemplateFOne): it preserves counts, rather than improving factuality
+overall.
 
 \input{tables/e7_scene}

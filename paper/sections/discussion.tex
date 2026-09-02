@@ -10,12 +10,11 @@ object that was incorrectly paired or remove a false change already admitted
 to its inventory.
 
 The knowledge graph answers a narrower question (Section~\ref{sec:experiments}).
-At crop level every grounding condition receives the same current-crop inventory, while retrieved history
-mostly concerns other crops; retrieval and graph aggregation therefore have
-little opportunity to change a scored claim. At neighborhood level the
-representations genuinely differ, and graph aggregation preserves counts
-better than concatenation or top-$k$ retrieval. This is a counting result, not
-evidence that GraphRAG generally improves report factuality.
+At crop level every condition receives the same current-crop inventory, so
+retrieval and graph aggregation have little opportunity to change a scored
+claim. At neighborhood level the representations genuinely differ, and graph
+aggregation preserves counts better than concatenation or top-$k$ retrieval.
+This is a counting result, not evidence that GraphRAG improves factuality.
 
 A second null belongs here for the same reason. On our data a deterministic
 template is indistinguishable from a language model on CFS, and at
@@ -26,10 +25,9 @@ second.
 \subsection{Limitations}
 
 \textbf{We do not approach the supervised ceiling.} End-to-end models trained
-on these benchmarks' splits reach 86--91 F1 on LEVIR-CD; we reach
-\EOnePixelFOne. AnyChange is included as zero-shot context, not as a
-supervision-matched baseline, because our small pairing head uses LEVIR-CD
-training masks.
+on these splits reach 86--91 F1 on LEVIR-CD; we reach \EOnePixelFOne. AnyChange
+is zero-shot context, not a supervision-matched baseline, since our head uses
+LEVIR-CD training masks.
 
 \textbf{The LEVIR-CD result is not zero-shot.} The detector never saw the
 dataset, but the head was trained on its training split from mask-derived
@@ -42,20 +40,18 @@ crops of one tile, not history over time. The design's main hypothesis is
 therefore not evaluated here.
 
 \textbf{Claim extraction is rule-based and not independently validated.} This
-is what keeps a language model out of the metric, but the extractor sees only
-the direction cues, object classes and quantifiers it encodes, and is tuned to
-this domain's vocabulary. Agreement with independently annotated claims should
-be established before treating CFS as a general report-factuality metric.
+keeps a language model out of the metric, but the extractor sees only the cues
+it encodes and is tuned to this domain's vocabulary. Agreement with independently
+annotated claims should be established before treating CFS as general.
 
 \textbf{CFS lacks an independently generated specialist baseline.} Published
-change-captioning outputs were unavailable in a form that we could rescore, so
-all CFS rows use outputs generated in our evaluation harness. Conventional
-caption metrics provide published context, but do not validate the new metric.
+change-captioning outputs were unavailable in a form we could rescore, so all
+CFS rows use outputs from our harness. Conventional caption metrics give
+published context but do not validate the new metric.
 
-\textbf{Generation uncertainty is not quantified.} Each language-model
-condition is represented by one completed generation pass. The small
-crop-level differences among structured, flat-retrieval and graph conditions
-are therefore descriptive rather than statistically significant effects.
+\textbf{Generation uncertainty is not quantified.} Each condition is one
+generation pass, so the small crop-level differences among structured,
+flat-retrieval and graph conditions are descriptive, not significant effects.
 
 \textbf{Both benchmarks are building-centric, aerial rather than satellite,
 and co-registered}, so generalization to other change types, to lower ground
@@ -72,10 +68,9 @@ numbers survive that swap either.
 \subsection{Future Work}
 
 The experiment this work now needs is a dataset with a real revisit history:
-more than two acquisitions of the same area, which is what would test the
-temporal aggregation the graph was built for and which neither public benchmark
-provides. Beyond that, change types other than buildings, true satellite ground
-sampling distances, and a commercially licensed report model are the three
-steps between this evaluation and a service that could ship. Independent manual
-validation of the claim extractor and paired multi-seed generation tests are
-the immediate evaluation priorities.
+more than two acquisitions of the same area, which would test the temporal
+aggregation the graph was built for and which neither benchmark provides.
+Beyond that, change types other than buildings, true satellite ground sampling
+distances, and a commercially licensed report model separate this evaluation
+from a service that could ship. Independent validation of the claim extractor
+and paired multi-seed tests are the immediate priorities.

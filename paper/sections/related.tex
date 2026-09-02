@@ -6,30 +6,27 @@ Representative methods include STANet~\cite{chen2020spatial},
 SNUNet~\cite{fang2021snunet}, BIT~\cite{chen2021remote},
 ChangeFormer~\cite{bandara2022transformer}, and
 TinyCD~\cite{codegoni2023tinycd}, which report 86--91 F1 on LEVIR-CD when
-trained on its designated training split and predict a binary change mask.
-Neither property suits a
-service that must name and count objects in a neighborhood it was never
-trained on, so we treat them as a reference ceiling rather than as competitors.
+trained on its designated split and predict a binary change mask. Neither
+property suits a service that must name and count objects in a neighborhood it
+was never trained on, so we treat them as a ceiling, not competitors.
 AnyChange~\cite{zheng2024segment} instead adapts SAM to change detection
 without training on the target dataset, reaching \AnyChangeFOne{} F1 on
 LEVIR-CD and \AnyChangeHFOne{} in a human-assisted three-point setting. That is
-our league. Our own position is a third one we state rather than blur: the
-detector has never seen LEVIR-CD, but the pairing head is trained on its
-training split from mask-derived labels, so the LEVIR-CD number is not
-zero-shot. The WHU-CD experiment, where the same head is applied without
-retraining, carries the zero-shot claim.
+our league. Our position is a third we state rather than blur: the detector has
+never seen LEVIR-CD, but the head is trained on its training split from
+mask-derived labels, so that number is not zero-shot. The WHU-CD experiment,
+applying the same head without retraining, carries the zero-shot claim.
 
 \textbf{Change captioning and grounding.} RSICC-style
 models~\cite{hoxha2022change,liu2022remote,liu2023progressive,chang2023changes}
 generate a sentence per image pair, scored with BLEU, METEOR, ROUGE-L and
 CIDEr-D against human references. They are trained on the caption corpus, and
-n-gram overlap rewards phrasing that matches the reference distribution. Our
-concern is orthogonal: a report can score well on overlap while asserting a
-change that did not occur. Retrieval-augmented
-generation~\cite{lewis2020retrieval} reduces unsupported assertions by
-conditioning on retrieved evidence, and graph-based
+n-gram overlap rewards phrasing matching the reference distribution. Our concern
+is orthogonal: a report can score well on overlap while asserting a change that
+did not occur. Retrieval-augmented generation~\cite{lewis2020retrieval} reduces
+unsupported assertions by conditioning on retrieved evidence, and graph-based
 variants~\cite{edge2024local} aggregate over entities rather than top-$k$
-passages. Evaluating the result is the harder half, and metrics that use a
-language model as judge~\cite{zheng2023judging} inherit its failure modes and
-can be gamed by the model under test. We take the opposite
-approach in Section~\ref{ssec:cfs}: nothing in the metric is learned.
+passages. Evaluating the result is the harder half, and metrics using a language
+model as judge~\cite{zheng2023judging} inherit its failure modes and can be
+gamed by the model under test. Section~\ref{ssec:cfs} takes the opposite
+approach: nothing in the metric is learned.
