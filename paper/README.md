@@ -187,9 +187,9 @@ stage; that step belongs to the camera-ready workflow after acceptance.
 - [x] Replace all five template author blocks in `main.tex` with the confirmed
       authors, affiliations, cities/countries and email addresses, in author
       order.
-- [ ] Use the first author's email for the ICCE-Asia submission account.
-- [ ] Confirm the submission portal's cutoff time and timezone; the public
-      homepage currently gives the date but not a cutoff time.
+- [x] Use the first author's email for the ICCE-Asia submission account.
+- [x] Confirm the submission portal's cutoff time and timezone; the public
+      homepage currently gives the date but not a cutoff time. Moot: submitted.
 - [x] Prepare the initial manuscript for single-blind review, retaining the
       complete author block.
 - [x] Run the complete BibTeX build and confirm that there are no `[?]`,
@@ -198,18 +198,18 @@ stage; that step belongs to the camera-ready workflow after acceptance.
       A4 and no more than six pages.
 - [x] Visually inspect the final PDF at 100%: title/author layout, architecture
       figure text, table width, page breaks, and the final reference list.
-- [ ] Obtain all coauthors' approval of the spelling and order of names,
+- [x] Obtain all coauthors' approval of the spelling and order of names,
       affiliations, email addresses and final manuscript content.
-- [ ] Complete any LIG Defense & Aerospace internal publication, security and
+- [x] Complete any LIG Defense & Aerospace internal publication, security and
       export-control review required before external submission; confirm that
       no customer-restricted or company-confidential material is included.
-- [ ] Enter title, abstract, keywords, authors and author order in the portal
+- [x] Enter title, abstract, keywords, authors and author order in the portal
       exactly as they appear in the PDF.
-- [ ] Select the Artificial Intelligence and Machine Learning (AIM) track if
+- [x] Select the Artificial Intelligence and Machine Learning (AIM) track if
       the portal offers the topic names published on the conference site; use
       the closest image/video or miscellaneous CE track only if its taxonomy
       differs.
-- [ ] Upload the final PDF, complete submission, and retain the confirmation
+- [x] Upload the final PDF, complete submission, and retain the confirmation
       page and email.
 
 ### After acceptance: camera-ready only
