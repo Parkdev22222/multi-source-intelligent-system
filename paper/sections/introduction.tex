@@ -29,8 +29,8 @@ today would hand both images to a vision--language model and ask for a
 description. We measure that baseline rather than dismiss it: it writes fluent,
 confident prose while reaching only \EFourVLMChgAcc\% accuracy on whether the
 scene changed. Its BLEU-4 of
-\EFourVLMBleu{} does not reveal this: a low overlap score is equally consistent
-with harmless paraphrase. Such a service would look correct in demos while remaining unreliable
+\EFourVLMBleu{} does not expose that: the score says the wording differs from
+the references, not that the content is false. Such a service would look correct in demos while remaining unreliable
 in many evaluated cases.
 
 \textbf{Our approach} generates reports from object instances detected and
