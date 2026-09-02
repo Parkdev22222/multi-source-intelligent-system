@@ -17,11 +17,10 @@ anything appeared at all. Two product failures follow.
       is worse than no report: the subscriber walks out to look, finds nothing,
       and stops trusting the service. Pixel precision cannot see this, because
       it is computed against a mask the user never sees.
-\item \textbf{Miscounting.} A report may detect new construction correctly but
-      claim that several buildings appeared when only one did, undermining its
-      reliability for operational monitoring. Pixel-level IoU may remain high even when the model predicts the wrong
-      number of buildings, because IoU measures spatial overlap rather than
-      instance separation or counting accuracy.
+\item \textbf{Miscounting.} A report may locate new construction correctly and
+      still claim several buildings where one appeared. Pixel IoU stays high
+      through that error, because it measures overlap rather than instance
+      separation.
 \end{enumerate}
 
 \textbf{A direct vision--language baseline fails on both.} A practitioner asked to ship this
@@ -64,7 +63,9 @@ Our contributions are as follows.
       masks without additional correspondence annotations. Using the same SAM3
       proposals, it improves pixel F1 from \EOneHeuristicFOne{} to
       \EOnePixelFOne{} on LEVIR-CD and achieves \ETwoPixelFOne{} on WHU-CD
-      without retraining.
+      without retraining. Geometry alone (\EOneGeoFOne) and a published
+      zero-shot method (\AnyChangeFOne) sit within two points of that rule, so
+      the comparison is with non-learned pairing generally.
 \item \textbf{Controlled detection-to-report attribution.} Holding the LLM,
       prompt, and grounding context fixed, we show that replacing only
       heuristic pairing with the learned head improves report factuality by
@@ -90,6 +91,4 @@ detection: benchmark-specific supervised models report 86--91 F1 on
 LEVIR-CD~\cite{chen2020spatial,fang2021snunet,chen2021remote,
 bandara2022transformer,codegoni2023tinycd}, whereas our focus is instance
 correspondence and downstream report factuality. AnyChange~\cite{zheng2024segment}
-provides zero-shot context rather than a supervision-matched comparison; our
-controlled baselines use the same detections and evaluation data and differ
-only in pairing strategy.
+provides zero-shot context rather than a supervision-matched comparison.
