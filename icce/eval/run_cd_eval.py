@@ -18,6 +18,10 @@ Variants
   learned-greedy    learned head, greedy assignment (isolates the assignment)
   learned-noverify  learned head + Hungarian, verifier off (isolates the verifier)
   learned (ours)    learned head + Hungarian + verifier
+
+With --hybrid-ablation, one more:
+  hybrid            heuristic matching, learned state and verifier -- isolates
+                    the match branch from the verifier the heuristic lacks
 """
 
 from __future__ import annotations
@@ -43,7 +47,8 @@ logger = logging.getLogger(__name__)
 
 def build_variants(checkpoint: Optional[Path], radius: float, device: str,
                    thresholds: Dict[str, float],
-                   checkpoint_no_xf: Optional[Path] = None) -> List[Dict]:
+                   checkpoint_no_xf: Optional[Path] = None,
+                   hybrid: bool = False) -> List[Dict]:
     mt = thresholds.get("match_threshold", 0.5)
     vt = thresholds.get("verify_threshold", 0.5)
 
@@ -75,6 +80,19 @@ def build_variants(checkpoint: Optional[Path], radius: float, device: str,
                                      match_threshold=mt, verify_threshold=vt,
                                      assignment="hungarian", device=device)},
         ]
+        # Isolates the match branch. Everything downstream is the trained
+        # model; only the pair score is the hand-tuned rule. The gap from
+        # "heuristic (production)" to this row is what the verifier and the
+        # rest of the head are worth, and the gap from here to "ours" is what
+        # learning to match is worth.
+        if hybrid:
+            from icce.pairing_head.model import HybridHead
+            variants.insert(-1, {
+                "name": "heuristic matching, learned verifier",
+                "pairer": LearnedPairer(
+                    head=HybridHead(model), match_radius_deg=radius,
+                    match_threshold=mt, verify_threshold=vt,
+                    assignment="hungarian", device=device)})
 
     # Ablating cross-frame evidence means *retraining* without it. Zeroing the
     # block at inference does not measure the feature's contribution -- it
@@ -206,6 +224,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--bbox-pixels", action="store_true",
                     help="rasterise bounding boxes instead of SAM3 masks")
+    ap.add_argument("--hybrid-ablation", action="store_true",
+                    help="add the heuristic-matching / learned-verifier row, "
+                         "which separates learning to match from having a "
+                         "verifier at all")
     ap.add_argument("--allow-leakage", action="store_true",
                     help="debug only: continue past an integrity violation and "
                          "stamp the results as unclean")
@@ -260,7 +282,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     rows = []
     for v in build_variants(args.checkpoint, args.match_radius, args.device,
-                            thresholds, args.checkpoint_no_xf):
+                            thresholds, args.checkpoint_no_xf,
+                            hybrid=args.hybrid_ablation):
         r = evaluate_variant(v, samples, emb, gt_masks, use_masks)
         logger.info("%-28s pixelF1=%.4f IoU=%.4f instF1=%.4f (%.1fs)",
                     r["name"], r["f1"], r["iou"], r["inst_f1"], r["seconds"])

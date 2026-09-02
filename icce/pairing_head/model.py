@@ -121,6 +121,64 @@ class PairingHead(nn.Module):
         return sum(p.numel() for p in self.parameters())
 
 
+class HybridHead:
+    """Heuristic matching with the learned state and verify branches.
+
+    The paper reports the production heuristic at one number and the learned
+    head at another, but four things differ between those rows: the match
+    rule, the state rule, the presence of a verifier at all, and greedy versus
+    Hungarian assignment. The heuristic has no verifier -- its
+    `change_probability` returns ones, so every unmatched detection is
+    reported -- which leaves open how much of the gain is learning to match
+    and how much is having any suppression step. This head isolates the match
+    branch: everything downstream comes from the trained model, and only the
+    pair score is the hand-tuned rule.
+
+    The substitution is legitimate rather than a distribution mismatch. The
+    verifier's labels come from each detection's coverage of the ground-truth
+    change mask (`verify_labels`), which never refers to the matcher, so its
+    decision does not assume the leftovers were produced by the learned
+    matcher. It is scored for every detection in any case, and only applied to
+    what the assignment leaves over.
+
+    `_scores` dispatches on `isinstance(head, HeuristicHead)`, so this class
+    deliberately is not one: it takes the learned branch and has to present
+    the same `forward_pair` / `forward_unary` surface, returning logits that
+    the caller squashes.
+    """
+
+    # Probabilities of exactly 0 or 1 -- the heuristic emits both, the first
+    # from its hard radius gate -- have infinite logits, and sigmoid(inf) is
+    # only finite by luck of the float. Clamp before inverting.
+    _EPS = 1e-6
+
+    def __init__(self, model: "PairingHead", heuristic: Optional["HeuristicHead"] = None) -> None:
+        self.model = model
+        self.heuristic = heuristic or HeuristicHead()
+        self.cfg = model.cfg
+
+    def to(self, device):
+        self.model.to(device)
+        return self
+
+    def eval(self):
+        self.model.eval()
+        return self
+
+    def forward_pair(self, x: torch.Tensor, cls_past: torch.Tensor,
+                     cls_cur: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # The heuristic reads raw feature columns; x is unstandardised here,
+        # standardisation happening inside the model's own _pair_input.
+        p = self.heuristic.match_probability(x.detach().cpu().numpy())
+        p = np.clip(p, self._EPS, 1.0 - self._EPS)
+        logit = torch.as_tensor(np.log(p / (1.0 - p)), dtype=x.dtype, device=x.device)
+        _, state = self.model.forward_pair(x, cls_past, cls_cur)
+        return logit, state
+
+    def forward_unary(self, x: torch.Tensor, cls: torch.Tensor) -> torch.Tensor:
+        return self.model.forward_unary(x, cls)
+
+
 class HeuristicHead:
     """The production rule as a drop-in baseline, so ablation rows share code.
 
