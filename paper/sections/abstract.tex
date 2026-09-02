@@ -6,17 +6,19 @@ determined primarily by an upstream decision: which detections across revisits
 represent the same physical object. We therefore introduce a
 \HeadParamsRound-parameter instance
 pairing head trained from existing change masks without additional
-correspondence labels. Using the same SAM3 proposals, the learned head improves
-pixel F1 from \EOneHeuristicFOne{} to \EOnePixelFOne{} on LEVIR-CD and, without
-retraining or threshold tuning, achieves \ETwoPixelFOne{} on WHU-CD. We evaluate
-LLM-generated reports with Change-Fact-Score (CFS), a deterministic protocol
-that extracts change direction and object class; counting is assessed separately with
-CountMAE, and no language model is used as judge. Replacing only a
-CLIP--geometry pairing heuristic with the learned head improves report
-factuality by \EFiveGain{} CFS-F1 points and reduces unsupported claims from
-\EFiveHeuristicHal\% to \EFiveLearnedHal\%, while adding only
-\ESixHeadDelta~ms per tile. This evaluation reveals that a vision--language baseline shown both
-images reaches only \EFourVLMChgAcc\% change-presence accuracy despite fluent
-prose. With instance evidence fixed, structured, retrieval, and graph-grounded
-reports differ by only \EFourLadderExactSpread{} CFS-F1 points, reinforcing
-that report factuality is determined primarily by upstream instance pairing.
+correspondence labels. Using the same SAM3 proposals, replacing a
+CLIP--geometry pairing heuristic with the learned head raises pixel F1 from
+\EOneHeuristicFOne{} to \EOnePixelFOne{} on LEVIR-CD, and from
+\ETwoHeuristicFOne{} to \ETwoPixelFOne{} on WHU-CD without retraining or
+threshold tuning. Pixel F1 does not say whether the resulting report is true, so
+we score the generated reports with Change-Fact-Score (CFS), a deterministic
+protocol that extracts change direction and object class; counting is assessed
+separately with CountMAE, and no language model is used as judge. The same
+substitution improves report factuality by \EFiveGain{} CFS-F1 points and
+reduces unsupported claims from \EFiveHeuristicHal\% to \EFiveLearnedHal\%, at
+\ESixHeadDelta~ms per tile. This evaluation reveals that a vision--language
+baseline shown both images reaches only \EFourVLMChgAcc\% change-presence
+accuracy despite fluent prose. Adding retrieval or graph aggregation over the
+same instance evidence moves factuality by only
+\EFourLadderExactSpread{} CFS-F1 points when each report covers a single image
+pair.
