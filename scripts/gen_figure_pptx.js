@@ -194,8 +194,10 @@ tail.forEach(([text, fill, edge, dashed], i) => {
 });
 
 arrow(L + bw / 2, hy, L + bw / 2, ty + th, LINE, 1.2);
+// Cleared of the arrow it labels: at +0.014 the "a" sat against the shaft,
+// and a label touching its own edge reads as part of the drawing.
 slide.addText("appeared · disappeared · modified · unchanged count", {
-  x: fx(L + bw / 2 + 0.014), y: fy(y_out) - 0.16, w: 5.2, h: 0.32,
+  x: fx(L + bw / 2 + 0.034), y: fy(y_out) - 0.16, w: 5.2, h: 0.32,
   fontSize: pt(5.8), color: MUTED, italic: true, align: "left", valign: "middle",
   margin: 0, isTextBox: true, fontFace: "Calibri",
 });

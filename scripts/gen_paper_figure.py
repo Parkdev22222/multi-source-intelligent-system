@@ -352,7 +352,8 @@ def build() -> None:
     # Centered on the clear band between the two rounded borders, not on the
     # raw gap: the boxstyle pad puts the drawn edges 0.008 outside the given
     # coordinates, and centring on the gap ran the text over both of them.
-    ax.text(L + bw / 2 + 0.014, y_out,
+    # Clear of the arrow it labels: at +0.014 the "a" sat against the shaft.
+    ax.text(L + bw / 2 + 0.034, y_out,
             "appeared · disappeared · modified · unchanged count",
             ha="left", va="center",
             fontsize=5.8, color=MUTED, style="italic")
