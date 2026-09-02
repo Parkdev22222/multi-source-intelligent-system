@@ -23,9 +23,10 @@ report comes out (Fig.~\ref{fig:architecture}). The procedure is as follows.
 \item \textbf{Open-vocabulary detection.} \DetectorName{} proposes object
       instances in each frame independently, at three scales, with non-maximum
       suppression across scales.
-\item \textbf{Geo-referencing.} An invertible pixel-to-latitude/longitude
-      transform puts every detection in world coordinates, so observations of
-      one place coincide across tiles and dates.
+\item \textbf{Geo-referencing.} Each detection is mapped to geographic
+      coordinates using an invertible pixel-to-latitude/longitude transform,
+      allowing observations of the same physical location to be aligned across
+      tiles and acquisition dates.
 \item \textbf{Matching.} The head scores candidate detection pairs across the
       two frames and assigns them one-to-one.
 \item \textbf{Verification.} Detections left unmatched are kept only if the
