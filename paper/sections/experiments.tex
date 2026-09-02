@@ -31,15 +31,14 @@ the training split. The assertions live in the result files, not the prose.
 not ours. Geometry-only pairing (\EOneGeoFOne), the production heuristic
 (\EOneHeuristicFOne) and AnyChange (\AnyChangeFOne) span 2.2 F1 points, at
 precision 13--16 with high recall: the two non-learned rules we tested and one
-published zero-shot method sit in the same band. AnyChange is published
-zero-shot context rather than a controlled comparison, because our head uses
-LEVIR-CD training masks. The head reaches \EOnePixelFOne. Applied to WHU-CD
+published zero-shot method sit in the same band. AnyChange is zero-shot
+context rather than a controlled comparison: our head uses LEVIR-CD training
+masks. The head reaches \EOnePixelFOne. Applied to WHU-CD
 unchanged --- no retraining, thresholds carried over from LEVIR-CD's validation
 split --- it reaches \ETwoPixelFOne{} against \ETwoHeuristicFOne.
 The instance columns state it more usefully: against \ETwoNGT{} ground-truth
 instances the heuristic emits \ETwoHeuristicNPred{} predictions and ours
-\ETwoNPred, so for a service reporting how many buildings appeared the Count
-MAE column separates a usable number from noise. WHU-CD is not the easier
+\ETwoNPred. WHU-CD is not the easier
 dataset: it averages \ETwoGTDensity{} instances per tile against LEVIR-CD's
 \EOneGTDensity, so the two F1 values are not comparable as difficulties.
 
@@ -101,8 +100,11 @@ model therefore isolates the match branch (Table~\ref{tab:detection}). It reache
 \EOneHeuristicFOne{}~$\rightarrow$~\EOnePixelFOne{} gain,
 \EOneSuppressionGain{} points come from having a verifier at all and only
 \EOneMatchGain{} from learning to match. WHU-CD gives \ETwoHybridFOne, a
-\ETwoSuppressionGain{}/\ETwoMatchGain{} split. Suppression is the larger term on
-both, and it is what the hand-tuned rule lacks entirely.
+\ETwoSuppressionGain{}/\ETwoMatchGain{} split. In instances, the unit a
+counting service is judged in, WHU-CD reverses to
+\ETwoSuppressionInstGain{}/\ETwoMatchInstGain{} where LEVIR-CD splits
+\EOneSuppressionInstGain{}/\EOneMatchInstGain: matching earns more on the
+sparser dataset. Suppression is what the hand-tuned rule lacks entirely.
 
 \textbf{Aggregation is worth \EFourAggGain{} points; retrieval and graph
 aggregation add little on this crop-level evaluation.} Structuring the raw
