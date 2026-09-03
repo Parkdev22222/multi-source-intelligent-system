@@ -229,7 +229,8 @@ def build_e7() -> str | None:
     # what the conditions were given, and on a single-crop scene the three
     # representations are trivially identical, so the spread is worth printing.
     cps = payload.get("crops_per_scene") or {}
-    caption = "Neighborhood-level grounding results."
+    caption = ("Neighborhood-level grounding results "
+               "(Section~\\ref{ssec:grounding}).")
     note = ("One report is generated per neighborhood from every crop of a "
             "tile available in the split; rows are alternative "
             "representations of the same observations.")
@@ -309,7 +310,8 @@ def build_factuality() -> str | None:
         f"% source: {run.relative_to(ROOT)} (n={payload.get('n_pairs')}, "
         f"checkpoint={payload.get('checkpoint')})",
         "\\begin{table}[t]", "\\centering",
-        "\\caption{Report factuality across grounding conditions on LEVIR-CC.}",
+        "\\caption{Report factuality across grounding conditions "
+        "(Section~\\ref{ssec:grounding}) on LEVIR-CC.}",
         "\\label{tab:factuality_caption}",
         "\\setlength{\\tabcolsep}{3pt}",
         "\\small",
@@ -329,10 +331,11 @@ def build_factuality() -> str | None:
         lines.append(f"{label} & " + " & ".join(cells) + " \\\\")
     lines += [
         "\\bottomrule", "\\end{tabular}", "\\vspace{1pt}",
+        # The metric glosses restated Section III-C; the caption now points
+        # at the conditions and the note points at the metrics.
         "\\parbox{\\columnwidth}{\\scriptsize\\textit{Note:} "
-        f"$n={payload.get('n_pairs')}$ test crops. CFS-P/R/F1 are claim-level "
-        "against human references; ChgAcc is change-presence agreement; "
-        "CountMAE is the absolute asserted-count error per crop.}",
+        f"$n={payload.get('n_pairs')}$ test crops; metrics as defined in "
+        "Section~\\ref{ssec:cfs}.}",
         "\\end{table}",
     ]
     return "\n".join(lines)

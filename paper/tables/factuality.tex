@@ -2,7 +2,7 @@
 % source: results/levir_cc_caption (n=1929, checkpoint=data/checkpoints/pairing_head.pt)
 \begin{table}[t]
 \centering
-\caption{Report factuality across grounding conditions on LEVIR-CC.}
+\caption{Report factuality across grounding conditions (Section~\ref{ssec:grounding}) on LEVIR-CC.}
 \label{tab:factuality_caption}
 \setlength{\tabcolsep}{3pt}
 \small
@@ -19,5 +19,5 @@ Condition & CFS-P & CFS-R & CFS-F1 & ChgAcc & CountMAE \\
 \bottomrule
 \end{tabular}
 \vspace{1pt}
-\parbox{\columnwidth}{\scriptsize\textit{Note:} $n=1929$ test crops. CFS-P/R/F1 are claim-level against human references; ChgAcc is change-presence agreement; CountMAE is the absolute asserted-count error per crop.}
+\parbox{\columnwidth}{\scriptsize\textit{Note:} $n=1929$ test crops; metrics as defined in Section~\ref{ssec:cfs}.}
 \end{table}
