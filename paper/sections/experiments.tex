@@ -8,8 +8,8 @@ embeddings per instance; text conditions use \LLMName~\cite{exaone4} and the
 image-conditioned baseline uses \VLMName~\cite{qwen25vl}, both served through
 vLLM. Change detection is evaluated on LEVIR-CD~\cite{chen2020spatial} (test,
 128 tiles) and WHU-CD~\cite{ji2019fully} (test, 690 pairs); report quality on
-LEVIR-CC~\cite{liu2022remote} (test, \EFourNCrops{} crops). All timings are
-measured on one A100 80GB.
+LEVIR-CC~\cite{liu2022remote} (test, \EFourNCrops{} crops), whose crops are
+cut from LEVIR-CD tiles. All timings are measured on one A100 80GB.
 
 \textbf{The CLIP + geometry heuristic} is the rule this work replaces rather
 than a published method: a fixed weighted sum of CLIP similarity, size
