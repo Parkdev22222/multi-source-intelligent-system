@@ -88,7 +88,8 @@ directly.
 \label{ssec:ablation}
 
 \textbf{Neither part of verification is optional.} Without the verifier the
-system scores \EOneNoVerifierFOne{} on LEVIR-CD --- below geometry-only --- because
+system scores \EOneNoVerifierFOne{} on LEVIR-CD (Table~\ref{tab:detection}),
+below geometry-only, because
 the head proposes matches and something has to reject them. Retrained without
 cross-frame evidence it loses \EOneCrossFrameGain{} pixel F1 and
 \EOneCrossFrameInstGain{} instance F1; transferred to
@@ -124,8 +125,7 @@ history can move wording but rarely a claim. Of \EFourNCrops{} generations,
 \EFourClaimsDifferPct\% differ in extracted claims. The CountMAE column of
 Table~\ref{tab:factuality_caption} points the other way and we report it as
 such: at crop level every aggregating condition, the graph included, carries a
-larger count error than the template or the raw dump. Aggregation costs counts
-here and earns them back only at neighborhood scale.
+larger count error than the template or the raw dump.
 
 \textbf{At neighborhood level the comparison becomes decidable}
 (Table~\ref{tab:e7_scene}). Generating one report per neighborhood over every
