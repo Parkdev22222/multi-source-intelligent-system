@@ -74,16 +74,20 @@ DET_RUNS = [
     ("LEVIR-CD (128 tiles)", "results/levir_cd_test/cd_results.json", "levir_cd"),
     ("WHU-CD (690 pairs, no retraining)", "results/whu_cd_test/cd_results.json", None),
 ]
+# The indented rows are ablations *of the learned head*, so the head has to
+# precede them: nested under the heuristic they read as ablations of the
+# heuristic, and `no cross-frame` at 49.30 sits absurdly above its apparent
+# parent's 25.59.
 DET_ORDER = [
     ("geo-only", "geometry only"),
     ("heuristic (production)", "CLIP + geometry heuristic"),
+    ("learned head (ours)", "\\textbf{learned head (ours)}"),
     ("learned head, no verifier", "\\quad ablation: no verifier"),
     ("learned head, no cross-frame", "\\quad ablation: no cross-frame"),
     # Present only in runs made with --verifier-ablation; rows absent from a
     # result file are skipped, so this is inert until that run exists.
     ("heuristic matching, learned verifier",
      "\\quad ablation: heuristic matching"),
-    ("learned head (ours)", "\\textbf{learned head (ours)}"),
 ]
 
 
