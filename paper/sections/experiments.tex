@@ -111,9 +111,10 @@ counting service is judged in, WHU-CD reverses to
 sparser dataset.
 
 \textbf{Aggregation is worth \EFourAggGain{} points; retrieval and graph
-aggregation add little on this crop-level evaluation.} Structuring the raw
-detection dump into a change inventory moves CFS-F1 from \EFourRawFOne{}
-(\texttt{llm\_raw}) to \EFourStructFOne{} (\texttt{llm\_struct}). Adding
+aggregation add little on this crop-level evaluation.} In
+Table~\ref{tab:factuality_caption}, structuring the raw detection dump into a
+change inventory moves CFS-F1 from \EFourRawFOne{} (\texttt{llm\_raw}) to
+\EFourStructFOne{} (\texttt{llm\_struct}). Adding
 top-$k$ retrieval (\EFourFlatRagFOne) or graph aggregation
 (\EFourGraphRAGFOne) moves it by less than \EFourLadderSpread{} points, and not
 consistently in the graph's favor. Without paired confidence intervals we treat
@@ -122,9 +123,8 @@ all three conditions receive the same change inventory for the crop being
 described, and CFS scores only claims about \emph{that} crop, so retrieved
 history can move wording but rarely a claim. Of \EFourNCrops{} generations,
 \EFourTextDifferPct\% differ in text between the three conditions and only
-\EFourClaimsDifferPct\% differ in extracted claims. The CountMAE column of
-Table~\ref{tab:factuality_caption} points the other way and we report it as
-such: at crop level every aggregating condition, the graph included, carries a
+\EFourClaimsDifferPct\% differ in extracted claims. The CountMAE column points
+the other way and we report it as such: at crop level every aggregating condition, the graph included, carries a
 larger count error than the template or the raw dump.
 
 \textbf{At neighborhood level the comparison becomes decidable}
