@@ -3,7 +3,7 @@
 % learned head (ours): results/levir_cc_caption (n=1929, checkpoint=data/checkpoints/pairing_head.pt)
 \begin{table}[t]
 \centering
-\caption{Effect of instance pairing on report factuality (E5).}
+\caption{Report factuality under two pairing methods (E5).}
 \label{tab:e5_pairing}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{lccccc}
@@ -15,5 +15,5 @@ CLIP + geometry heuristic & 34.01 & 36.79 & 35.35 & 65.99 & 65.01 \\
 \bottomrule
 \end{tabular}
 \vspace{1pt}
-\parbox{\columnwidth}{\scriptsize\textit{Note:} Grounding is fixed at \texttt{llm\_graphrag}; crops, style examples and the language model are identical across rows.}
+\parbox{\columnwidth}{\scriptsize\textit{Note:} Grounding is fixed at \texttt{llm\_graphrag}; crops, style examples and the language model are identical across rows. The heuristic has no verifier, so this gap combines matching and suppression; Section~\ref{ssec:ablation} decomposes them for detection.}
 \end{table}
