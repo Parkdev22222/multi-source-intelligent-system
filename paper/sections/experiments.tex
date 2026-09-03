@@ -77,9 +77,10 @@ ROUGE-L and CIDEr-D are well behind: those models learned the reference
 phrasing, and these metrics reward phrasing. The exception is METEOR, where
 each grounded condition exceeds every trained model (\texttt{vlm\_direct}, which
 uses none of our pipeline, does not), because METEOR credits stems and content
-words rather than exact $n$-grams. Together they suggest the pipeline names the
-right objects in the wrong register --- an inference from a metric split, not a
-measurement, which is why we score claims directly.
+words rather than exact $n$-grams. The two results together suggest the pipeline
+names the right objects in wording the references do not use --- read off a
+disagreement between metrics rather than measured, which is why we score claims
+directly.
 
 \input{../results/levir_cc_caption/table_levir_cc_caption}
 
