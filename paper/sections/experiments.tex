@@ -11,9 +11,10 @@ vLLM. Change detection is evaluated on LEVIR-CD~\cite{chen2020spatial} (test,
 LEVIR-CC~\cite{liu2022remote} (test, \EFourNCrops{} crops). All timings are
 measured on one A100 80GB.
 
-\textbf{The heuristic baseline} is the rule this work replaces rather than a
-published method: a fixed weighted sum of CLIP similarity, size agreement and
-geodesic distance ($0.7/0.2/0.1$), with a hard radius gate and no verifier.
+\textbf{The CLIP + geometry heuristic} is the rule this work replaces rather
+than a published method: a fixed weighted sum of CLIP similarity, size
+agreement and geodesic distance ($0.7/0.2/0.1$), with a hard radius gate and no
+verifier.
 The geometry-only row is the same rule with the CLIP and size terms set to
 zero, leaving geodesic distance alone.
 

@@ -32,7 +32,9 @@ OUT = Path(__file__).resolve().parent / "tables"
 # E5: same grounding, pairing swapped. Order puts ours last so the table's
 # emphasis falls where the argument does.
 E5_RUNS = [
-    ("production heuristic", "results/levir_cc_caption_heuristic_pairing",
+    # Same row label Table I prints for this rule -- one name, so a reader
+    # coming from either table finds the definition in Setup.
+    ("CLIP + geometry heuristic", "results/levir_cc_caption_heuristic_pairing",
      "results/e5_heuristic_pairing"),
     ("learned head (ours)", "results/levir_cc_caption",
      "results/e5_learned_pairing"),
