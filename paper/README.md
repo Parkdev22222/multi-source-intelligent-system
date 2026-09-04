@@ -64,7 +64,8 @@ instruction before upload and contact the secretariat if it is ambiguous.
 From the repository root:
 
 ```bash
-python scripts/gen_paper_figure.py   # method figure, from the results
+node scripts/gen_figure_pptx.js      # docs/method_figure.pptx -- the figure's source
+python scripts/figure_from_pptx.py   # docs/method_figure.{pdf,png} -- what the paper includes
 python paper/make_tables.py
 cd paper
 latexmk -pdf main.tex
@@ -81,11 +82,16 @@ more than once, so the count is not something to check at the end -- it is
 part of the edit. Re-run it after a rebase too: two edits can each fit alone
 and not together.
 
-The figure is generated, not drawn: its two annotations are read from
-`results/*.json`, so it cannot drift from the tables. The generator embeds
-TrueType text rather than PDF Type 3 fonts for IEEE compatibility. The old
-`docs/architecture.png` is the repository's deployment diagram and stays in
-the top-level README; the paper uses `docs/method_figure.pdf`.
+The figure is generated, not drawn, and the `.pptx` is its source: edit
+`scripts/gen_figure_pptx.js`, never `docs/method_figure.pdf`.
+`scripts/figure_from_pptx.py` renders the paper's PDF and PNG from the deck's
+shape tree and embeds TrueType text rather than PDF Type 3 fonts, for IEEE
+compatibility. `scripts/gen_paper_figure.py` remains the matplotlib layout of
+record the deck transcribes -- the reasoning behind each edge lives in its
+comments -- but it writes only `docs/method_figure_layout.png` and no longer
+touches what the paper includes. The old `docs/architecture.png` is the
+repository's deployment diagram and stays in the top-level README; the paper
+uses `docs/method_figure.pdf`.
 
 Equivalent manual sequence:
 
