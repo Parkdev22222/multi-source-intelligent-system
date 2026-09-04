@@ -11,7 +11,8 @@ replacing our hand-tuned CLIP-and-geometry pairing rule with it raises pixel F1
 from \EOneHeuristicFOne{} to \EOnePixelFOne{} on LEVIR-CD, and from
 \ETwoHeuristicFOne{} to \ETwoPixelFOne{} on WHU-CD without retraining or
 threshold tuning; an ablation attributes \EOneSuppressionGain{} of that
-LEVIR-CD gain to verification and \EOneMatchGain{} to learned matching. Pixel F1 does not say whether the resulting report is true, so
+LEVIR-CD gain to verification and the rest of the head, and \EOneMatchGain{}
+to learned matching alone. Pixel F1 does not say whether the resulting report is true, so
 we score the generated reports with Change-Fact-Score (CFS), a deterministic
 protocol that extracts change direction and object class; counting is assessed
 separately with CountMAE, and no language model is used as judge. The same
