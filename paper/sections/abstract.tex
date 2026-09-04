@@ -6,7 +6,7 @@ determined primarily by an upstream decision: which detections across revisits
 represent the same physical object. We therefore introduce a
 \HeadParamsRound-parameter head that both pairs instances across revisits and
 verifies whether unmatched ones are real changes, trained from existing change
-masks without additional correspondence labels. Using the same SAM3 proposals,
+masks without additional correspondence labels. Using the same SAM~3 proposals,
 replacing our hand-tuned CLIP-and-geometry pairing rule with it raises pixel F1
 from \EOneHeuristicFOne{} to \EOnePixelFOne{} on LEVIR-CD, and from
 \ETwoHeuristicFOne{} to \ETwoPixelFOne{} on WHU-CD without retraining or
