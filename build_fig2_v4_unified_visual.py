@@ -483,32 +483,84 @@ ax.text(11.25, 8.4, "③ Gale-Shapley 안정 매칭 (1:1)",
         ha="center", fontsize=14.0, fontweight="bold", color=MOV_MAIN)
 
 for i in range(3):
-    cy = 6.9 + i*0.4
-    ax.add_patch(Circle((8.7, cy), 0.16, facecolor=MOV_MAIN,
+    cy = 7.15 + i*0.32
+    ax.add_patch(Circle((8.9, cy), 0.14, facecolor=MOV_MAIN,
                         edgecolor="white", lw=1))
-    ax.text(8.35, cy, f"과거{i+1}", ha="right", va="center", fontsize=11.2, color=TEXT)
+    ax.text(8.6, cy, f"과거{i+1}", ha="right", va="center", fontsize=10.5, color=TEXT)
 
 for i in range(3):
-    cy = 6.9 + i*0.4
-    ax.add_patch(Circle((13.8, cy), 0.16, facecolor=MOV_MAIN,
+    cy = 7.15 + i*0.32
+    ax.add_patch(Circle((13.6, cy), 0.14, facecolor=MOV_MAIN,
                         edgecolor="white", lw=1))
-    ax.text(14.15, cy, f"현재{i+1}", ha="left", va="center", fontsize=11.2, color=TEXT)
+    ax.text(13.9, cy, f"현재{i+1}", ha="left", va="center", fontsize=10.5, color=TEXT)
 
-ax.plot([8.86, 13.64], [6.9, 6.9], color=GREEN, lw=2.5, alpha=0.9)
-ax.plot([8.86, 13.64], [7.3, 7.3], color=GREEN, lw=2.5, alpha=0.9)
-ax.plot([8.86, 13.64], [7.7, 7.7], color=GREEN, lw=2.5, alpha=0.9)
+ax.plot([9.04, 13.46], [7.15, 7.15], color=GREEN, lw=2.2, alpha=0.9)
+ax.plot([9.04, 13.46], [7.47, 7.47], color=GREEN, lw=2.2, alpha=0.9)
+ax.plot([9.04, 13.46], [7.79, 7.79], color=GREEN, lw=2.2, alpha=0.9)
 
-ax.text(11.25, 8.1, "각자에게 최선의 짝을 안정적으로 배정",
-        ha="center", fontsize=11.9, color=GREEN, fontweight="bold")
+# 결과 두 갈래: 매칭 성공 / 매칭 실패
+ax.add_patch(FancyBboxPatch((8.4, 6.35), 2.7, 0.5, boxstyle="round,pad=0.03",
+                             facecolor=GREEN, edgecolor="none"))
+ax.text(9.75, 6.6, "매칭 성공 → matched", ha="center", va="center",
+        fontsize=11.5, fontweight="bold", color="white")
 
-ax.add_patch(FancyBboxPatch((9.0, 5.9), 4.5, 0.65,
-                             boxstyle="round,pad=0.04",
-                             facecolor=MOV_MAIN, edgecolor="none"))
-ax.text(11.25, 6.22, "매칭 성공 → matched (위경도 거리 무관)",
-        ha="center", va="center", fontsize=13.3, fontweight="bold", color="white")
-arrow_down(11.25, 6.7, 6.55, color=MOV_MAIN, lw=1.5)
+ax.add_patch(FancyBboxPatch((11.4, 6.35), 2.7, 0.5, boxstyle="round,pad=0.03",
+                             facecolor="#f59e0b", edgecolor="none"))
+ax.text(12.75, 6.6, "매칭 실패 → 아래 ④", ha="center", va="center",
+        fontsize=11.5, fontweight="bold", color="white")
 
-arrow_down(11.25, 5.9, 3.2, color=MOV_MAIN, lw=2.5)
+
+# ─── 이동형 ④ 가상 탐지 합성 (매칭 실패 재검증) ───
+ax.text(11.25, 5.9, "④ 매칭 실패 시 가상 탐지 합성",
+        ha="center", fontsize=13.0, fontweight="bold", color=MOV_MAIN)
+ax.text(11.25, 5.65,
+        "정지 상태 이동형 객체 등 SAM3 탐지 누락을 자동 보정",
+        ha="center", fontsize=9.8, color=MUTED, style="italic")
+
+# 미니 crop 비교 시각화
+def _mov_crop(x, y, label):
+    ax.add_patch(Rectangle((x, y), 0.7, 0.5, facecolor="black",
+                           edgecolor=GREY, lw=0.8))
+    ax.add_patch(Rectangle((x+0.2, y+0.13), 0.3, 0.26,
+                           facecolor=MOV_MAIN, edgecolor="white", lw=0.5))
+    ax.text(x+0.35, y-0.15, label, ha="center", fontsize=9.5,
+            color=TEXT, fontweight="bold")
+
+_mov_crop(8.3, 4.6, "과거 crop")
+_mov_crop(8.3, 3.85, "강제 crop\n(같은 위경도)")
+
+# CLIP 재검증 박스
+ax.add_patch(FancyBboxPatch((9.6, 4.15), 1.6, 0.9, boxstyle="round,pad=0.04",
+                             facecolor=MOV_LIGHT, edgecolor=MOV_MAIN, lw=1.2))
+ax.text(10.4, 4.75, "CLIP", ha="center", va="center",
+        fontsize=11.5, fontweight="bold", color="#7c2d12")
+ax.text(10.4, 4.45, "재검증", ha="center", va="center",
+        fontsize=10.0, color="#7c2d12", style="italic")
+
+# 두 crop → CLIP 화살표
+arrow(9.0, 4.85, 9.6, 4.75, color="#334155", lw=1.2, mut=6)
+arrow(9.0, 4.10, 9.6, 4.45, color="#334155", lw=1.2, mut=6)
+
+# CLIP → 결과 두 갈래
+arrow(11.2, 4.75, 11.7, 4.85, color="#334155", lw=1.2, mut=6)
+arrow(11.2, 4.60, 11.7, 4.30, color="#334155", lw=1.2, mut=6)
+
+ax.add_patch(FancyBboxPatch((11.7, 4.65), 1.9, 0.4,
+                             boxstyle="round,pad=0.03",
+                             facecolor=GREEN, edgecolor="none"))
+ax.text(12.65, 4.85, "matched 승격", ha="center", va="center", fontsize=10.0,
+        fontweight="bold", color="white")
+ax.add_patch(FancyBboxPatch((11.7, 4.05), 1.9, 0.4,
+                             boxstyle="round,pad=0.03",
+                             facecolor=RED, edgecolor="none"))
+ax.text(12.65, 4.25, "new/disappeared", ha="center", va="center", fontsize=9.5,
+        fontweight="bold", color="white")
+
+ax.text(11.25, 3.7,
+        "→ 같은 위경도의 SAM3 실패 케이스 자동 복원",
+        ha="center", fontsize=10.5, color=MOV_MAIN, style="italic")
+
+arrow_down(11.25, 3.55, 3.2, color=MOV_MAIN, lw=2.5)
 
 
 # ═══════════════════════════════════════════════════════════════
