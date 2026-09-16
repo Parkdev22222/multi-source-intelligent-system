@@ -106,6 +106,25 @@ def bullet(text):
 def P(text, style=CELL):
     return Paragraph(text, style)
 
+def db_table(header_bg_hex, row_alt_hex, rows, col_widths_cm):
+    """DB 스키마 표 헬퍼: 모든 셀을 Paragraph로 감싸 자동 줄바꿈."""
+    data = [[P(c, CELL_HDR) for c in rows[0]]]
+    for r in rows[1:]:
+        data.append([P(c, CELL) for c in r])
+    tbl = Table(data, colWidths=[w*cm for w in col_widths_cm])
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(header_bg_hex)),
+        ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+        ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING",(0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+            [colors.white, colors.HexColor(row_alt_hex)]),
+    ]))
+    return tbl
+
 def scaled_image(path, max_width_cm=17.5, max_height_cm=23.0):
     """도면을 페이지 안에 맞도록 스케일 (기본값을 넉넉하게)."""
     from PIL import Image as PILImage
@@ -607,23 +626,8 @@ sensor_img_data = [
     ["det_width / det_height", "Integer", "탐지에 사용된 해상도"],
     ["session_id", "UUID", "파이프라인 세션 식별자"],
 ]
-t = Table(sensor_img_data, colWidths=[4.2*cm, 2.2*cm, 10.6*cm])
-t.setStyle(TableStyle([
-    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
-    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
-    ("FONTSIZE",   (0, 0), (-1, -1), 9),
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e40af")),
-    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-    ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
-    ("TOPPADDING", (0, 0), (-1, -1), 4),
-    ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-        [colors.white, colors.HexColor("#f8fafc")]),
-]))
-story.append(t)
+story.append(db_table("#1e40af", "#f8fafc", sensor_img_data,
+                       [4.5, 3.8, 9.9]))
 story.append(Spacer(1, 0.3*cm))
 
 story.append(Paragraph("<b>detection_records</b> (SAM3 탐지 결과)", BODY))
@@ -639,23 +643,8 @@ sensor_det_data = [
     ["mask_area_px", "Float", "마스크 픽셀 수"],
     ["source_type / extra / session_id", "String, JSON, UUID", "소스·부가정보·세션"],
 ]
-t = Table(sensor_det_data, colWidths=[5.5*cm, 3.0*cm, 8.5*cm])
-t.setStyle(TableStyle([
-    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
-    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
-    ("FONTSIZE",   (0, 0), (-1, -1), 9),
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e40af")),
-    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-    ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
-    ("TOPPADDING", (0, 0), (-1, -1), 4),
-    ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-        [colors.white, colors.HexColor("#f8fafc")]),
-]))
-story.append(t)
+story.append(db_table("#1e40af", "#f8fafc", sensor_det_data,
+                       [5.5, 4.0, 8.7]))
 
 story.append(PageBreak())
 
@@ -683,23 +672,8 @@ pairing_data = [
     ["past_capture_time, past_bbox", "DateTime, JSON", "과거 시각·bbox"],
     ["source_type, session_id", "String, UUID", "소스·세션 식별자"],
 ]
-t = Table(pairing_data, colWidths=[5.8*cm, 3.2*cm, 8.0*cm])
-t.setStyle(TableStyle([
-    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
-    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
-    ("FONTSIZE",   (0, 0), (-1, -1), 9),
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#c2410c")),
-    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-    ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
-    ("TOPPADDING", (0, 0), (-1, -1), 4),
-    ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-        [colors.white, colors.HexColor("#fff7ed")]),
-]))
-story.append(t)
+story.append(db_table("#c2410c", "#fff7ed", pairing_data,
+                       [5.5, 3.5, 9.2]))
 
 story.append(PageBreak())
 
@@ -724,23 +698,8 @@ graph_ent_data = [
     ["first_seen / last_seen", "DateTime", "최초·최근 관측 시각"],
     ["observation_count", "Integer", "누적 관측 횟수"],
 ]
-t = Table(graph_ent_data, colWidths=[4.0*cm, 2.4*cm, 10.6*cm])
-t.setStyle(TableStyle([
-    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
-    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
-    ("FONTSIZE",   (0, 0), (-1, -1), 9),
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6d28d9")),
-    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-    ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
-    ("TOPPADDING", (0, 0), (-1, -1), 4),
-    ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-        [colors.white, colors.HexColor("#faf5ff")]),
-]))
-story.append(t)
+story.append(db_table("#6d28d9", "#faf5ff", graph_ent_data,
+                       [4.2, 3.0, 11.0]))
 story.append(Spacer(1, 0.3*cm))
 
 story.append(Paragraph("<b>graph_relations</b> (엣지)", BODY))
@@ -755,23 +714,8 @@ graph_rel_data = [
         "co_occurred_with: {count, locations}"],
     ["created_at / updated_at", "DateTime", "생성·갱신 시각"],
 ]
-t = Table(graph_rel_data, colWidths=[4.0*cm, 2.4*cm, 10.6*cm])
-t.setStyle(TableStyle([
-    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
-    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
-    ("FONTSIZE",   (0, 0), (-1, -1), 9),
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6d28d9")),
-    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-    ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
-    ("TOPPADDING", (0, 0), (-1, -1), 4),
-    ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-        [colors.white, colors.HexColor("#faf5ff")]),
-]))
-story.append(t)
+story.append(db_table("#6d28d9", "#faf5ff", graph_rel_data,
+                       [4.2, 3.0, 11.0]))
 story.append(Spacer(1, 0.3*cm))
 
 story.append(Paragraph("<b>graph_communities</b> (Louvain 군집)", BODY))
@@ -784,23 +728,8 @@ graph_com_data = [
     ["summary", "Text", "선택적 LLM 요약"],
     ["created_at", "DateTime", "생성 시각"],
 ]
-t = Table(graph_com_data, colWidths=[4.0*cm, 2.4*cm, 10.6*cm])
-t.setStyle(TableStyle([
-    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
-    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
-    ("FONTSIZE",   (0, 0), (-1, -1), 9),
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6d28d9")),
-    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-    ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
-    ("TOPPADDING", (0, 0), (-1, -1), 4),
-    ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-        [colors.white, colors.HexColor("#faf5ff")]),
-]))
-story.append(t)
+story.append(db_table("#6d28d9", "#faf5ff", graph_com_data,
+                       [4.2, 3.0, 11.0]))
 
 story.append(PageBreak())
 
@@ -822,23 +751,8 @@ report_data = [
         "한국어 9섹션 판독보고서 전문 (분류등급·핵심요약·상황·변화분석·촬영공백구역·"
         "위협평가·정보공백·권고조치·부록)"],
 ]
-t = Table(report_data, colWidths=[4.0*cm, 2.6*cm, 10.4*cm])
-t.setStyle(TableStyle([
-    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
-    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
-    ("FONTSIZE",   (0, 0), (-1, -1), 9),
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#15803d")),
-    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-    ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
-    ("TOPPADDING", (0, 0), (-1, -1), 4),
-    ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-        [colors.white, colors.HexColor("#f0fdf4")]),
-]))
-story.append(t)
+story.append(db_table("#15803d", "#f0fdf4", report_data,
+                       [4.2, 3.2, 10.8]))
 story.append(Spacer(1, 0.4*cm))
 
 story.append(Paragraph("공통 특성", H2))
