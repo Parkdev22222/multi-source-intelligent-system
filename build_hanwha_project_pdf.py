@@ -194,26 +194,93 @@ story.append(PageBreak())
 
 story.append(Paragraph("3. 객체 페어링 변화 탐지 상세 (설명)", H1))
 story.append(Paragraph(
-    "도 2는 두 시점 영상의 객체를 어떻게 짝지어 변화를 잡아내는지를 상세히 보여준다. "
-    "핵심 아이디어는 <b>공통 전처리 후 객체 성질에 따른 이원화</b>이다. 두 시점 영상은 먼저 SAM3 기반 "
-    "zero-shot 객체 탐지를 거쳐 각 객체가 마스크와 함께 검출되고, 마스크 기반 배경 제거로 순수 객체 crop이 "
-    "생성된다. 이 crop은 이후 고정형·이동형 두 파이프라인이 공용으로 사용한다.",
+    "도 2는 두 시점 영상의 객체를 어떻게 짝지어 변화를 잡아내는지를 4단계 흐름으로 보여준다: "
+    "<b>(1) SAM3 탐지 입력 → (2) 마스크 기반 배경 제거 공통 전처리 → (3) 클래스 판정 후 이원 파이프라인 → "
+    "(4) 결과 통합 및 다상태 분류</b>. 핵심 아이디어는 객체의 물리적 성질에 따라 페어링 방식을 완전히 "
+    "달리하여, 이동 가능성 여부에서 오는 알고리즘 특성 차이를 파이프라인 수준에서 흡수한다는 점이다.",
     BODY))
-story.append(Paragraph("고정형 객체 처리", H2))
+
+story.append(Paragraph("(1) SAM3 탐지 입력", H2))
 story.append(Paragraph(
-    "건물·시설 같은 <b>고정형</b> 객체는 위경도 초근접(~11m) 그리디로 결합한 뒤 결합된 쌍의 CLIP 외형 "
-    "비교로 <i>matched / changed</i> 여부를 판정한다. 한쪽 시점에서 탐지가 유실된 경우 같은 위경도로 "
-    "강제 crop을 생성해 CLIP 재검증으로 synthetic detection을 주입함으로써 SAM3 탐지 누락을 자동 보정한다.",
+    "과거 시점(t₁)과 현재 시점(t₂) 두 영상 각각에 <b>SAM3 (Segment Anything Model 3)</b>의 zero-shot "
+    "탐지를 수행한다. 사용자는 원하는 객체 클래스명을 자연어 프롬프트(예: <i>\"military tank\"</i>, "
+    "<i>\"military building\"</i>)로 지정하고, SAM3는 각 객체 인스턴스에 대해 픽셀 단위 bbox, "
+    "세그멘테이션 마스크, confidence 값을 반환한다. 반환된 픽셀 좌표는 이미지의 지리 bounding box"
+    "(<code>lat_min/max, lon_min/max</code>)를 이용해 선형 보간으로 위경도(<code>lat, lon</code>)로 "
+    "변환되어 Sensor DB에 저장된다.",
     BODY))
-story.append(Paragraph("이동형 객체 처리", H2))
+
+story.append(Paragraph("(2) 마스크 기반 배경 제거 (공통 전처리)", H2))
 story.append(Paragraph(
-    "전차·차량 같은 <b>이동형</b> 객체는 위치가 바뀔 수 있으므로 배치 단위 CLIP 임베딩의 N×M 코사인 유사도 "
-    "행렬을 만들고 <b>Gale-Shapley 안정 매칭</b>을 적용해 짝을 찾는다. Gale-Shapley는 서로 바꿔치기 하고 "
-    "싶은 짝이 남지 않는 안정된 1:1 매칭을 보장하며 그리디 방식의 중복·교차 페어링을 원천 차단한다.",
+    "두 시점 모두에 대해 SAM3 마스크로 배경 픽셀(도로·초지·기타 무관 요소)을 zeroing한 뒤 bbox 영역만 "
+    "crop 하여 <b>순수 객체 crop</b>을 생성한다. 이 crop은 이후 고정형·이동형 두 파이프라인이 <b>공용</b>으로 "
+    "사용하며, 하류에서 배경 제거를 재수행할 필요가 없다. 배경이 제거된 crop을 CLIP에 입력함으로써 "
+    "주변 지형 노이즈에 강인한 순수 객체 외형 임베딩을 얻을 수 있어, 회전·조명 변화·촬영 각도가 다른 두 "
+    "시점 간 유사도 계산의 신뢰도가 확보된다.",
+    BODY))
+
+story.append(Paragraph("(3-a) 고정형 객체 처리 — 지리 근접 + CLIP 재검증", H2))
+story.append(Paragraph(
+    "건물·시설과 같은 <b>고정형</b>(<i>_STATIC_CLASSES</i> 로 코드에서 지정) 객체는 물리적으로 위치가 "
+    "고정되어 있으므로, 두 시점 사이에도 위경도가 거의 변하지 않는다. 이를 활용해 <b>위경도 초근접(약 11m, "
+    "0.0001° 단위) 그리디 결합</b>을 먼저 수행하여 공간적으로 가까운 과거·현재 객체 쌍을 후보로 묶는다.",
     BODY))
 story.append(Paragraph(
-    "두 갈래 결과는 하나의 다상태(matched / changed / new / disappeared / 촬영공백 2종)로 통합 분류되어 "
-    "Pairing DB에 저장된다.",
+    "결합된 각 쌍에 대해 <b>_clip_similarity_crops()</b> 함수가 두 crop의 CLIP 임베딩 코사인 유사도를 "
+    "계산한다. 유사도가 임계값(<i>_STATIC_SIM_THRESHOLD</i>) 이상이면 <i>matched</i>(구조 변화 없음), "
+    "미만이면 <i>changed</i>(신축·증축·철거·피해 등 구조적 변화)로 판정한다. 위경도가 거의 같아도 CLIP "
+    "외형이 달라졌다는 것은 시설물의 구조적 변화를 강하게 시사하므로, 단순 위치 비교로는 감지할 수 없는 "
+    "'같은 자리, 다른 모습' 케이스를 잡아낼 수 있다.",
+    BODY))
+story.append(Paragraph(
+    "SAM3가 한쪽 시점에서 탐지에 실패한 경우에는 <b>가상 탐지 합성(synthetic detection injection)</b> "
+    "메커니즘이 동작한다. 유실된 시점의 이미지에서 반대편 시점의 동일 위경도 영역을 강제로 crop 하여 CLIP "
+    "재검증을 수행하고, 유사도가 임계값을 넘으면 synthetic detection을 주입하여 <i>matched</i>로 복원하고, "
+    "그렇지 않으면 <i>disappeared</i>로 확정한다. 이 절차는 SAM3 탐지 누락을 자동 보정하여 이후 GraphRAG "
+    "누적 통계의 왜곡을 방지한다.",
+    BODY))
+story.append(PageBreak())
+
+story.append(Paragraph("3. 객체 페어링 변화 탐지 상세 (설명 계속)", H1))
+story.append(Paragraph("(3-b) 이동형 객체 처리 — CLIP 유사도 행렬 + Gale-Shapley 안정 매칭", H2))
+story.append(Paragraph(
+    "전차·차량과 같은 <b>이동형</b> 객체는 두 시점 사이 위경도가 크게 달라질 수 있으므로 위치 근접만으로는 "
+    "매칭이 불가능하다. 대신 각 시점의 crop들을 배치 단위로 CLIP 인코더에 입력해 N개(과거)·M개(현재)의 "
+    "L2 정규화 임베딩 벡터를 얻고, 이를 <b>단일 GEMM 연산</b>(<code>cur_embeds @ past_embeds.T</code>)으로 "
+    "N × M 코사인 유사도 행렬을 계산한다. 이 행렬의 각 원소는 두 객체 간 외형적 유사도(0 ~ 1)를 나타내며, "
+    "값이 임계값(<i>SIMILARITY_MATCH_THRESHOLD</i>, 예: 0.5) 이상인 조합만 매칭 후보에 포함된다. "
+    "동일 클래스가 아닌 조합(예: tank ↔ APC)은 사전 필터로 제외된다. 각 후보의 최종 점수는 "
+    "<b>0.8 × CLIP 유사도 + 0.2 × 크기 유사도</b>로 가중 합산되며, 크기 유사도가 반영되어 잘못된 스케일 "
+    "매칭을 억제한다.",
+    BODY))
+story.append(Paragraph(
+    "이 후보 리스트에 <b>Gale-Shapley 안정 매칭(deferred-acceptance)</b>이 적용된다. 각 현재 객체(ci)는 "
+    "자기 선호도 리스트(점수 내림차순)의 최상위 과거 객체(pi)에게 순차적으로 제안한다. pi가 비어 있으면 "
+    "잠정 매칭이 성립하고, 이미 다른 ci와 매칭된 경우엔 두 ci의 점수를 비교하여 더 높은 쪽이 pi를 획득하고 "
+    "밀린 ci는 자기의 다음 후보로 재도전한다. 각 ci의 후보 포인터가 단조 증가하므로 유한 스텝 안에 반드시 "
+    "종료되며, 결과 매칭에는 <b>서로 바꿔치기 하고 싶은 짝이 남지 않는다</b>는 안정성이 수학적으로 보장된다. "
+    "이 성질 덕분에 그리디 매칭에서 흔히 발생하는 <b>중복 매칭 · 교차 매칭</b>이 원천 차단되어, 밀집 지역의 "
+    "다수 이동형 객체 페어링 신뢰도가 크게 향상된다.",
+    BODY))
+story.append(Paragraph(
+    "매칭에 실패한(임계값 미달 또는 후보 소진) 현재 객체는 <i>new</i>, 매칭되지 않은 과거 객체는 "
+    "<i>disappeared</i>로 확정된다. 매칭된 쌍은 <i>matched</i> 상태로 저장된다.",
+    BODY))
+
+story.append(Paragraph("(4) 결과 통합 및 다상태 분류", H2))
+story.append(Paragraph(
+    "고정형·이동형 두 파이프라인의 페어링 결과와 각 이미지의 FOV(field-of-view, 촬영 범위) 검증 결과를 "
+    "통합하여 최종적으로 6개의 상태 중 하나로 분류한다:",
+    BODY))
+story.append(bullet("<b>matched</b> — 두 시점 모두에 존재하며 유사도 임계값 이상"))
+story.append(bullet("<b>changed</b> — 같은 위치 고정 시설이지만 CLIP 유사도가 임계값 미만 (구조 변화)"))
+story.append(bullet("<b>new</b> — 현재 시점에만 새로 나타남 (과거 FOV 내에 없었음)"))
+story.append(bullet("<b>disappeared</b> — 과거 시점에만 존재했고 현재 FOV 내에서 사라짐"))
+story.append(bullet("<b>past_not_included</b> — 현재 객체가 과거 이미지의 FOV 밖에 있어 비교 불가"))
+story.append(bullet("<b>current_not_included</b> — 과거 객체가 현재 이미지의 FOV 밖에 있어 비교 불가"))
+story.append(Paragraph(
+    "각 페어링 레코드는 상태·과거·현재 정보(위경도·클래스·신뢰도·bbox·타임스탬프)와 함께 Pairing DB에 "
+    "세션 단위로 저장되어 GraphRAG 인덱싱과 판독보고서 생성의 팩트 소스가 된다.",
     BODY))
 story.append(PageBreak())
 
@@ -296,49 +363,72 @@ story.append(Paragraph(
     "탐지 → 페어링 → 그래프 인덱싱 → 보고서 생성 → 번역 각 단계를 검증한다.",
     BODY))
 
-# 5개 critic을 표로 정리
+# 5개 critic을 표로 정리 (셀 내용을 Paragraph로 감싸 자동 줄바꿈)
+CELL = ParagraphStyle("CriticCell", parent=styles["Normal"],
+                       fontName="Nanum", fontSize=8.5, leading=12,
+                       textColor=colors.HexColor("#0f172a"))
+CELL_HDR = ParagraphStyle("CriticHdr", parent=styles["Normal"],
+                           fontName="Nanum-Bold", fontSize=10, leading=13,
+                           textColor=colors.white)
+CELL_NAME = ParagraphStyle("CriticName", parent=styles["Normal"],
+                            fontName="Nanum-Bold", fontSize=9, leading=13,
+                            textColor=colors.HexColor("#7f1d1d"))
+
+def P(text, style=CELL):
+    return Paragraph(text, style)
+
 critic_data = [
-    ["Critic 노드", "검증 항목", "실패 시 처리"],
-    ["① Detection Critic\n(SAM3 탐지 검증)",
-        "· 클래스·confidence 분포가 정상 범위인가\n"
-        "· degenerate bbox(0 크기)가 있는가\n"
-        "· 이미지 특성 대비 탐지 수가 비정상은 아닌가",
-        "SAM3 프롬프트 재조정 또는 confidence 임계값 완화 후 재실행 · 반복 실패 시 HITL 이관"],
-    ["② Pairing Critic\n(이원 페어링 검증)",
-        "· matched : new : disappeared 비율의 급격한 편향 여부\n"
-        "· CLIP 유사도 분포가 임계값 근처에 몰려있진 않은가\n"
-        "· Gale-Shapley 후 미매칭 자산이 과다한가",
-        "SIMILARITY_MATCH_THRESHOLD 조정 후 재실행 또는 HITL 이관"],
-    ["③ Graph Critic\n(GraphRAG 인덱싱 검증)",
-        "· 격자 셀당 노드 수가 극단적으로 편중되지 않았는가\n"
-        "· Louvain 커뮤니티 개수·크기가 정상 범위인가\n"
-        "· upsert 후 관측 횟수·엣지 가중치가 실제로 반영됐는가",
-        "_LOC_PRECISION(격자 해상도) 조정 후 재인덱싱 · 경고만 남기고 통과 허용도 가능"],
-    ["④ Report Critic\n(영문 보고서 검증)",
-        "· 정형 9개 섹션 헤더가 모두 존재하는가\n"
-        "· 보고서에 인용된 자산·좌표·수치가 실제 입력 페어링 레코드에 존재하는가 (팩트 매칭)\n"
-        "· 'DISAPPEARED ≠ destroyed' 등 도메인 가드레일 준수 여부",
-        "실패 사유를 프롬프트 피드백에 추가하여 재생성 (self-refine 패턴)"],
-    ["⑤ Translation Critic\n(한국어 번역 검증)",
-        "· 9 섹션 번호·헤더가 그대로 유지됐는가\n"
-        "· 좌표·수치·타임스탬프가 raw 값 그대로 보존됐는가 (정규식 diff)\n"
-        "· 영문 잔재가 없는가 (언어 일관성)",
-        "재번역 요청 · 반복 실패 시 HITL 이관"],
+    [P("Critic 노드", CELL_HDR), P("검증 항목", CELL_HDR), P("실패 시 처리", CELL_HDR)],
+    [
+        P("① Detection Critic<br/>(SAM3 탐지 검증)", CELL_NAME),
+        P("· 클래스·confidence 분포가 정상 범위인가<br/>"
+          "· degenerate bbox(0 크기)가 있는가<br/>"
+          "· 이미지 특성 대비 탐지 수가 비정상은 아닌가"),
+        P("SAM3 프롬프트 재조정 또는 confidence 임계값 완화 후 재실행. "
+          "반복 실패 시 HITL 이관"),
+    ],
+    [
+        P("② Pairing Critic<br/>(이원 페어링 검증)", CELL_NAME),
+        P("· matched : new : disappeared 비율의 급격한 편향 여부<br/>"
+          "· CLIP 유사도 분포가 임계값 근처에 몰려있진 않은가<br/>"
+          "· Gale-Shapley 후 미매칭 자산이 과다한가"),
+        P("SIMILARITY_MATCH_THRESHOLD 값을 조정하여 재실행. 임계값을 완화/강화해도 "
+          "정상화되지 않으면 HITL 이관"),
+    ],
+    [
+        P("③ Graph Critic<br/>(GraphRAG 인덱싱 검증)", CELL_NAME),
+        P("· 격자 셀당 노드 수가 극단적으로 편중되지 않았는가<br/>"
+          "· Louvain 커뮤니티 개수·크기가 정상 범위인가<br/>"
+          "· upsert 후 관측 횟수·엣지 가중치가 실제로 반영됐는가"),
+        P("_LOC_PRECISION(격자 해상도)을 조정하여 재인덱싱. "
+          "경미한 편중은 경고만 남기고 통과 허용도 가능"),
+    ],
+    [
+        P("④ Report Critic<br/>(영문 보고서 검증)", CELL_NAME),
+        P("· 정형 9개 섹션 헤더가 모두 존재하는가<br/>"
+          "· 보고서에 인용된 자산·좌표·수치가 실제 입력 페어링 레코드에 존재하는가 "
+          "(팩트 매칭)<br/>"
+          "· 'DISAPPEARED ≠ destroyed' 등 도메인 가드레일 준수 여부"),
+        P("실패 사유를 프롬프트 피드백에 추가하여 재생성 (self-refine 패턴). "
+          "반복 실패 시 HITL 이관"),
+    ],
+    [
+        P("⑤ Translation Critic<br/>(한국어 번역 검증)", CELL_NAME),
+        P("· 9 섹션 번호·헤더가 그대로 유지됐는가<br/>"
+          "· 좌표·수치·타임스탬프가 raw 값 그대로 보존됐는가 (정규식 diff)<br/>"
+          "· 영문 잔재가 없는가 (언어 일관성)"),
+        P("재번역 요청. 반복 실패 시 HITL 이관"),
+    ],
 ]
-t = Table(critic_data, colWidths=[3.6*cm, 8.0*cm, 6.6*cm])
+t = Table(critic_data, colWidths=[3.8*cm, 8.4*cm, 6.0*cm])
 t.setStyle(TableStyle([
-    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
-    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
-    ("FONTSIZE",   (0, 0), (-1, 0), 10),
-    ("FONTSIZE",   (0, 1), (-1, -1), 8.5),
     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#b91c1c")),
-    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
     ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
     ("VALIGN",     (0, 0), (-1, -1), "TOP"),
-    ("LEFTPADDING", (0, 0), (-1, -1), 6),
-    ("RIGHTPADDING",(0, 0), (-1, -1), 6),
-    ("TOPPADDING", (0, 0), (-1, -1), 6),
-    ("BOTTOMPADDING",(0, 0), (-1, -1), 6),
+    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
+    ("TOPPADDING", (0, 0), (-1, -1), 5),
+    ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
     ("ROWBACKGROUNDS", (0, 1), (-1, -1),
         [colors.white, colors.HexColor("#fef2f2")]),
 ]))
