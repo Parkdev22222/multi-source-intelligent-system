@@ -92,8 +92,8 @@ FOOTER = ParagraphStyle("Footer", parent=styles["Normal"],
 def bullet(text):
     return Paragraph(f"• {text}", BULLET)
 
-def scaled_image(path, max_width_cm=16.5, max_height_cm=20.0):
-    """도면을 페이지 안에 맞도록 스케일."""
+def scaled_image(path, max_width_cm=17.5, max_height_cm=23.0):
+    """도면을 페이지 안에 맞도록 스케일 (기본값을 넉넉하게)."""
     from PIL import Image as PILImage
     img = PILImage.open(path)
     w_px, h_px = img.size
@@ -116,8 +116,8 @@ BASE = "/home/user/multi-source-intelligent-system/data"
 
 doc = SimpleDocTemplate(
     OUT, pagesize=A4,
-    leftMargin=2*cm, rightMargin=2*cm,
-    topMargin=1.8*cm, bottomMargin=1.8*cm,
+    leftMargin=1.4*cm, rightMargin=1.4*cm,
+    topMargin=1.4*cm, bottomMargin=1.4*cm,
     title="MSIS 프로젝트 소개",
     author="Song Jae Park",
 )
@@ -187,16 +187,23 @@ story.append(PageBreak())
 # ═══════════════════════════════════════════════════════════════
 story.append(Paragraph("2. 전체 시스템 아키텍처", H1))
 story.append(scaled_image(f"{BASE}/full_system_architecture_v2.png",
-                          max_width_cm=15.5, max_height_cm=17))
+                          max_width_cm=18.0, max_height_cm=23.5))
 story.append(Paragraph("[도 1] 전체 파이프라인 흐름도", CAP))
+story.append(PageBreak())
+
+story.append(Paragraph("2. 전체 시스템 아키텍처 (설명)", H1))
 story.append(Paragraph(
     "도 1은 두 시점 위성·드론 영상 한 쌍에서 시작해 최종 판독보고서가 나오기까지의 전체 흐름을 보여준다. "
-    "시스템의 핵심은 <b>탐지 → 페어링 → 지식 누적 → 보고서 생성</b>의 4단계 파이프라인이다. "
+    "시스템의 핵심은 <b>탐지 → 페어링 → 지식 누적 → 보고서 생성</b>의 4단계 파이프라인이다.",
+    BODY))
+story.append(Paragraph(
     "각 단계는 LangGraph 노드로 모델링되고, 각 단계 뒤에는 critic 노드가 배치되어 산출물의 품질을 자동 "
     "검증한다. 검증을 통과하면 다음 단계로 진행하고, 실패하면 같은 노드로 재실행되거나 임계값 조정 후 "
-    "재시도, 반복 실패 시 HITL로 이관되는 자기 검증 구조다. 각 단계의 산출물은 별도 데이터베이스"
-    "(Sensor / Pairing / Graph / Report)에 저장되어 결과를 재현하고 검증할 수 있으며, "
-    "특정 단계의 결과가 사용자에 의해 수정되면 후속 단계가 자동 재계산되는 구조를 갖는다.",
+    "재시도되며, 반복 실패 시 HITL(Human-in-the-Loop)로 이관되는 자기 검증 구조이다.",
+    BODY))
+story.append(Paragraph(
+    "각 단계의 산출물은 별도 데이터베이스(Sensor / Pairing / Graph / Report)에 저장되어 결과를 재현하고 "
+    "검증할 수 있으며, 특정 단계의 결과가 사용자에 의해 수정되면 후속 단계가 자동 재계산되는 구조를 갖는다.",
     BODY))
 story.append(PageBreak())
 
@@ -206,22 +213,32 @@ story.append(PageBreak())
 # ═══════════════════════════════════════════════════════════════
 story.append(Paragraph("3. 객체 페어링 변화 탐지 상세 (이원 처리)", H1))
 story.append(scaled_image(f"{BASE}/fig2_v4_unified_visual.png",
-                          max_width_cm=16, max_height_cm=20))
+                          max_width_cm=15.5, max_height_cm=23.5))
 story.append(Paragraph("[도 2] 페어링 모듈 — 공통 전처리 + 이원 파이프라인", CAP))
+story.append(PageBreak())
+
+story.append(Paragraph("3. 객체 페어링 변화 탐지 상세 (설명)", H1))
 story.append(Paragraph(
     "도 2는 두 시점 영상의 객체를 어떻게 짝지어 변화를 잡아내는지를 상세히 보여준다. "
-    "핵심 아이디어는 <b>공통 전처리 후 객체 성질에 따른 이원화</b>다. 두 시점 영상은 먼저 SAM3 기반 "
+    "핵심 아이디어는 <b>공통 전처리 후 객체 성질에 따른 이원화</b>이다. 두 시점 영상은 먼저 SAM3 기반 "
     "zero-shot 객체 탐지를 거쳐 각 객체가 마스크와 함께 검출되고, 마스크 기반 배경 제거로 순수 객체 crop이 "
     "생성된다. 이 crop은 이후 고정형·이동형 두 파이프라인이 공용으로 사용한다.",
     BODY))
+story.append(Paragraph("고정형 객체 처리", H2))
 story.append(Paragraph(
     "건물·시설 같은 <b>고정형</b> 객체는 위경도 초근접(~11m) 그리디로 결합한 뒤 결합된 쌍의 CLIP 외형 "
-    "비교로 <i>matched / changed</i> 여부를 판정하며, 한쪽 시점에서 탐지가 유실된 경우 같은 위경도로 "
-    "강제 crop을 생성해 CLIP 재검증으로 synthetic detection을 주입한다. 전차·차량 같은 <b>이동형</b> 객체는 "
-    "위치가 바뀔 수 있으므로 배치 단위 CLIP 임베딩의 N×M 코사인 유사도 행렬을 만들고 "
-    "<b>Gale-Shapley 안정 매칭</b>을 적용해 짝을 찾는다. Gale-Shapley는 서로 바꿔치기 하고 싶은 짝이 남지 "
-    "않는 안정된 1:1 매칭을 보장하며 그리디 방식의 중복·교차 페어링을 원천 차단한다. 두 갈래 결과는 하나의 "
-    "다상태(matched / changed / new / disappeared / 촬영공백 2종)로 통합 분류되어 Pairing DB에 저장된다.",
+    "비교로 <i>matched / changed</i> 여부를 판정한다. 한쪽 시점에서 탐지가 유실된 경우 같은 위경도로 "
+    "강제 crop을 생성해 CLIP 재검증으로 synthetic detection을 주입함으로써 SAM3 탐지 누락을 자동 보정한다.",
+    BODY))
+story.append(Paragraph("이동형 객체 처리", H2))
+story.append(Paragraph(
+    "전차·차량 같은 <b>이동형</b> 객체는 위치가 바뀔 수 있으므로 배치 단위 CLIP 임베딩의 N×M 코사인 유사도 "
+    "행렬을 만들고 <b>Gale-Shapley 안정 매칭</b>을 적용해 짝을 찾는다. Gale-Shapley는 서로 바꿔치기 하고 "
+    "싶은 짝이 남지 않는 안정된 1:1 매칭을 보장하며 그리디 방식의 중복·교차 페어링을 원천 차단한다.",
+    BODY))
+story.append(Paragraph(
+    "두 갈래 결과는 하나의 다상태(matched / changed / new / disappeared / 촬영공백 2종)로 통합 분류되어 "
+    "Pairing DB에 저장된다.",
     BODY))
 story.append(PageBreak())
 
@@ -231,20 +248,26 @@ story.append(PageBreak())
 # ═══════════════════════════════════════════════════════════════
 story.append(Paragraph("4. GraphRAG 기반 시공간 이력 누적", H1))
 story.append(scaled_image(f"{BASE}/fig3_graphrag_v2.png",
-                          max_width_cm=16, max_height_cm=20))
+                          max_width_cm=18.0, max_height_cm=23.5))
 story.append(Paragraph("[도 3] GraphRAG 인덱싱 및 압축 컨텍스트 생성", CAP))
+story.append(PageBreak())
+
+story.append(Paragraph("4. GraphRAG 기반 시공간 이력 누적 (설명)", H1))
 story.append(Paragraph(
     "도 3은 매 회차 페어링 결과를 어떻게 시간축으로 쌓아 재활용 가능한 지식으로 만드는지를 보여준다. "
-    "핵심은 위경도를 소수점 2자리로 반올림(약 1km 격자)해 <b>결정론적 노드 키</b>(<code>loc:37.58,126.97</code>, "
-    "<code>asset:tank:37.58,126.97</code>)를 만들고, 같은 (자산 × 격자) 조합이 반복 관측될 때마다 관측 횟수와 "
-    "공출현 엣지 가중치를 +1씩 누적하는 upsert 방식이다. 이 upsert에는 <b>LLM 호출이 없어</b> 동일 입력에 "
-    "대해 항상 동일한 그래프가 재현되며, 비용도 발생하지 않는다.",
+    "핵심은 위경도를 소수점 2자리로 반올림(약 1 km 격자)해 <b>결정론적 노드 키</b>"
+    "(예: loc:37.58,126.97 · asset:tank:37.58,126.97)를 만들고, 같은 (자산 × 격자) 조합이 반복 관측될 때마다 "
+    "관측 횟수와 공출현 엣지 가중치를 +1씩 누적하는 upsert 방식이다.",
     BODY))
 story.append(Paragraph(
-    "누적된 그래프에는 <b>Louvain 커뮤니티 탐지</b>가 적용되어 자주 함께 관측되는 자산 군집이 자동으로 "
-    "발견된다. 보고서 생성 시에는 대상 지역 반경의 자산 이력을 조회하는 Local Search와 관련 커뮤니티 요약을 "
-    "가져오는 Global Search를 병행하여, 관련 이력만 <b>약 500 토큰</b>의 압축 컨텍스트로 반환한다. "
-    "이 압축 컨텍스트가 다음 단계의 LLM 프롬프트에 주입되어 판독보고서의 시공간 맥락을 채운다.",
+    "이 upsert 과정에는 <b>LLM 호출이 없어</b> 동일 입력에 대해 항상 동일한 그래프가 재현되며, "
+    "비용도 발생하지 않는다. 누적된 그래프에는 <b>Louvain 커뮤니티 탐지</b>가 적용되어 자주 함께 관측되는 "
+    "자산 군집이 자동으로 발견된다.",
+    BODY))
+story.append(Paragraph(
+    "보고서 생성 시에는 대상 지역 반경의 자산 이력을 조회하는 Local Search와 관련 커뮤니티 요약을 가져오는 "
+    "Global Search를 병행하여, 관련 이력만 <b>약 500 토큰</b>의 압축 컨텍스트로 반환한다. 이 압축 컨텍스트가 "
+    "다음 단계의 LLM 프롬프트에 주입되어 판독보고서의 시공간 맥락을 채운다.",
     BODY))
 story.append(PageBreak())
 
@@ -254,24 +277,35 @@ story.append(PageBreak())
 # ═══════════════════════════════════════════════════════════════
 story.append(Paragraph("5. LangGraph Critic 기반 판독보고서 자율 생성", H1))
 story.append(scaled_image(f"{BASE}/fig4_report_v2.png",
-                          max_width_cm=16, max_height_cm=20))
+                          max_width_cm=16.0, max_height_cm=23.5))
 story.append(Paragraph("[도 4] 판독보고서 생성 파이프라인", CAP))
+story.append(PageBreak())
+
+story.append(Paragraph("5. LangGraph Critic 기반 판독보고서 자율 생성 (설명)", H1))
 story.append(Paragraph(
     "도 4는 이번 회차 변화(팩트)와 과거 누적 맥락(배경)을 결합해 어떻게 완성도 있는 판독보고서를 "
     "만드는지를 보여준다. 두 입력의 역할이 다르다. <b>Pairing DB</b>는 이번 회차에 무엇이 변했는지의 "
     "팩트를 제공하고, <b>Graph DB</b>는 그 변화가 이례적인지 반복 패턴인지의 맥락을 제공한다. "
-    "이 둘을 시스템/사용자 프롬프트로 조립해 LLM에 넣으면 정형 9개 섹션(분류등급·핵심요약·상황·"
+    "두 소스를 시스템/사용자 프롬프트로 조립해 LLM에 넣으면 정형 9개 섹션(분류등급·핵심요약·상황·"
     "변화분석·촬영공백구역·위협평가·정보공백·권고조치·부록) 보고서가 생성된다.",
     BODY))
+story.append(Paragraph("Report Critic", H2))
 story.append(Paragraph(
     "LangGraph 파이프라인에서는 각 생성 단계 뒤에 <b>critic 노드</b>가 배치된다. <b>Report Critic</b>은 "
     "9개 섹션이 모두 존재하는지, 보고서에 인용된 자산·좌표가 실제 입력 페어링 레코드에 존재하는지, "
     "'DISAPPEARED ≠ destroyed' 같은 도메인 가드레일이 준수되었는지를 검증한다. 검증 실패 시 실패 사유를 "
-    "피드백으로 담아 재생성한다. 이어 동일 LLM 인스턴스가 한국어로 번역하되 좌표·수치·타임스탬프는 "
-    "원본 그대로 보존하며, <b>Translation Critic</b>이 섹션 구조·raw 값 보존·영문 잔재 여부를 검증한다. "
-    "두 단계의 critic 검증을 모두 통과한 최종 한국어 보고서가 Report DB에 세션별로 저장된다. "
-    "이 자기 검증 구조로 인해 환각 발생 가능성이 실질적으로 낮아지고, 좌표·수치 등 결정적 raw 값의 "
-    "원본 보존이 보장된다.",
+    "피드백으로 담아 재생성한다.",
+    BODY))
+story.append(Paragraph("Translation Critic", H2))
+story.append(Paragraph(
+    "이어 동일 LLM 인스턴스가 한국어로 번역하되 좌표·수치·타임스탬프는 원본 그대로 보존하며, "
+    "<b>Translation Critic</b>이 섹션 구조·raw 값 보존·영문 잔재 여부를 검증한다. 두 단계의 critic 검증을 "
+    "모두 통과한 최종 한국어 보고서가 Report DB에 세션별로 저장된다.",
+    BODY))
+story.append(Paragraph(
+    "이 자기 검증 구조로 인해 환각 발생 가능성이 실질적으로 낮아지고, 좌표·수치 등 결정적 raw 값의 원본 "
+    "보존이 보장된다. Critic이 여러 번 재시도해도 통과하지 못하는 케이스는 HITL로 자동 이관되어 "
+    "사람이 최종 확인·수정할 수 있다.",
     BODY))
 story.append(PageBreak())
 
