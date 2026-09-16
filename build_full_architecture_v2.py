@@ -38,10 +38,10 @@ ax.axis("off")
 
 # 제목
 ax.text(6, 17.3, "전체 시스템 아키텍처",
-        ha="center", fontsize=17, fontweight="bold", color=TEXT)
+        ha="center", fontsize=23.8, fontweight="bold", color=TEXT)
 ax.text(6, 16.85,
         "위성영상 시계열 변화 탐지 및 GraphRAG 기반 판독보고서 자동 생성",
-        ha="center", fontsize=11, color="#475569", style="italic")
+        ha="center", fontsize=15.4, color="#475569", style="italic")
 
 # ── 헬퍼 ──
 def module(x, y, w, h, label, sub=None, fc=SAM3, fs=13, ss=9.5):
@@ -67,12 +67,12 @@ def db(x, y, w, h, label, sub=None, fc=DB):
                           edgecolor="#1e293b", lw=1.2, zorder=3))
     if sub:
         ax.text(x+w/2, y+h/2+0.18, label, ha="center", va="center",
-                fontsize=11, fontweight="bold", color="white")
+                fontsize=15.4, fontweight="bold", color="white")
         ax.text(x+w/2, y+h/2-0.25, sub, ha="center", va="center",
-                fontsize=8.5, color="white")
+                fontsize=11.9, color="white")
     else:
         ax.text(x+w/2, y+h/2, label, ha="center", va="center",
-                fontsize=11, fontweight="bold", color="white")
+                fontsize=15.4, fontweight="bold", color="white")
 
 def flow_down(x, y1, y2, label=None, color=ARROW, lw=3):
     a = FancyArrowPatch((x, y1), (x, y2),
@@ -80,7 +80,7 @@ def flow_down(x, y1, y2, label=None, color=ARROW, lw=3):
                         color=color, lw=lw)
     ax.add_patch(a)
     if label:
-        ax.text(x+0.3, (y1+y2)/2, label, fontsize=9.5, va="center",
+        ax.text(x+0.3, (y1+y2)/2, label, fontsize=13.3, va="center",
                 color=color, fontweight="bold")
 
 def db_link(x1, y1, x2, y2, write_lbl="저장", read_lbl=None, color=DB):
@@ -90,7 +90,7 @@ def db_link(x1, y1, x2, y2, write_lbl="저장", read_lbl=None, color=DB):
                          arrowstyle="->,head_length=8,head_width=6",
                          color=color, lw=2)
     ax.add_patch(a1)
-    ax.text((x1+x2)/2, y1+0.45, write_lbl, ha="center", fontsize=8.5,
+    ax.text((x1+x2)/2, y1+0.45, write_lbl, ha="center", fontsize=11.9,
             color=color, fontweight="bold")
     # 조회 화살표 (DB → 모듈) — read_lbl이 있을 때만
     if read_lbl:
@@ -98,7 +98,7 @@ def db_link(x1, y1, x2, y2, write_lbl="저장", read_lbl=None, color=DB):
                              arrowstyle="->,head_length=8,head_width=6",
                              color=color, lw=2, linestyle="dashed")
         ax.add_patch(a2)
-        ax.text((x1+x2)/2, y1-0.5, read_lbl, ha="center", fontsize=8.5,
+        ax.text((x1+x2)/2, y1-0.5, read_lbl, ha="center", fontsize=11.9,
                 color=color, style="italic")
 
 # 각 단계 배경 (연한 회색으로 구획)
@@ -106,7 +106,7 @@ def stage_bg(y_bot, h, label):
     ax.add_patch(patches.Rectangle((0.3, y_bot), 11.4, h,
                                     facecolor=BG_STAGE,
                                     edgecolor="#e2e8f0", lw=1))
-    ax.text(0.55, y_bot+h-0.3, label, fontsize=9, color="#64748b",
+    ax.text(0.55, y_bot+h-0.3, label, fontsize=12.6, color="#64748b",
             fontweight="bold")
 
 # ═══════════════════════════════════════════════════
@@ -117,15 +117,15 @@ module(2.0, 15.1, 3.2, 1.1, "이미지 1", "(과거 시점 t₁)", fc=IMG, fs=12
 # text color adjustment (IMG is light blue - use dark text)
 # regenerate text
 ax.text(3.6, 15.1+1.1/2+0.15, "이미지 1", ha="center", va="center",
-        fontsize=12, fontweight="bold", color=TEXT)
+        fontsize=16.8, fontweight="bold", color=TEXT)
 ax.text(3.6, 15.1+1.1/2-0.25, "(과거 시점 t₁)", ha="center", va="center",
-        fontsize=9, color=TEXT)
+        fontsize=12.6, color=TEXT)
 
 module(6.8, 15.1, 3.2, 1.1, "이미지 2", "(현재 시점 t₂)", fc=IMG, fs=12, ss=9)
 ax.text(8.4, 15.1+1.1/2+0.15, "이미지 2", ha="center", va="center",
-        fontsize=12, fontweight="bold", color=TEXT)
+        fontsize=16.8, fontweight="bold", color=TEXT)
 ax.text(8.4, 15.1+1.1/2-0.25, "(현재 시점 t₂)", ha="center", va="center",
-        fontsize=9, color=TEXT)
+        fontsize=12.6, color=TEXT)
 
 # 세로 화살표 (입력 → 탐지)
 flow_down(6, 14.9, 13.7)
@@ -156,7 +156,7 @@ arr_past = FancyArrowPatch((9.25, 12.5), (4.0, 10.9),
                             color=SAM3, lw=1.8, linestyle="dashed")
 ax.add_patch(arr_past)
 ax.text(7.5, 11.7, "과거 탐지 조회",
-        ha="center", fontsize=9, color=SAM3, style="italic",
+        ha="center", fontsize=12.6, color=SAM3, style="italic",
         bbox=dict(boxstyle="round,pad=0.2",
                   facecolor="white",
                   edgecolor=SAM3, lw=0.8))
@@ -190,7 +190,7 @@ arr_ch = FancyArrowPatch((9.25, 9.8), (5.0, 5.5),
                           color=PAIR, lw=1.8, linestyle="dashed")
 ax.add_patch(arr_ch)
 ax.text(8.4, 7.5, "변화 객체\n(new + disappeared)",
-        ha="center", fontsize=9, color=PAIR, style="italic",
+        ha="center", fontsize=12.6, color=PAIR, style="italic",
         bbox=dict(boxstyle="round,pad=0.25",
                   facecolor="white", edgecolor=PAIR, lw=0.8))
 
@@ -208,9 +208,9 @@ db_link(6.0, 2.3, 8.0, 2.3, write_lbl="저장", color=REPORT)
 # 최하단 요약 한 줄
 ax.text(6, 0.7,
         "각 DB는 세션 식별자(session_id)로 묶여 HITL 재처리 시 자동 재계산됩니다.",
-        ha="center", fontsize=9.5, color="#475569", style="italic")
+        ha="center", fontsize=13.3, color="#475569", style="italic")
 
 plt.tight_layout()
 out = "/home/user/multi-source-intelligent-system/data/full_system_architecture_v2.png"
-plt.savefig(out, dpi=180, bbox_inches="tight", facecolor="white")
+plt.savefig(out, dpi=300, bbox_inches="tight", facecolor="white")
 print(f"Saved: {out}")

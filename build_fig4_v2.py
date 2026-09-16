@@ -45,17 +45,17 @@ ax.axis("off")
 
 # 제목
 ax.text(6.5, 19.45, "도 4. 판독보고서 자율 생성",
-        ha="center", fontsize=15, fontweight="bold", color=TEXT)
+        ha="center", fontsize=21.0, fontweight="bold", color=TEXT)
 ax.text(6.5, 19.05,
         "그래프 압축 컨텍스트 + 이번 회차 변화 객체를 LLM에 주입 → 영문 정형 보고서 → 무오염 한국어 번역",
-        ha="center", fontsize=10, color=MUTED, style="italic")
+        ha="center", fontsize=14.0, color=MUTED, style="italic")
 
 
 def stage_bg(y_bot, h, num, title):
     ax.add_patch(Rectangle((0.3, y_bot), 12.4, h,
                            facecolor=STAGE, edgecolor=STAGE_BD, lw=1))
     ax.text(0.55, y_bot+h-0.28, f"[{num}] {title}",
-            fontsize=10.5, color=MUTED, fontweight="bold")
+            fontsize=14.7, color=MUTED, fontweight="bold")
 
 def arrow_down(x, y1, y2, lw=2.5, color="#334155"):
     ax.add_patch(FancyArrowPatch((x, y1), (x, y2),
@@ -76,11 +76,11 @@ def cylinder(cx, cy, w, h, color, label, sub=None):
     ax.add_patch(Ellipse((cx+w/2, cy), w, h*0.35,
                           facecolor=color, edgecolor="#1e293b", lw=1))
     ax.text(cx+w/2, cy+h/2 + (0.08 if sub else 0), label,
-            ha="center", va="center", fontsize=10.5,
+            ha="center", va="center", fontsize=14.7,
             fontweight="bold", color="white")
     if sub:
         ax.text(cx+w/2, cy+h/2 - 0.18, sub, ha="center", va="center",
-                fontsize=7.8, color="white", style="italic")
+                fontsize=10.9, color="white", style="italic")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -92,7 +92,7 @@ stage_bg(16.5, 2.4, "1단계",
 # 좌: Graph DB → 압축 컨텍스트
 cylinder(1.5, 17.85, 3.2, 0.5, GRAPH, "Graph DB", "누적 지식 그래프")
 arrow_down(3.1, 17.75, 17.35)
-ax.text(3.35, 17.55, "Local + Global 검색", fontsize=7.5, color=MUTED,
+ax.text(3.35, 17.55, "Local + Global 검색", fontsize=10.5, color=MUTED,
         style="italic", va="center")
 
 # 압축 컨텍스트 카드
@@ -103,21 +103,21 @@ ax.add_patch(FancyBboxPatch((ctx_x, ctx_y), ctx_w, ctx_h,
                              facecolor=GRAPH_LIGHT, edgecolor=GRAPH, lw=1.2))
 ax.text(ctx_x + ctx_w/2, ctx_y + ctx_h - 0.14,
         "압축 컨텍스트 (~500 토큰)",
-        ha="center", fontsize=9, fontweight="bold", color=GRAPH)
+        ha="center", fontsize=12.6, fontweight="bold", color=GRAPH)
 ax.text(ctx_x + 0.15, ctx_y + 0.35,
         "\"기갑 복합체 8회 반복 관측,",
-        fontsize=7.5, color=TEXT, style="italic")
+        fontsize=10.5, color=TEXT, style="italic")
 ax.text(ctx_x + 0.15, ctx_y + 0.20,
         " 지난 30일간 3회 재배치,",
-        fontsize=7.5, color=TEXT, style="italic")
+        fontsize=10.5, color=TEXT, style="italic")
 ax.text(ctx_x + 0.15, ctx_y + 0.05,
         " 반경 5km 내 지속 배치 자산 다수...\"",
-        fontsize=7.5, color=TEXT, style="italic")
+        fontsize=10.5, color=TEXT, style="italic")
 
 # 우: Pairing DB → 변화 객체
 cylinder(8.3, 17.85, 3.2, 0.5, DB, "Pairing DB", "이번 회차 페어링 결과")
 arrow_down(9.9, 17.75, 17.35)
-ax.text(10.15, 17.55, "이번 회차 변화 목록 조회", fontsize=7.5, color=MUTED,
+ax.text(10.15, 17.55, "이번 회차 변화 목록 조회", fontsize=10.5, color=MUTED,
         style="italic", va="center")
 
 # 변화 객체 카드
@@ -128,7 +128,7 @@ ax.add_patch(FancyBboxPatch((chg_x, chg_y), chg_w, chg_h,
                              facecolor=PAIR_LIGHT, edgecolor=PAIR, lw=1.2))
 ax.text(chg_x + chg_w/2, chg_y + chg_h - 0.14,
         "변화 객체 (신뢰도 순 정렬)",
-        ha="center", fontsize=9, fontweight="bold", color="#9a3412")
+        ha="center", fontsize=12.6, fontweight="bold", color="#9a3412")
 
 items = [
     ("new",         "tank @ (37.58, 126.97)   · 0.87", BLUE),
@@ -137,9 +137,9 @@ items = [
 ]
 for i, (status, detail, color) in enumerate(items):
     yy = chg_y + 0.35 - i * 0.14
-    ax.text(chg_x + 0.15, yy, status, fontsize=7, color=color,
+    ax.text(chg_x + 0.15, yy, status, fontsize=9.8, color=color,
             fontweight="bold")
-    ax.text(chg_x + 1.6, yy, detail, fontsize=7, color=TEXT,
+    ax.text(chg_x + 1.6, yy, detail, fontsize=9.8, color=TEXT,
             family="monospace")
 
 # 두 카드에서 아래로 통합 화살표 → 2단계
@@ -160,16 +160,16 @@ ax.add_patch(FancyBboxPatch((sys_x, sys_y), sys_w, sys_h,
                              boxstyle="round,pad=0.06",
                              facecolor="#fef2f2", edgecolor=LLM, lw=1.4))
 ax.text(sys_x + 0.25, sys_y + sys_h - 0.22, "시스템 프롬프트 (강제 규칙)",
-        fontsize=10, fontweight="bold", color=LLM)
+        fontsize=14.0, fontweight="bold", color=LLM)
 ax.text(sys_x + 0.4, sys_y + sys_h - 0.5,
         "· 역할: 위성영상 판독관",
-        fontsize=8.2, color=TEXT)
+        fontsize=11.5, color=TEXT)
 ax.text(sys_x + 0.4, sys_y + sys_h - 0.75,
         "· \"DISAPPEARED ≠ destroyed\"  —  소실은 파괴 의미 아님 (도메인 가드레일)",
-        fontsize=8.2, color=TEXT)
+        fontsize=11.5, color=TEXT)
 ax.text(sys_x + 0.4, sys_y + sys_h - 1.0,
         "· 정형 9개 섹션 구조 강제 · 좌표·수치·타임스탬프는 원본 그대로 유지",
-        fontsize=8.2, color=TEXT)
+        fontsize=11.5, color=TEXT)
 
 # 사용자 프롬프트 카드
 usr_x, usr_y = 1.0, 12.6
@@ -178,7 +178,7 @@ ax.add_patch(FancyBboxPatch((usr_x, usr_y), usr_w, usr_h,
                              boxstyle="round,pad=0.06",
                              facecolor="#fff7ed", edgecolor=PAIR, lw=1.4))
 ax.text(usr_x + 0.25, usr_y + usr_h - 0.22, "사용자 프롬프트",
-        fontsize=10, fontweight="bold", color="#9a3412")
+        fontsize=14.0, fontweight="bold", color="#9a3412")
 
 # prepend 컨텍스트 표시 (보라 박스)
 ax.add_patch(FancyBboxPatch((usr_x + 0.4, usr_y + 0.55), usr_w - 0.8, 0.42,
@@ -186,7 +186,7 @@ ax.add_patch(FancyBboxPatch((usr_x + 0.4, usr_y + 0.55), usr_w - 0.8, 0.42,
                              facecolor=GRAPH_LIGHT, edgecolor=GRAPH, lw=0.9))
 ax.text(usr_x + 0.55, usr_y + 0.76,
         "① [prepend] 압축 컨텍스트 ~500 토큰   ← Graph DB 검색 결과",
-        fontsize=8, color="#4c1d95", style="italic", fontweight="bold")
+        fontsize=11.2, color="#4c1d95", style="italic", fontweight="bold")
 
 # 변화 목록 표시 (주황 박스)
 ax.add_patch(FancyBboxPatch((usr_x + 0.4, usr_y + 0.08), usr_w - 0.8, 0.42,
@@ -194,7 +194,7 @@ ax.add_patch(FancyBboxPatch((usr_x + 0.4, usr_y + 0.08), usr_w - 0.8, 0.42,
                              facecolor=PAIR_LIGHT, edgecolor=PAIR, lw=0.9))
 ax.text(usr_x + 0.55, usr_y + 0.29,
         "② [본문] 이번 회차 변화 객체 목록   ← Pairing DB (new / disappeared / changed 상세)",
-        fontsize=8, color="#7c2d12", style="italic", fontweight="bold")
+        fontsize=11.2, color="#7c2d12", style="italic", fontweight="bold")
 
 arrow_down(6.5, 12.5, 12.0)
 
@@ -212,19 +212,19 @@ ax.add_patch(FancyBboxPatch((llm_x, llm_y), llm_w, llm_h,
                              boxstyle="round,pad=0.06",
                              facecolor=LLM, edgecolor="#7f1d1d", lw=1.5))
 ax.text(llm_x + llm_w/2, llm_y + 0.8, "LLM (예: EXAONE)",
-        ha="center", fontsize=11, fontweight="bold", color="white")
+        ha="center", fontsize=15.4, fontweight="bold", color="white")
 ax.text(llm_x + llm_w/2, llm_y + 0.4, "영문 판독보고서 생성",
-        ha="center", fontsize=8.5, color="white", style="italic")
+        ha="center", fontsize=11.9, color="white", style="italic")
 
 ax.add_patch(Circle((llm_x + llm_w - 0.15, llm_y + llm_h - 0.05), 0.28,
                     facecolor="white", edgecolor=LLM, lw=1.8))
 ax.text(llm_x + llm_w - 0.15, llm_y + llm_h - 0.05, "1",
-        ha="center", va="center", fontsize=12, fontweight="bold", color=LLM)
+        ha="center", va="center", fontsize=16.8, fontweight="bold", color=LLM)
 
 # 화살표 → 영문 보고서
 arrow_right(llm_x + llm_w + 0.1, llm_y + llm_h/2, 5.6, color=LLM, lw=2)
 ax.text((llm_x + llm_w + 5.6)/2, llm_y + llm_h/2 + 0.2, "영문 초안 생성",
-        ha="center", fontsize=8, color=LLM, style="italic")
+        ha="center", fontsize=11.2, color=LLM, style="italic")
 
 # 우: 영문 보고서 카드 (문서 모양)
 rep_x, rep_y = 5.6, 9.15
@@ -238,7 +238,7 @@ ax.add_patch(FancyBboxPatch((rep_x, rep_y), rep_w, rep_h,
                              facecolor="white", edgecolor=LLM, lw=1.3))
 ax.text(rep_x + rep_w/2, rep_y + rep_h - 0.22,
         "English Interpretation Report (9 sections)",
-        ha="center", fontsize=9.5, fontweight="bold", color=LLM)
+        ha="center", fontsize=13.3, fontweight="bold", color=LLM)
 # 얇은 구분선
 ax.plot([rep_x + 0.2, rep_x + rep_w - 0.2], [rep_y + rep_h - 0.4, rep_y + rep_h - 0.4],
         color=LLM, lw=0.5, alpha=0.5)
@@ -260,12 +260,12 @@ for i, sec in enumerate(sections_en):
     row = i if i < 5 else i - 5
     xx = rep_x + 0.3 + col * (rep_w/2 - 0.15)
     yy = rep_y + rep_h - 0.7 - row * 0.28
-    ax.text(xx, yy, sec, fontsize=8.2, color=TEXT)
+    ax.text(xx, yy, sec, fontsize=11.5, color=TEXT)
 
 # 하단 강조 문구
 ax.text(rep_x + rep_w/2, rep_y + 0.18,
         "→ 좌표·수치·타임스탬프는 raw 값 그대로 삽입",
-        ha="center", fontsize=8, color=MUTED, style="italic")
+        ha="center", fontsize=11.2, color=MUTED, style="italic")
 
 arrow_down(6.5, 9.0, 8.5)
 
@@ -283,14 +283,14 @@ ax.add_patch(FancyBboxPatch((llm2_x, llm2_y), llm2_w, llm2_h,
                              boxstyle="round,pad=0.06",
                              facecolor=LLM, edgecolor="#7f1d1d", lw=1.5))
 ax.text(llm2_x + llm2_w/2, llm2_y + 0.8, "LLM (동일 인스턴스)",
-        ha="center", fontsize=10.5, fontweight="bold", color="white")
+        ha="center", fontsize=14.7, fontweight="bold", color="white")
 ax.text(llm2_x + llm2_w/2, llm2_y + 0.4, "한국어 번역",
-        ha="center", fontsize=8.5, color="white", style="italic")
+        ha="center", fontsize=11.9, color="white", style="italic")
 
 ax.add_patch(Circle((llm2_x + llm2_w - 0.15, llm2_y + llm2_h - 0.05), 0.28,
                     facecolor="white", edgecolor=LLM, lw=1.8))
 ax.text(llm2_x + llm2_w - 0.15, llm2_y + llm2_h - 0.05, "2",
-        ha="center", va="center", fontsize=12, fontweight="bold", color=LLM)
+        ha="center", va="center", fontsize=16.8, fontweight="bold", color=LLM)
 
 # 하단 콜아웃: 왜 영문→한국어 2단계로 하는지 요약
 call_x, call_y = 0.5, 5.15
@@ -301,16 +301,16 @@ ax.add_patch(FancyBboxPatch((call_x, call_y), call_w, call_h,
                              edgecolor="#ca8a04", lw=1.3))
 ax.text(call_x + call_w/2, call_y + call_h - 0.2,
         "왜 영문 → 한국어 2단계?",
-        ha="center", fontsize=9, fontweight="bold", color="#854d0e")
+        ha="center", fontsize=12.6, fontweight="bold", color="#854d0e")
 ax.text(call_x + 0.2, call_y + call_h - 0.5,
         "· 정형 출력·도메인 규칙 준수율이 영문에서 안정적",
-        fontsize=7.5, color="#713f12")
+        fontsize=10.5, color="#713f12")
 ax.text(call_x + 0.2, call_y + call_h - 0.75,
         "· 번역만 좁게 잠가 좌표·수치·타임스탬프 raw 값 보존",
-        fontsize=7.5, color="#713f12")
+        fontsize=10.5, color="#713f12")
 ax.text(call_x + 0.2, call_y + call_h - 1.0,
         "· 동일 인스턴스 재사용 → 모델·가중치 재로드 없음",
-        fontsize=7.5, color="#713f12")
+        fontsize=10.5, color="#713f12")
 
 # 화살표 → 번역 결과
 arrow_right(llm2_x + llm2_w + 0.1, llm2_y + llm2_h/2, 5.6, color=LLM, lw=2)
@@ -324,9 +324,9 @@ ax.add_patch(FancyBboxPatch((comp_x, comp_y), comp_w, comp_h,
 
 # 헤더
 ax.text(comp_x + comp_w/4, comp_y + comp_h - 0.22, "Before (영문)",
-        ha="center", fontsize=9, fontweight="bold", color=MUTED)
+        ha="center", fontsize=12.6, fontweight="bold", color=MUTED)
 ax.text(comp_x + 3*comp_w/4, comp_y + comp_h - 0.22, "After (한국어)",
-        ha="center", fontsize=9, fontweight="bold", color=LLM)
+        ha="center", fontsize=12.6, fontweight="bold", color=LLM)
 ax.plot([comp_x + comp_w/2, comp_x + comp_w/2],
         [comp_y + 0.9, comp_y + comp_h - 0.35],
         color=STAGE_BD, lw=0.8)
@@ -340,16 +340,16 @@ pairs = [
 ]
 for i, (en, ko) in enumerate(pairs):
     yy = comp_y + comp_h - 0.55 - i * 0.4
-    ax.text(comp_x + 0.2, yy, en, fontsize=7.8, color=TEXT)
-    ax.text(comp_x + comp_w/2, yy, "→", ha="center", fontsize=11,
+    ax.text(comp_x + 0.2, yy, en, fontsize=10.9, color=TEXT)
+    ax.text(comp_x + comp_w/2, yy, "→", ha="center", fontsize=15.4,
             color=LLM, fontweight="bold")
-    ax.text(comp_x + comp_w/2 + 0.15, yy, ko, fontsize=7.8, color=TEXT)
+    ax.text(comp_x + comp_w/2 + 0.15, yy, ko, fontsize=10.9, color=TEXT)
 
 # 보존 태그 (하단)
 preserve_y = comp_y + 0.4
 ax.text(comp_x + 0.2, preserve_y + 0.28,
         "원본 그대로 유지 (LLM이 손대지 않음):",
-        fontsize=8, fontweight="bold", color="#166534")
+        fontsize=11.2, fontweight="bold", color="#166534")
 tags = ["섹션 번호", "좌표", "수치", "타임스탬프"]
 for i, tag in enumerate(tags):
     tx = comp_x + 0.3 + i * 1.55
@@ -357,7 +357,7 @@ for i, tag in enumerate(tags):
                                  boxstyle="round,pad=0.02",
                                  facecolor=REPORT_LIGHT, edgecolor=REPORT, lw=0.8))
     ax.text(tx + 0.7, preserve_y + 0.1, tag, ha="center",
-            fontsize=7.8, color="#166534", fontweight="bold")
+            fontsize=10.9, color="#166534", fontweight="bold")
 
 arrow_down(6.5, 5.0, 4.5)
 
@@ -386,7 +386,7 @@ ax.add_patch(patches.Polygon(corner, facecolor=REPORT_LIGHT,
 
 # 문서 제목
 ax.text(doc_x + doc_w/2 - 0.15, doc_y + doc_h - 0.28, "판독보고서 (한국어)",
-        ha="center", fontsize=10.5, fontweight="bold", color=REPORT)
+        ha="center", fontsize=14.7, fontweight="bold", color=REPORT)
 ax.plot([doc_x + 0.2, doc_x + doc_w - 0.2],
         [doc_y + doc_h - 0.48, doc_y + doc_h - 0.48],
         color=REPORT, lw=0.5, alpha=0.6)
@@ -408,13 +408,13 @@ for i, s in enumerate(mini_secs):
     row = i if i < 5 else i - 5
     xx = doc_x + 0.3 + col * (doc_w/2 - 0.2)
     yy = doc_y + doc_h - 0.7 - row * 0.24
-    ax.text(xx, yy, s, fontsize=7.8, color=TEXT)
+    ax.text(xx, yy, s, fontsize=10.9, color=TEXT)
 
 # 화살표 → Report DB
 arrow_right(doc_x + doc_w + 0.15, doc_y + doc_h/2, 8.7,
             color=REPORT, lw=2.2)
 ax.text((doc_x + doc_w + 8.7)/2 + 0.15, doc_y + doc_h/2 + 0.22, "INSERT",
-        ha="center", fontsize=9, color=REPORT, fontweight="bold")
+        ha="center", fontsize=12.6, color=REPORT, fontweight="bold")
 
 # 우: Report DB 원기둥
 cylinder(8.7, 2.1, 3.0, 0.4, DB, "Report DB", "회차별 보고서 저장")
@@ -422,9 +422,9 @@ cylinder(8.7, 2.1, 3.0, 0.4, DB, "Report DB", "회차별 보고서 저장")
 # Report DB 아래 설명
 ax.text(10.2, 1.75,
         "= 회차마다 보고서 1건씩 누적",
-        ha="center", fontsize=8, color=MUTED, style="italic")
+        ha="center", fontsize=11.2, color=MUTED, style="italic")
 
 plt.tight_layout()
 out = "/home/user/multi-source-intelligent-system/data/fig4_report_v2.png"
-plt.savefig(out, dpi=180, bbox_inches="tight", facecolor="white")
+plt.savefig(out, dpi=300, bbox_inches="tight", facecolor="white")
 print(f"Saved: {out}")
