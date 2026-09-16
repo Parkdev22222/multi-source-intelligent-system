@@ -263,8 +263,29 @@ story.append(Paragraph(
     "다수 이동형 객체 페어링 신뢰도가 크게 향상된다.",
     BODY))
 story.append(Paragraph(
-    "매칭에 실패한(임계값 미달 또는 후보 소진) 현재 객체는 <i>new</i>, 매칭되지 않은 과거 객체는 "
-    "<i>disappeared</i>로 확정된다. 매칭된 쌍은 <i>matched</i> 상태로 저장된다.",
+    "매칭에 성공한 쌍은 <i>matched</i>로 확정되고, 매칭에 실패한(임계값 미달 또는 후보 소진) 현재 객체는 "
+    "<i>new</i>, 매칭되지 않은 과거 객체는 <i>disappeared</i>로 <b>임시</b> 표시된다. 이 임시 결과는 다음의 "
+    "재검증 단계를 한 번 더 거친다.",
+    BODY))
+
+story.append(Paragraph("(3-c) 이동형 매칭 실패 재검증 — 가상 탐지 합성", H2))
+story.append(Paragraph(
+    "이동형이라 하더라도 전차·차량이 <b>정지 상태로 주둔</b>하는 경우가 흔한데, 이 경우 SAM3가 한쪽 시점에서 "
+    "탐지에 실패하면 Gale-Shapley 후보에서 빠져 <i>new</i>·<i>disappeared</i>로 잘못 분류될 수 있다. 이를 "
+    "보정하기 위해 <b>고정형과 동일한 <code>_static_cross_check()</code> 재검증</b>이 이동형에도 대칭적으로 "
+    "적용된다.",
+    BODY))
+story.append(Paragraph(
+    "구체적으로, 임시로 <i>new</i>가 된 이동형 객체는 과거 이미지에서 <b>현재 탐지의 위경도 위치</b>를 강제 "
+    "crop 하고, 임시 <i>disappeared</i>가 된 객체는 현재 이미지에서 <b>과거 탐지의 위경도 위치</b>를 강제 "
+    "crop 하여 원본 crop과의 CLIP 코사인 유사도를 계산한다. 유사도가 <i>_STATIC_SIM_THRESHOLD</i> 이상이면 "
+    "\"같은 자리에 여전히 있으나 SAM3가 놓친 경우\"로 판정하여 <b>합성 DetectionRecord를 유실된 프레임에 "
+    "주입</b>하고 <i>matched</i>로 승격시킨다. 임계값 미만이면 실제로 등장/사라진 것으로 최종 확정된다.",
+    BODY))
+story.append(Paragraph(
+    "이 재검증 단계 덕분에 SAM3의 false negative(정지 상태 이동 자산에 대한 탐지 누락)가 GraphRAG 누적 "
+    "통계와 판독보고서 서술로 전파되는 것을 자동으로 차단할 수 있다. 결과적으로 고정형·이동형 두 파이프라인 "
+    "모두 <b>1차 매칭 → 실패분에 대한 CLIP 재검증 → 최종 확정</b>이라는 대칭 구조를 가진다.",
     BODY))
 
 story.append(Paragraph("(4) 결과 통합 및 다상태 분류", H2))
