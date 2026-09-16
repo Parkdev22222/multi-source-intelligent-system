@@ -88,9 +88,23 @@ FOOTER = ParagraphStyle("Footer", parent=styles["Normal"],
                          alignment=TA_CENTER,
                          textColor=colors.HexColor("#94a3b8"))
 
+# 표 셀용 스타일 (전역 공용)
+CELL = ParagraphStyle("Cell", parent=styles["Normal"],
+                       fontName="Nanum", fontSize=8.5, leading=12,
+                       textColor=colors.HexColor("#0f172a"))
+CELL_HDR = ParagraphStyle("CellHdr", parent=styles["Normal"],
+                           fontName="Nanum-Bold", fontSize=10, leading=13,
+                           textColor=colors.white)
+CELL_NAME = ParagraphStyle("CellName", parent=styles["Normal"],
+                            fontName="Nanum-Bold", fontSize=9, leading=13,
+                            textColor=colors.HexColor("#7f1d1d"))
+
 # ── 헬퍼 ─────────────────────────────────────────────────────────
 def bullet(text):
     return Paragraph(f"• {text}", BULLET)
+
+def P(text, style=CELL):
+    return Paragraph(text, style)
 
 def scaled_image(path, max_width_cm=17.5, max_height_cm=23.0):
     """도면을 페이지 안에 맞도록 스케일 (기본값을 넉넉하게)."""
@@ -317,21 +331,125 @@ story.append(PageBreak())
 
 story.append(Paragraph("4. GraphRAG 기반 시공간 이력 누적 (설명)", H1))
 story.append(Paragraph(
-    "도 3은 매 회차 페어링 결과를 어떻게 시간축으로 쌓아 재활용 가능한 지식으로 만드는지를 보여준다. "
-    "핵심은 위경도를 소수점 2자리로 반올림(약 1 km 격자)해 <b>결정론적 노드 키</b>"
-    "(예: loc:37.58,126.97 · asset:tank:37.58,126.97)를 만들고, 같은 (자산 × 격자) 조합이 반복 관측될 때마다 "
-    "관측 횟수와 공출현 엣지 가중치를 +1씩 누적하는 upsert 방식이다.",
+    "도 3은 매 회차 페어링 결과를 어떻게 시간축으로 쌓아 재활용 가능한 지식으로 만드는지를 6단계로 보여준다. "
+    "본 시스템의 지식 그래프는 <b>위치별로 분리된 여러 개의 그래프가 아니라, 위치 노드와 자산 노드가 함께 "
+    "존재하는 하나의 통합 그래프</b>이다. 여기에 결정론적 노드 키 · LLM 호출 없는 upsert · Louvain 커뮤니티 "
+    "탐지 · Local + Global 이중 검색이 결합되어 시공간 이력을 재활용 가능한 컨텍스트로 압축한다.",
+    BODY))
+
+story.append(Paragraph("(1) 결정론적 노드 키와 통합 그래프 구조", H2))
+story.append(Paragraph(
+    "위경도를 소수점 2자리로 반올림(약 1 km 격자)하여 <b>결정론적 노드 키</b>를 만든다. 두 종류의 노드가 "
+    "존재한다:",
+    BODY))
+story.append(bullet("<b>위치 노드</b>: <code>loc:37.58,126.97</code> — (격자 셀)당 노드 1개"))
+story.append(bullet("<b>자산 노드</b>: <code>asset:tank:37.58,126.97</code> — (자산 클래스 × 격자)당 노드 1개"))
+story.append(Paragraph(
+    "같은 격자에 여러 자산이 있으면 위치 노드 1개와 여러 개의 자산 노드가 함께 존재하며, "
+    "같은 클래스가 여러 격자에 있으면 격자 수만큼 별개 자산 노드가 생성된다. 두 노드 종류가 <b>하나의 "
+    "통합 그래프 안에서 공존</b>하며, 위치별 서브그래프를 별도로 관리하지 않는다.",
+    BODY))
+
+story.append(Paragraph("(2) 결정론적 upsert (LLM 비호출)", H2))
+story.append(Paragraph(
+    "회차별 페어링 결과가 그래프 인덱서에 들어오면 다음 세 종류의 upsert가 순차 실행된다:",
+    BODY))
+story.append(bullet("<b>위치 노드 upsert</b> — 같은 격자 키가 이미 있으면 관측 횟수 +1, 없으면 신규 삽입"))
+story.append(bullet("<b>자산 노드 upsert</b> — (자산 × 격자) 키 기준으로 observation_count · 상태별 카운터 "
+                    "(new_count · matched_count · disappeared_count) · total_confidence · sessions 리스트 갱신"))
+story.append(bullet("<b>엣지 upsert</b> — <code>found_at</code>(자산→위치)의 count·타임스탬프 갱신, "
+                    "<code>co_occurred_with</code>(자산↔자산, 같은 격자·같은 회차에 함께 관측된 조합)의 "
+                    "가중치와 locations 리스트 갱신"))
+story.append(Paragraph(
+    "이 과정에는 <b>LLM 호출이 전혀 없다</b>. 순수 결정론적 함수(반올림 · 문자열 조합 · 사전 갱신)만으로 "
+    "이루어지므로 동일 입력에 대해 항상 동일한 그래프가 재현되며, API 비용도 발생하지 않는다. "
+    "이는 GraphRAG 특유의 '재현 가능성'을 확보하는 결정적 요소다.",
+    BODY))
+story.append(PageBreak())
+
+story.append(Paragraph("4. GraphRAG 기반 시공간 이력 누적 (설명 계속)", H1))
+story.append(Paragraph("(3) Louvain 커뮤니티 탐지 — 반복 관측 패턴 자동 발견", H2))
+story.append(Paragraph(
+    "누적된 통합 그래프에서 자산 노드들의 <b>co_occurred_with 엣지 가중치</b>를 대상으로 Louvain 알고리즘이 "
+    "주기적으로 실행된다. Louvain은 그래프의 modularity를 최대화하는 방식으로 노드를 자동 분할하여, 여러 "
+    "격자에 걸쳐 반복적으로 함께 관측되는 자산 조합을 하나의 커뮤니티로 묶는다. 예를 들어 "
+    "여러 격자에서 tank·APC·artillery 세 클래스가 반복적으로 함께 관측되면, 각 격자별 asset 노드들이 "
+    "하나의 커뮤니티에 소속된다.",
     BODY))
 story.append(Paragraph(
-    "이 upsert 과정에는 <b>LLM 호출이 없어</b> 동일 입력에 대해 항상 동일한 그래프가 재현되며, "
-    "비용도 발생하지 않는다. 누적된 그래프에는 <b>Louvain 커뮤니티 탐지</b>가 적용되어 자주 함께 관측되는 "
-    "자산 군집이 자동으로 발견된다.",
+    "중요한 점은 <b>커뮤니티가 별도의 서브그래프로 저장되지 않는다</b>는 것이다. 통합 그래프 구조는 그대로 "
+    "두고, 각 커뮤니티는 <code>graph_communities</code> 테이블의 한 레코드로 저장된다:",
     BODY))
+
+com_data = [
+    [P("컬럼", CELL_HDR), P("저장 값 예시", CELL_HDR)],
+    [P("community_index", CELL), P("0", CELL)],
+    [P("label", CELL), P("\"Cluster-0: military tank, APC, artillery\"", CELL)],
+    [P("member_ids (JSON)", CELL),
+        P("[\"asset:tank:37.58,126.97\", \"asset:APC:37.58,126.97\", "
+          "\"asset:tank:37.60,127.01\", \"asset:APC:37.60,127.01\", ...]", CELL)],
+    [P("member_summary", CELL),
+        P("결정론적 통계 요약 텍스트 (LLM 호출 없이 생성) — 예: "
+          "\"3개 격자에서 tank(관측 8회) · APC(6회) · artillery(4회) 공출현\"", CELL)],
+    [P("summary", CELL), P("선택적 LLM 요약 (기본 비활성)", CELL)],
+    [P("created_at", CELL), P("커뮤니티 탐지 실행 시각", CELL)],
+]
+t = Table(com_data, colWidths=[4.2*cm, 14.0*cm])
+t.setStyle(TableStyle([
+    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6d28d9")),
+    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+    ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+    ("RIGHTPADDING",(0, 0), (-1, -1), 5),
+    ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
+    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+        [colors.white, colors.HexColor("#faf5ff")]),
+]))
+story.append(t)
+story.append(Spacer(1, 0.3*cm))
 story.append(Paragraph(
-    "보고서 생성 시에는 대상 지역 반경의 자산 이력을 조회하는 Local Search와 관련 커뮤니티 요약을 가져오는 "
-    "Global Search를 병행하여, 관련 이력만 <b>약 500 토큰</b>의 압축 컨텍스트로 반환한다. 이 압축 컨텍스트가 "
-    "다음 단계의 LLM 프롬프트에 주입되어 판독보고서의 시공간 맥락을 채운다.",
+    "즉 각 커뮤니티는 <b>\"이 커뮤니티에 소속된 자산 노드 id 리스트\"와 \"통계 요약 텍스트\"</b>로만 저장되며, "
+    "별도의 서브그래프 순회 없이 레코드 조회로 빠르게 활용할 수 있다.",
     BODY))
+
+story.append(Paragraph("(4) Local Search — 대상 지역 자산 이력 조회", H2))
+story.append(Paragraph(
+    "판독보고서 생성 시 우선 대상 지역 좌표를 중심으로 Local Search가 실행된다. 절차:",
+    BODY))
+story.append(bullet("① 질의 좌표(<code>lat_c, lon_c</code>)와 반경 <code>radius_deg</code>(기본 0.05°, 약 5km)를 "
+                    "이용해 <b>위치 노드</b>(<code>loc:*</code>)를 필터링"))
+story.append(bullet("② 각 위치 노드에서 <code>found_at</code> 엣지로 연결된 <b>자산 노드</b>를 수집"))
+story.append(bullet("③ 자산 노드마다 관측 횟수 · 상태별 카운터(new/matched/disappeared/moved) · "
+                    "평균 confidence · first_seen/last_seen 을 추출"))
+story.append(bullet("④ 클래스별 총합 통계(예: tank 8회, APC 5회) 로 집계"))
+story.append(Paragraph(
+    "출력 예: <i>\"이 격자 반경 5 km 내에 tank 8회, APC 5회, building 3회 관측. tank는 지난 30일간 "
+    "3회 새로 등장, 1회 소실.\"</i>",
+    BODY))
+
+story.append(Paragraph("(5) Global Search — 관련 커뮤니티 요약 조회", H2))
+story.append(Paragraph(
+    "Local Search로 얻은 자산 노드들이 어떤 반복 관측 패턴에 속하는지를 알아내기 위해 Global Search가 "
+    "이어진다. 절차:",
+    BODY))
+story.append(bullet("① Local Search 결과의 자산 노드 id들을 수집"))
+story.append(bullet("② <code>graph_communities.member_ids</code>에 이 id들이 포함된 커뮤니티 레코드를 조회"))
+story.append(bullet("③ 겹치는 id 수(<code>local_overlap</code>) 기준으로 정렬"))
+story.append(bullet("④ 각 커뮤니티의 <b>label + member_summary</b>를 반환"))
+story.append(Paragraph(
+    "출력 예: <i>\"이 지역 자산 조합은 'Cluster-0: tank, APC, artillery' 커뮤니티에 매핑됨 "
+    "(local_overlap = 3). 이 커뮤니티는 전국 12개 격자에서 반복 관측되는 패턴.\"</i>",
+    BODY))
+
+story.append(Paragraph("(6) 압축 컨텍스트 생성 · LLM 주입", H2))
+story.append(Paragraph(
+    "Local + Global 결과를 결정론적 요약 규칙으로 결합해 <b>약 500 토큰의 압축 컨텍스트</b>를 만든다. "
+    "이 짧은 텍스트 블록이 판독보고서 생성 단계의 LLM 프롬프트 맨 앞에 <b>prepend</b> 되어, 이번 회차 "
+    "변화 팩트(Pairing DB)와 함께 판독보고서의 시공간 맥락을 채운다. 압축이 결정론적이므로 같은 입력에 "
+    "대해 항상 같은 컨텍스트가 재현되며, 그래프 전체를 프롬프트에 넣는 것 대비 토큰 소비가 크게 절감된다.",
+    BODY))
+
 story.append(PageBreak())
 
 
@@ -385,19 +503,6 @@ story.append(Paragraph(
     BODY))
 
 # 5개 critic을 표로 정리 (셀 내용을 Paragraph로 감싸 자동 줄바꿈)
-CELL = ParagraphStyle("CriticCell", parent=styles["Normal"],
-                       fontName="Nanum", fontSize=8.5, leading=12,
-                       textColor=colors.HexColor("#0f172a"))
-CELL_HDR = ParagraphStyle("CriticHdr", parent=styles["Normal"],
-                           fontName="Nanum-Bold", fontSize=10, leading=13,
-                           textColor=colors.white)
-CELL_NAME = ParagraphStyle("CriticName", parent=styles["Normal"],
-                            fontName="Nanum-Bold", fontSize=9, leading=13,
-                            textColor=colors.HexColor("#7f1d1d"))
-
-def P(text, style=CELL):
-    return Paragraph(text, style)
-
 critic_data = [
     [P("Critic 노드", CELL_HDR), P("검증 항목", CELL_HDR), P("실패 시 처리", CELL_HDR)],
     [

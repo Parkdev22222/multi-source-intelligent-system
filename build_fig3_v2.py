@@ -363,9 +363,14 @@ for (nx, ny, lbl) in [(lx3+0.5, ly+1.2, "aircraft"), (lx3+1.9, ly+1.2, "runway")
 ax.plot([lx3+0.75, lx3+1.65], [ly+1.2, ly+1.2], color=GREEN, lw=1.5)
 
 # 하단 설명
-ax.text(6.5, 5.25,
+ax.text(6.5, 5.35,
         "→ 자주 함께 등장한 자산들을 그래프 알고리즘이 자동으로 그룹화 (AI 호출 없음)",
-        ha="center", fontsize=11.9, color=MUTED, style="italic")
+        ha="center", fontsize=11.2, color=MUTED, style="italic")
+ax.text(6.5, 5.15,
+        "→ 각 군집은 별도 그래프가 아닌 graph_communities 레코드 "
+        "(label + member_ids 리스트) 로 저장됨",
+        ha="center", fontsize=10.5, color=GRAPH, style="italic",
+        fontweight="bold")
 
 arrow_down(6.5, 5.1, 4.2)
 
@@ -388,37 +393,75 @@ arrow_down(6.5, 3.2, 2.4)
 # ═══════════════════════════════════════════════════════════════
 stage_bg(0.5, 1.9, "6단계", "보고서 생성 시 관련 이력 검색 → 압축 컨텍스트")
 
-# Local Search
-ax.add_patch(FancyBboxPatch((0.7, 1.1), 3.4, 1.1, boxstyle="round,pad=0.05",
+# Local Search 박스 (좀 더 상세)
+ax.add_patch(FancyBboxPatch((0.5, 0.75), 4.0, 1.55, boxstyle="round,pad=0.05",
                              facecolor="#f3e8ff", edgecolor=GRAPH, lw=1.2))
-ax.text(2.4, 1.85, "Local Search", ha="center", fontsize=14.7,
+ax.text(2.5, 2.15, "Local Search", ha="center", fontsize=13.3,
         fontweight="bold", color=GRAPH)
-ax.text(2.4, 1.55, "대상 지역 반경 R 내", ha="center", fontsize=11.9, color=TEXT)
-ax.text(2.4, 1.35, "자산 이력·카운터 조회", ha="center", fontsize=11.9, color=TEXT)
+ax.text(2.5, 1.90, "질의 좌표 반경 R 내 조회", ha="center", fontsize=10.2,
+        color=TEXT, style="italic")
+ax.text(0.7, 1.62,
+        "· 위치 노드(loc:*) 필터",
+        fontsize=9.5, color=TEXT)
+ax.text(0.7, 1.42,
+        "· found_at 엣지로 연결된",
+        fontsize=9.5, color=TEXT)
+ax.text(0.7, 1.22,
+        "  asset 노드 수집",
+        fontsize=9.5, color=TEXT)
+ax.text(0.7, 1.02,
+        "· 관측 횟수·상태별 카운터",
+        fontsize=9.5, color=TEXT)
+ax.text(0.7, 0.82,
+        "  (new/matched/disappeared)",
+        fontsize=9.5, color=TEXT)
 
-# Global Search
-ax.add_patch(FancyBboxPatch((4.4, 1.1), 3.4, 1.1, boxstyle="round,pad=0.05",
+# Global Search 박스 (좀 더 상세)
+ax.add_patch(FancyBboxPatch((4.75, 0.75), 4.0, 1.55, boxstyle="round,pad=0.05",
                              facecolor="#f3e8ff", edgecolor=GRAPH, lw=1.2))
-ax.text(6.1, 1.85, "Global Search", ha="center", fontsize=14.7,
+ax.text(6.75, 2.15, "Global Search", ha="center", fontsize=13.3,
         fontweight="bold", color=GRAPH)
-ax.text(6.1, 1.55, "관련 군집 요약", ha="center", fontsize=11.9, color=TEXT)
-ax.text(6.1, 1.35, "(doctrine 패턴)", ha="center", fontsize=11.9, color=TEXT)
+ax.text(6.75, 1.90, "관련 커뮤니티 요약 조회", ha="center", fontsize=10.2,
+        color=TEXT, style="italic")
+ax.text(4.95, 1.62,
+        "· Local 결과의 asset id들이",
+        fontsize=9.5, color=TEXT)
+ax.text(4.95, 1.42,
+        "  소속된 graph_communities",
+        fontsize=9.5, color=TEXT)
+ax.text(4.95, 1.22,
+        "  레코드를 조회",
+        fontsize=9.5, color=TEXT)
+ax.text(4.95, 1.02,
+        "· label + member_summary 반환",
+        fontsize=9.5, color=TEXT)
+ax.text(4.95, 0.82,
+        "  (반복 관측 패턴)",
+        fontsize=9.5, color=TEXT)
 
-arrow_right(4.1, 1.65, 4.4, color=GRAPH, lw=2)
+arrow_right(4.5, 1.55, 4.75, color=GRAPH, lw=1.5)
 
 # 압축 컨텍스트 블록
-ax.add_patch(FancyBboxPatch((8.4, 1.05), 4.2, 1.2, boxstyle="round,pad=0.05",
+ax.add_patch(FancyBboxPatch((9.0, 0.75), 3.5, 1.55, boxstyle="round,pad=0.05",
                              facecolor="#dbeafe", edgecolor=BLUE, lw=1.5))
-ax.text(10.5, 1.95, "~500 토큰 압축 컨텍스트", ha="center", fontsize=14.7,
+ax.text(10.75, 2.15, "압축 컨텍스트", ha="center", fontsize=13.3,
         fontweight="bold", color=BLUE)
-ax.text(10.5, 1.6, "\"기갑 복합체 8회 반복 관측,", ha="center",
-        fontsize=11.2, color=TEXT, style="italic")
-ax.text(10.5, 1.4, " 지난 30일간 3회 재배치...\"", ha="center",
-        fontsize=11.2, color=TEXT, style="italic")
-ax.text(10.5, 1.15, "→ LLM 프롬프트에 prepend", ha="center",
-        fontsize=11.2, color=BLUE)
+ax.text(10.75, 1.90, "≈ 500 토큰", ha="center", fontsize=10.2,
+        color=BLUE, style="italic")
+ax.text(10.75, 1.62,
+        "\"기갑 복합체 8회 반복 관측,",
+        ha="center", fontsize=9.2, color=TEXT, style="italic")
+ax.text(10.75, 1.44,
+        " 지난 30일간 3회 재배치,",
+        ha="center", fontsize=9.2, color=TEXT, style="italic")
+ax.text(10.75, 1.26,
+        " 반경 5km 내 지속 배치...\"",
+        ha="center", fontsize=9.2, color=TEXT, style="italic")
+ax.text(10.75, 0.94,
+        "→ LLM 프롬프트에 prepend",
+        ha="center", fontsize=9.5, color=BLUE, fontweight="bold")
 
-arrow_right(7.85, 1.65, 8.4, color=BLUE, lw=2)
+arrow_right(8.75, 1.55, 9.0, color=BLUE, lw=1.5)
 
 plt.tight_layout()
 out = "/home/user/multi-source-intelligent-system/data/fig3_graphrag_v2.png"
