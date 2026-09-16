@@ -125,31 +125,6 @@ doc = SimpleDocTemplate(
 story = []
 
 # ═══════════════════════════════════════════════════════════════
-# 표지
-# ═══════════════════════════════════════════════════════════════
-story.append(Spacer(1, 4*cm))
-story.append(Paragraph("MSIS", TITLE))
-story.append(Paragraph(
-    "Multi-Source Intelligent System",
-    SUBTITLE))
-story.append(Spacer(1, 0.4*cm))
-story.append(Paragraph(
-    "위성·드론 시계열 영상 기반<br/>객체 페어링 변화 탐지 및 GraphRAG 기반 판독보고서 자율 생성 시스템",
-    ParagraphStyle("CoverDesc", parent=SUBTITLE, fontSize=12.5, leading=20,
-                    textColor=colors.HexColor("#1e293b"),
-                    spaceBefore=8)))
-story.append(Spacer(1, 3*cm))
-story.append(hr())
-story.append(COVER_NAME := Paragraph("프로젝트 소개서", COVER_NAME))
-story.append(Paragraph("한화에어로스페이스 지원 첨부 자료",
-                       COVER_ROLE))
-story.append(Spacer(1, 0.5*cm))
-story.append(Paragraph(f"작성일: {datetime.now().strftime('%Y년 %m월 %d일')}",
-                       COVER_ROLE))
-story.append(PageBreak())
-
-
-# ═══════════════════════════════════════════════════════════════
 # 1. 프로젝트 개요
 # ═══════════════════════════════════════════════════════════════
 story.append(Paragraph("1. 프로젝트 개요", H1))
