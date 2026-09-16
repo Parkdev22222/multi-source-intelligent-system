@@ -311,9 +311,89 @@ story.append(PageBreak())
 
 
 # ═══════════════════════════════════════════════════════════════
-# 6. 데이터 아키텍처
+# 6. LangGraph Critic 노드 아키텍처 (전체 5개 critic 정리)
 # ═══════════════════════════════════════════════════════════════
-story.append(Paragraph("6. 데이터 아키텍처 (4개 DB)", H1))
+story.append(Paragraph("6. LangGraph Critic 노드 아키텍처", H1))
+story.append(Paragraph(
+    "전체 파이프라인은 LangGraph의 상태 머신으로 모델링된다. 각 생성 단계(generator 노드) 뒤에는 "
+    "critic 노드가 배치되어 산출물의 품질을 자동 검증하며, 검증 결과에 따라 다음 단계로의 라우팅 · "
+    "같은 노드로의 재실행 · HITL(Human-in-the-Loop) 이관이 조건부로 결정된다. 총 <b>5개의 critic 노드</b>가 "
+    "탐지 → 페어링 → 그래프 인덱싱 → 보고서 생성 → 번역 각 단계를 검증한다.",
+    BODY))
+
+# 5개 critic을 표로 정리
+critic_data = [
+    ["Critic 노드", "검증 항목", "실패 시 처리"],
+    ["① Detection Critic\n(SAM3 탐지 검증)",
+        "· 클래스·confidence 분포가 정상 범위인가\n"
+        "· degenerate bbox(0 크기)가 있는가\n"
+        "· 이미지 특성 대비 탐지 수가 비정상은 아닌가",
+        "SAM3 프롬프트 재조정 또는 confidence 임계값 완화 후 재실행 · 반복 실패 시 HITL 이관"],
+    ["② Pairing Critic\n(이원 페어링 검증)",
+        "· matched : new : disappeared 비율의 급격한 편향 여부\n"
+        "· CLIP 유사도 분포가 임계값 근처에 몰려있진 않은가\n"
+        "· Gale-Shapley 후 미매칭 자산이 과다한가",
+        "SIMILARITY_MATCH_THRESHOLD 조정 후 재실행 또는 HITL 이관"],
+    ["③ Graph Critic\n(GraphRAG 인덱싱 검증)",
+        "· 격자 셀당 노드 수가 극단적으로 편중되지 않았는가\n"
+        "· Louvain 커뮤니티 개수·크기가 정상 범위인가\n"
+        "· upsert 후 관측 횟수·엣지 가중치가 실제로 반영됐는가",
+        "_LOC_PRECISION(격자 해상도) 조정 후 재인덱싱 · 경고만 남기고 통과 허용도 가능"],
+    ["④ Report Critic\n(영문 보고서 검증)",
+        "· 정형 9개 섹션 헤더가 모두 존재하는가\n"
+        "· 보고서에 인용된 자산·좌표·수치가 실제 입력 페어링 레코드에 존재하는가 (팩트 매칭)\n"
+        "· 'DISAPPEARED ≠ destroyed' 등 도메인 가드레일 준수 여부",
+        "실패 사유를 프롬프트 피드백에 추가하여 재생성 (self-refine 패턴)"],
+    ["⑤ Translation Critic\n(한국어 번역 검증)",
+        "· 9 섹션 번호·헤더가 그대로 유지됐는가\n"
+        "· 좌표·수치·타임스탬프가 raw 값 그대로 보존됐는가 (정규식 diff)\n"
+        "· 영문 잔재가 없는가 (언어 일관성)",
+        "재번역 요청 · 반복 실패 시 HITL 이관"],
+]
+t = Table(critic_data, colWidths=[3.6*cm, 8.0*cm, 6.6*cm])
+t.setStyle(TableStyle([
+    ("FONTNAME",   (0, 0), (-1, 0), "Nanum-Bold"),
+    ("FONTNAME",   (0, 1), (-1, -1), "Nanum"),
+    ("FONTSIZE",   (0, 0), (-1, 0), 10),
+    ("FONTSIZE",   (0, 1), (-1, -1), 8.5),
+    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#b91c1c")),
+    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+    ("GRID",       (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+    ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+    ("RIGHTPADDING",(0, 0), (-1, -1), 6),
+    ("TOPPADDING", (0, 0), (-1, -1), 6),
+    ("BOTTOMPADDING",(0, 0), (-1, -1), 6),
+    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+        [colors.white, colors.HexColor("#fef2f2")]),
+]))
+story.append(t)
+story.append(Spacer(1, 0.5*cm))
+
+story.append(Paragraph("파이프라인 상태(State) 관리", H2))
+story.append(Paragraph(
+    "각 노드 간에는 LangGraph의 상태 객체(<i>PipelineState</i>)가 전달된다. 이 객체에는 세션 식별자, "
+    "각 단계의 산출물(detections · pairings · graph_context · english_report · korean_report), "
+    "각 critic의 통과/실패 이력(<i>critic_history</i>), 그리고 무한 루프 방지를 위한 단계별 "
+    "재시도 카운터(<i>retry_counts</i>)가 포함된다.",
+    BODY))
+
+story.append(Paragraph("재시도 정책과 HITL 이관", H2))
+story.append(bullet("각 critic 노드는 <b>최대 재시도 횟수(예: 3회)</b>를 상태 객체로 관리하여 무한 루프를 방지한다"))
+story.append(bullet("재시도가 소진되어도 검증에 통과하지 못하면 <b>HITL 이관 노드</b>로 라우팅되어 "
+                    "웹 UI를 통해 사람이 결과를 확인하고 수동 수정할 수 있다"))
+story.append(bullet("HITL에서 수정된 결과는 해당 <i>session_id</i>의 후속 DB 레코드를 자동 재계산하도록 "
+                    "다음 단계로 다시 흘려보낸다"))
+story.append(bullet("Critic은 대부분 <b>규칙 기반(rule-based)</b>으로 구현하여 결정론성과 재현성을 유지하고, "
+                    "LLM 기반 critic은 최소로 제한하여 GraphRAG의 결정론 강점을 훼손하지 않도록 설계한다"))
+
+story.append(PageBreak())
+
+
+# ═══════════════════════════════════════════════════════════════
+# 7. 데이터 아키텍처
+# ═══════════════════════════════════════════════════════════════
+story.append(Paragraph("7. 데이터 아키텍처 (4개 DB)", H1))
 story.append(Paragraph(
     "각 파이프라인 단계의 산출물은 물리적으로 분리된 4개의 SQLite 데이터베이스에 세션 식별자"
     "(session_id)와 함께 저장된다. 이 구조는 (i) 결과의 재현·검증, (ii) 특정 단계의 부분 재실행, "
@@ -321,7 +401,7 @@ story.append(Paragraph(
     BODY))
 
 # 6-1. Sensor DB
-story.append(Paragraph("6.1 Sensor DB — 촬영 영상과 SAM3 탐지 결과", H2))
+story.append(Paragraph("7.1 Sensor DB — 촬영 영상과 SAM3 탐지 결과", H2))
 story.append(Paragraph("<b>image_records</b> (이미지 메타)", BODY))
 sensor_img_data = [
     ["컬럼", "타입", "저장 내용"],
@@ -389,7 +469,7 @@ story.append(t)
 story.append(PageBreak())
 
 # 6-2. Pairing DB
-story.append(Paragraph("6.2 Pairing DB — 두 시점 페어링 결과", H2))
+story.append(Paragraph("7.2 Pairing DB — 두 시점 페어링 결과", H2))
 story.append(Paragraph(
     "각 회차 비교(과거 프레임 vs 현재 프레임)의 페어링 결과를 저장한다. "
     "상태별로 채워지는 필드가 다르다: <i>matched/changed</i>는 양쪽 다, "
@@ -433,7 +513,7 @@ story.append(t)
 story.append(PageBreak())
 
 # 6-3. Graph DB
-story.append(Paragraph("6.3 Graph DB — 결정론적 지식 그래프", H2))
+story.append(Paragraph("7.3 Graph DB — 결정론적 지식 그래프", H2))
 story.append(Paragraph(
     "위경도 격자 반올림으로 만든 결정론적 노드 키를 사용해 자산·위치·관계를 upsert 방식으로 누적한다. "
     "AI 호출 없이 동일 입력에 동일 그래프가 재현되며, Louvain 알고리즘으로 반복 관측 패턴이 커뮤니티 "
@@ -534,7 +614,7 @@ story.append(t)
 story.append(PageBreak())
 
 # 6-4. Report DB
-story.append(Paragraph("6.4 Report DB — 최종 판독보고서", H2))
+story.append(Paragraph("7.4 Report DB — 최종 판독보고서", H2))
 story.append(Paragraph(
     "critic 노드 검증을 통과한 최종 한국어 판독보고서를 세션별로 저장한다.",
     BODY))
@@ -580,9 +660,9 @@ story.append(PageBreak())
 
 
 # ═══════════════════════════════════════════════════════════════
-# 7. 사용 기술 스택
+# 8. 사용 기술 스택
 # ═══════════════════════════════════════════════════════════════
-story.append(Paragraph("7. 사용 기술 스택", H1))
+story.append(Paragraph("8. 사용 기술 스택", H1))
 
 tech_data = [
     ["영역", "사용 기술", "역할"],
